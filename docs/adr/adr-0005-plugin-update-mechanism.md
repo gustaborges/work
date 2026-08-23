@@ -1,0 +1,31 @@
+# ADR-0005: Mecanismo de Atualização de Plugins
+
+**Status:** Aceito
+**Data:** 2026-08-23
+**Contexto de produto:** `docs-v2/prd.md` — RF-19, RNF-3, RNF-4
+**Governa:** `docs-v2/add/add-0001-work-system-architecture.md`, Seção 8
+**Supersede:** `temp/estrategia-plugins.md`, Seção 5 e exemplo 5.5
+
+## Contexto
+
+O gatilho de atualização já era claro desde os primeiros esboços: comparar apenas um campo opaco de versão declarado pelo autor do plugin, nunca o histórico bruto de commits — um híbrido entre fixar uma referência exata (reprodutibilidade) e rastrear uma branch usando esse campo como gate (fricção mínima ao autor). O que faltava definir era (a) se a atualização pode ser automática, e (b) como checar a versão remota sem perturbar a cópia de trabalho atualmente instalada e em uso do plugin.
+
+## Decisão
+
+* Atualização é sempre explícita, nunca automática/silenciosa (RF-19). Existe um comando somente-leitura para listar o que está desatualizado, um comando de atualização individual e um de atualização em lote (mostrando o que vai mudar, com confirmação). `work start`/`resume`/`archive` nunca disparam nada disso (RNF-4).
+* Checar atualização nunca toca a cópia de trabalho que serve o entrypoint atualmente instalado do plugin — só a consulta explícita e confirmada move o quê está de fato em uso para uma nova referência resolvida. Mecânica exata (fetch vs. pull, leitura do manifesto remoto sem checkout) em `add-0001` §8.
+* Nenhuma convenção adicional de release (ex: tag) é exigida do autor do plugin além do campo de versão já declarado no manifesto (ADR-0001) — mantém a promessa de baixa fricção de autoria; o custo é uma checagem incremental por plugin, aceitável por só acontecer em consultas explícitas, nunca em `start`/`resume`/`archive`.
+* O resultado da auto-descrição de capabilities (ADR-0001) é cacheado associado à versão declarada do plugin, para plugins instalados a partir de uma origem remota — só é re-executado quando uma atualização aceita uma versão nova (espelha exatamente o gatilho acima, então há um único sinal de "o que mudou" em todo o sistema, não dois). Plugins instalados via link local não têm evento de atualização nem disciplina confiável de versão durante desenvolvimento ativo — para esses, a auto-descrição roda a cada invocação, sem cache. Isso custa um spawn de processo local, não rede nem consulta a LLM, então não conflita com RNF-4.
+
+## Alternativas consideradas
+
+* **Totalmente manual, só individual.** Não escala além de poucos plugins — descartada como única opção (mantida como caminho disponível dentro do modelo acima).
+* **Automática/silenciosa** (estilo extensão de browser). **Descartada diretamente**: um plugin poderia mudar de comportamento entre execuções sem o usuário saber, contradizendo RNF-3 e o risco de plugin malicioso/mal escrito já nomeado no PRD. Não há trade-off que justifique considerar essa opção para este produto.
+* **Exigir uma tag de release correspondente à versão declarada**, para permitir checagem sem transferir nenhum objeto. Tecnicamente mais barata, mas rejeitada para v1 por adicionar uma obrigação de autoria além do que já é prometido; anotada como possível otimização futura de performance, não mudança de requisito.
+* **Notificação passiva em `start`/`resume`.** Reduz o "esquecer de checar", mas exigiria um cache com TTL para não violar o espírito de RNF-4 se a checagem fosse síncrona — anotada como candidato de v2 não-bloqueante.
+
+## Consequências
+
+**Positivas:** sem nova obrigação ao autor além do já prometido; nunca muta a cópia de trabalho ativa de um plugin durante uma simples checagem; reusa um único sinal de "versão mudou" tanto para disponibilidade de atualização quanto para invalidação do cache de auto-descrição.
+
+**Negativas / trade-offs:** toda checagem de "o que está desatualizado" ainda custa uma consulta de rede por plugin — aceitável por ser iniciada pelo usuário e pouco frequente, não é um bloqueio para v1.
