@@ -223,10 +223,10 @@ Nenhuma tag git é exigida do autor — rastrear a branch e comparar apenas o ca
 
 ## 11. Contrato de execução de componentes (ADR-0000, ADR-0006)
 
-Todo componente executável (starter, importer, linker) segue o mesmo protocolo:
+Todo componente executável (starter, importer, linker) segue o mesmo protocolo — o mesmo envelope de transporte e as mesmas regras abaixo, não o mesmo payload.
 
-* **Entrada:** um único payload JSON via stdin, contendo o argumento bruto e o contexto relevante (ex: caminho do repositório já resolvido, quando aplicável).
-* **Saída:** um único payload JSON via stdout, no formato acordado por tipo de componente (ex: um starter retorna `{ "repo_path": "...", "slug": "...", "base_branch": "..." }`, campos opcionais conforme as `capabilities` declaradas).
+* **Entrada:** um único payload JSON via stdin, no formato acordado por tipo de componente e por ponto de disparo — nunca o mesmo payload para todos. Um starter, invocado direto por `work start <arg>`, recebe o argumento bruto do usuário. Um importer/linker, invocado por um hook (`onFinalize`), nunca recebe argumento bruto — não há mais nenhum neste ponto do fluxo — e sim o contexto do Work já resolvido (ex: `repo_path`, `slug`, `branch`, caminho da pasta de contexto).
+* **Saída:** um único payload JSON via stdout, também no formato acordado por tipo de componente (ex: um starter retorna `{ "repo_path": "...", "slug": "...", "base_branch": "..." }`, campos opcionais conforme as `capabilities` declaradas).
 * **Código de saída:** `0` para sucesso; qualquer valor não-zero é tratado como "este componente não conseguiu resolver o argumento" (para starters) ou como falha de hook (para importers/linkers), sem derrubar o comando do Work — apenas reportando o erro ao usuário.
 * **Sem estado compartilhado implícito:** cada invocação é um processo isolado; nada é assumido sobre o ambiente além de variáveis padrão do shell do usuário.
 * **Ação `describe`:** no `install`/`update` (e a cada invocação para `local-link`, sem cache), o Work invoca o componente com uma ação `describe` sobre o mesmo contrato — a resposta do processo é a fonte de verdade sobre capabilities/versão, cacheada conforme Seção 10.
