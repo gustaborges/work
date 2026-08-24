@@ -2,14 +2,12 @@
 
 **Status:** Aceito
 **Data:** 2026-08-23
-**Contexto de produto:** `docs-v2/prd.md` — RF-16, RF-17, RF-20, RF-21, RNF-2, RNF-5
-**Governa:** `docs-v2/add/add-0001-work-system-architecture.md`, Seção 5
-**Supersede:** `temp/estrategia-plugins.md`, Seções 3.1, 3.2 (fonte) e "Síntese — Layout de diretórios / Modelo de registro"
-**Insumo:** `temp/analise-prd.md`, Seções 2 e 3
+**Contexto de produto:** `docs/prd.md` — RF-16, RF-17, RF-20, RF-21, RNF-2, RNF-5
+**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seção 5
 
 ## Contexto
 
-`analise-prd.md` Seção 3 apontou o gap central: o rascunho v1 nunca definia como um plugin era instalado — o fluxo implícito exigiria copiar arquivos manualmente e editar configuração central à mão, o oposto de RNF-2. A Seção 2 do mesmo documento apontou a ausência de separação entre config editada por humano e estado gerenciado pela ferramenta.
+Sem um mecanismo de instalação definido, o fluxo implícito exigiria copiar arquivos manualmente e editar configuração central à mão — o oposto de RNF-2. Falta também uma separação entre config editada por humano e estado gerenciado pela ferramenta (RNF-5).
 
 ## Decisão
 
@@ -30,7 +28,7 @@ A instalação separa, no layout de diretórios, config (editado por humano) de 
 
 ## Alternativas consideradas
 
-* **Config central editada à mão** (status quo do v1) — rejeitada: é a causa direta do gap central de `analise-prd.md` e uma superfície de erro (usuário pode digitar errado um campo sem que nada valide contra o que o plugin de fato faz).
+* **Config central editada à mão** — rejeitada: é a causa direta do gap descrito no Contexto e uma superfície de erro (usuário pode digitar errado um campo sem que nada valide contra o que o plugin de fato faz).
 * **Auto-sufixar alias em colisão** (ex.: instalar automaticamente como `plugin-2`) — rejeitada: o sufixo dependeria da ordem de instalação, tornando o alias não-determinístico entre máquinas/execuções diferentes (viola RNF-3); pedir uma escolha explícita é mais verboso mas reprodutível.
 * **Nome canônico sempre derivado da URL de origem** (em vez de alias curto) — rejeitada como padrão: resolve unicidade por construção, mas é verboso para o uso diário; fica disponível como sugestão natural quando uma escolha explícita é necessária, não como comportamento padrão.
 

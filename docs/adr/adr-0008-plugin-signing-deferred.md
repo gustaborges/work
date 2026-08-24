@@ -2,8 +2,8 @@
 
 **Status:** Aceito (decisão de adiar, com justificativa registrada)
 **Data:** 2026-08-23
-**Contexto de produto:** `docs-v2/prd.md` — Seção 12 (risco nomeado), RNF-7
-**Governa:** `docs-v2/add/add-0001-work-system-architecture.md`, Seção 11
+**Contexto de produto:** `docs/prd.md` — Seção 12 (risco nomeado), RNF-7
+**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seção 11
 
 ## Contexto
 

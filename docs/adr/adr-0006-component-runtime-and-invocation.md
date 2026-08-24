@@ -2,9 +2,8 @@
 
 **Status:** Aceito
 **Data:** 2026-08-23
-**Contexto de produto:** `docs-v2/prd.md` — RNF-2, RNF-6
-**Governa:** `docs-v2/add/add-0001-work-system-architecture.md`, Seção 9
-**Supersede:** `temp/estrategia-plugins.md`, Seção 6
+**Contexto de produto:** `docs/prd.md` — RNF-2, RNF-6
+**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seção 9
 
 ## Contexto
 

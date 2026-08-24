@@ -2,13 +2,12 @@
 
 **Status:** Aceito
 **Data:** 2026-08-23
-**Contexto de produto:** `docs-v2/prd.md` — RF-1, RF-3, RNF-3, Seção 11 (métrica de plugins da comunidade)
-**Governa:** `docs-v2/add/add-0001-work-system-architecture.md`, Seção 7
-**Supersede:** `temp/estrategia-plugins.md`, Seção 2 e exemplo 5.2 (com correção — ver "Nota de revisão" abaixo)
+**Contexto de produto:** `docs/prd.md` — RF-1, RF-3, RNF-3, Seção 11 (métrica de plugins da comunidade)
+**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seção 7
 
 ## Contexto
 
-O rascunho v1 definia prioridade entre starters puramente pela ordem de um array de configuração, sem sinalização ao usuário de que outros plugins também casariam com o mesmo argumento. Com instalação dinâmica de plugins de terceiros (ADR-0002), "em que posição um plugin novo entra?" não escala — a própria métrica de sucesso do produto (número de plugins criados pela comunidade) torna esse problema pior a cada plugin novo instalado.
+Definir prioridade entre starters puramente pela ordem de um array de configuração, sem sinalização ao usuário de que outros plugins também casariam com o mesmo argumento, não escala com instalação dinâmica de plugins de terceiros (ADR-0002): "em que posição um plugin novo entra?" fica pior a cada plugin novo instalado — e a própria métrica de sucesso do produto é o número de plugins criados pela comunidade (Seção 11 do PRD).
 
 ## Decisão
 
@@ -21,10 +20,6 @@ Resolução em duas camadas, sem lista de ordem manual:
   * mais de um casa → colisão: reaproveita o mesmo componente de seleção de TUI já previsto para desambiguação contribuição-vs-fork (RF-3) para perguntar ao usuário, e memoriza a escolha (RF-1).
 * **Chave de memorização = o conjunto exato de plugins que colidiram** naquele match — nunca um "padrão" ou glob inferido a partir dos reconhecedores de cada plugin. Uma colisão futura só reaproveita a escolha memorizada quando o casamento (já executado a cada invocação) produzir esse mesmo conjunto de plugins de novo. Nenhuma tentativa é feita de comparar "especificidade" entre reconhecedores — essa comparação não é bem-fundamentada para padrões livres (ver Alternativas).
 * Existe um escape hatch explícito para antecipar uma preferência sem esperar a colisão ocorrer, e um comando para limpar uma memorização existente. Sintaxe exata em `add-0001` §7.
-
-### Nota de revisão
-
-O brainstorm original (`estrategia-plugins.md`, exemplo 5.2) ilustrou a memorização com linguagem de "padrão generalizado" e com uma checagem de conflito em tempo de instalação. Ambas são inconsistentes com a decisão real acima: (a) não existe checagem de conflito em tempo de instalação — colisão só é detectável em runtime, contra um argumento real; (b) a memorização é por conjunto de plugins colidentes, não por um padrão generalizado — que não haveria como derivar de um reconhecedor arbitrário.
 
 ## Alternativas consideradas
 

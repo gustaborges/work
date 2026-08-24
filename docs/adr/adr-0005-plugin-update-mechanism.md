@@ -2,13 +2,12 @@
 
 **Status:** Aceito
 **Data:** 2026-08-23
-**Contexto de produto:** `docs-v2/prd.md` — RF-19, RNF-3, RNF-4
-**Governa:** `docs-v2/add/add-0001-work-system-architecture.md`, Seção 8
-**Supersede:** `temp/estrategia-plugins.md`, Seção 5 e exemplo 5.5
+**Contexto de produto:** `docs/prd.md` — RF-19, RNF-3, RNF-4
+**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seção 8
 
 ## Contexto
 
-O gatilho de atualização já era claro desde os primeiros esboços: comparar apenas um campo opaco de versão declarado pelo autor do plugin, nunca o histórico bruto de commits — um híbrido entre fixar uma referência exata (reprodutibilidade) e rastrear uma branch usando esse campo como gate (fricção mínima ao autor). O que faltava definir era (a) se a atualização pode ser automática, e (b) como checar a versão remota sem perturbar a cópia de trabalho atualmente instalada e em uso do plugin.
+O gatilho de atualização é comparar apenas um campo opaco de versão declarado pelo autor do plugin, nunca o histórico bruto de commits — um híbrido entre fixar uma referência exata (reprodutibilidade) e rastrear uma branch usando esse campo como gate (fricção mínima ao autor). Faltava definir (a) se a atualização pode ser automática, e (b) como checar a versão remota sem perturbar a cópia de trabalho atualmente instalada e em uso do plugin.
 
 ## Decisão
 

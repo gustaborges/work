@@ -2,14 +2,12 @@
 
 **Status:** Aceito
 **Data:** 2026-08-23
-**Contexto de produto:** `docs-v2/prd.md` — RF-22, RNF-1, RNF-2, RNF-7
-**Governa:** `docs-v2/add/add-0001-work-system-architecture.md`, Seção 4
-**Supersede:** `temp/estrategia-plugins.md`, Seção 0 (premissa) e Seção 3 (3.2)
-**Insumo:** `temp/analise-prd.md`, Seções 1.2, 1.5 e 2
+**Contexto de produto:** `docs/prd.md` — RF-22, RNF-1, RNF-2, RNF-7
+**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seção 4
 
 ## Contexto
 
-`analise-prd.md` identificou o gap estrutural central do rascunho v1 do PRD: `work.start.json` misturava *o plugin descrevendo a si mesmo* com *o usuário configurando manualmente o plugin* — pattern, capabilities e hooks eram digitados à mão pelo usuário, sem nenhuma garantia de que correspondiam ao que o plugin realmente fazia (Seção 1.2). Além disso, o identificador de um plugin estava acoplado ao nome do arquivo/linguagem de implementação, contradizendo a promessa de que "plugins podem ser escritos em qualquer linguagem" (Seção 1.5, formalizada em ADR-0006).
+Um modelo em que `work.start.json` mistura *o plugin descrevendo a si mesmo* com *o usuário configurando manualmente o plugin* — pattern, capabilities e hooks digitados à mão pelo usuário, sem nenhuma garantia de que correspondem ao que o plugin realmente faz — é a causa raiz de um gap estrutural: nada valida a config contra o comportamento real do plugin. Além disso, um identificador de plugin acoplado ao nome do arquivo/linguagem de implementação contradiz a promessa de que "plugins podem ser escritos em qualquer linguagem" (RNF-2, formalizada em ADR-0006).
 
 ## Decisão
 
@@ -24,9 +22,9 @@
 ## Alternativas consideradas
 
 * **1 repositório = 1 capability** (granularidade estilo `gh extension`) — rejeitada: integrações reais são naturalmente acopladas (reconhecer um PR e importar seus metadados só fazem sentido juntos); forçar dois repositórios versionados/lançados de forma independente para algo que só faz sentido junto é fricção artificial tanto para autor quanto para usuário.
-* **Manter o modelo v1** (campos inferidos de nome de arquivo/config central) — rejeitada: é a causa raiz do gap central identificado em `analise-prd.md`.
+* **Campos inferidos de nome de arquivo/config central editada à mão** — rejeitada: é a causa raiz do gap estrutural descrito acima, já que nada valida a config contra o que o plugin de fato faz.
 * **Referência de componente prefixada por papel** (ex: `pacote@starter:nome`) — rejeitada: o papel de um componente é metadado estável, não algo que precise viajar na string de referência; embuti-lo é redundante na esmagadora maioria dos casos e adiciona um separador novo ao vocabulário do CLI sem necessidade.
-* **Nome canônico do pacote sempre `owner/repo` concatenado** (modelo `publisher.extension` do VS Code) — rejeitada para v1: esse modelo depende de um registro central que arbitra unicidade globalmente, que o Work não tem no v1. Sem ele, forçar o nome completo em todo comando é só verbosidade sem o ganho de unicidade global que o modelo original compra.
+* **Nome canônico do pacote sempre `owner/repo` concatenado** (modelo `publisher.extension` do VS Code) — rejeitada: esse modelo depende de um registro central que arbitra unicidade globalmente, que o Work não tem. Sem ele, forçar o nome completo em todo comando é só verbosidade sem o ganho de unicidade global que o modelo original compra.
 
 ## Consequências
 

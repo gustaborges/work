@@ -2,10 +2,8 @@
 
 **Status:** Aceito
 **Data:** 2026-08-23
-**Contexto de produto:** `docs-v2/prd.md` — RF-10, Seção 2 (motivação), RNF-1, RNF-7
-**Governa:** `docs-v2/add/add-0001-work-system-architecture.md`, Seção 6
-**Supersede:** `temp/estrategia-plugins.md`, Seção 1
-**Insumo:** `temp/analise-prd.md` (comentário sobre pacote básico shippado por padrão)
+**Contexto de produto:** `docs/prd.md` — RF-10, Seção 2 (motivação), RNF-1, RNF-7
+**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seção 6
 
 ## Contexto
 

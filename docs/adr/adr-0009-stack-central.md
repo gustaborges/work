@@ -2,19 +2,18 @@
 
 **Status:** Aceito
 **Data:** 2026-08-23
-**Contexto de produto:** `docs-v2/prd.md` — RNF-5, RNF-6, Seção 10
-**Supersede:** `docs/prd.md` (v1), Apêndice A.1
+**Contexto de produto:** `docs/prd.md` — RNF-5, RNF-6, Seção 10
 
 ## Contexto
 
-O rascunho v1 do PRD listava, em seu Apêndice A.1, a stack do núcleo (Go, Cobra, Bubble Tea, SQLite) como uma afirmação direta, sem alternativas nem justificativa registrada — uma decisão arquitetural apresentada como se fosse uma nota de rodapé do produto. O núcleo precisa: (a) ser distribuído como um binário único e portátil, sem exigir runtime externo instalado na máquina do usuário (RNF-6); (b) oferecer uma TUI navegável por teclado em toda superfície de seleção do produto (Seção 10 do PRD); (c) manter estado local auditável e consultável de forma ordenada, sem depender de varredura de filesystem (RNF-5, RF-11: listar trabalhos por `last_accessed_at`).
+A escolha de stack do núcleo (Go, Cobra, Bubble Tea, SQLite) é uma decisão arquitetural, não um requisito de produto — por isso vive aqui, com alternativas e justificativa registradas, não como uma afirmação direta no PRD. O núcleo precisa: (a) ser distribuído como um binário único e portátil, sem exigir runtime externo instalado na máquina do usuário (RNF-6); (b) oferecer uma TUI navegável por teclado em toda superfície de seleção do produto (Seção 10 do PRD); (c) manter estado local auditável e consultável de forma ordenada, sem depender de varredura de filesystem (RNF-5, RF-11: listar trabalhos por `last_accessed_at`).
 
 ## Decisão
 
 * **Go** como linguagem do núcleo — compila para um binário único, multiplataforma, sem exigir runtime externo instalado.
 * **Cobra** como framework de CLI — padrão de mercado para CLIs em Go, usado por `kubectl`, `gh`, `hugo`, entre outros; reduz risco de manutenção por ser amplamente adotado e documentado.
 * **Bubble Tea** como framework de TUI — é a opção idiomática em Go para as telas interativas de seleção que o produto exige em praticamente todo fluxo (plugins concorrentes, prefixos de branch, base branch, `work resume`, `work archive`, gestão de plugins).
-* **SQLite embutido**, via driver Go puro sem dependência de CGO, para persistência de estado local — guardado dentro do layout descrito em `docs-v2/add/add-0001-work-system-architecture.md`, Seção 3.
+* **SQLite embutido**, via driver Go puro sem dependência de CGO, para persistência de estado local — guardado dentro do layout descrito em `docs/add/add-0001-work-system-architecture.md`, Seção 3.
 
 ## Alternativas consideradas
 
