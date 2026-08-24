@@ -3,7 +3,7 @@
 **Status:** Aceito
 **Data:** 2026-08-23
 **Contexto de produto:** `docs/prd.md` — Seção 10, RF-16 a RF-21, RNF-4
-**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seção 10
+**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seção 12
 
 ## Contexto
 
@@ -11,7 +11,7 @@ Com plugins instaláveis dinamicamente (ADR-0002), o usuário perde o controle m
 
 ## Decisão
 
-`work plugin` sem subcomando abre uma TUI de gestão (telas e atalhos completos em `add-0001` §10). É estritamente uma camada de apresentação sobre os mesmos primitivos expostos como subcomandos diretos e scriptáveis (RF-16 a RF-21) — a TUI nunca mantém estado próprio que diverge do registro que esses comandos leem/escrevem, e nunca dispara checagem de atualização de rede automaticamente ao abrir, apenas via ação explícita do usuário dentro da tela — para não violar o espírito de RNF-4 mesmo que a regra não esteja escopada literalmente a `start`/`resume`/`archive`.
+`work plugin` sem subcomando abre uma TUI de gestão (telas e atalhos completos em `add-0001` §12). É estritamente uma camada de apresentação sobre os mesmos primitivos expostos como subcomandos diretos e scriptáveis (RF-16 a RF-21) — a TUI nunca mantém estado próprio que diverge do registro que esses comandos leem/escrevem, e nunca dispara checagem de atualização de rede automaticamente ao abrir, apenas via ação explícita do usuário dentro da tela — para não violar o espírito de RNF-4 mesmo que a regra não esteja escopada literalmente a `start`/`resume`/`archive`.
 
 ## Alternativas consideradas
 

@@ -33,7 +33,7 @@ O Work resolve isso fornecendo um ponto de entrada único e determinístico para
 * **Determinismo na preparação de ambiente.** Do comando inicial ao diretório de trabalho pronto, nenhuma etapa depende de um agente de IA "adivinhar" o que fazer.
 * **Isolamento total via Git Worktrees.** Cada trabalho vive em sua própria worktree, sem interferir no checkout principal do repositório nem em outros trabalhos em andamento.
 * **Um lar padronizado para artefatos de IA.** Toda unidade de trabalho ganha automaticamente uma estrutura própria para contexto, specs e notas — fora da árvore versionada do projeto de destino.
-* **Extensibilidade total via plugins.** Qualquer nova origem de trabalho, qualquer nova forma de enriquecer o contexto, qualquer nova estratégia de branch deve poder ser adicionada por um plugin externo, sem alterar o núcleo do Work.
+* **Extensibilidade total via plugins.** Qualquer nova origem de trabalho, qualquer nova forma de enriquecer o contexto, qualquer nova convenção de branch deve poder ser adicionada por um plugin externo, sem alterar o núcleo do Work.
 * **Um produto simples o suficiente para ser open source.** O núcleo deve ser pequeno, auditável e digno de publicação pública — não uma plataforma monolítica.
 
 ***
@@ -44,7 +44,7 @@ O Work resolve isso fornecendo um ponto de entrada único e determinístico para
 * O Work **não hospeda nem gerencia repositórios** — ele opera sobre repositórios Git já existentes, locais ou remotos.
 * O Work **não substitui o Git** — ele o invoca para orquestrar worktrees, mas todo o versionamento, merge e histórico continuam sendo responsabilidade do Git.
 * O Work **não implementa, por si só, integrações específicas** (GitHub, GitLab, Jira, etc.) — essas integrações existem exclusivamente como plugins externos ao núcleo.
-* O Work **não impõe uma convenção de branch única** — ele descobre e respeita a convenção de cada projeto.
+* O Work **não impõe uma convenção de branch única** — o usuário escolhe, para cada projeto, entre as convenções disponíveis, e o Work respeita e lembra essa escolha.
 
 ***
 
@@ -62,7 +62,7 @@ O Work resolve isso fornecendo um ponto de entrada único e determinístico para
 | Termo               | Definição                                                                                                                                                                                                                                   |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Work**            | Uma unidade de trabalho: um desenvolvimento novo, uma contribuição em PR, um fork de PR — sempre associada a uma worktree, uma branch e uma pasta de contexto próprias.                                                                     |
-| **Plugin**          | Pacote instalável e distribuído externamente que cumpre um ou mais dos papéis abaixo (Starter, Importer, Linker, descoberta de convenção de branch). É instalado, atualizado e removido como uma unidade.                                  |
+| **Plugin**          | Pacote instalável e distribuído externamente que cumpre um ou mais dos papéis executáveis abaixo (Starter, Importer, Linker) e/ou declara uma ou mais Convenções de Branch. É instalado, atualizado e removido como uma unidade.            |
 | **Starter**         | Papel que um plugin pode cumprir: interpretar o argumento de `work start` e resolver o caminho do repositório local correspondente. É a capability obrigatória de todo plugin que cumpre esse papel — é a peça que sabe lidar com um tipo específico de origem (issue, link de PR, nome parcial de repositório). |
 | **Contrato**        | Acordo de entrada e saída publicamente documentado entre o Work e um plugin, que permite ao Work invocá-lo sem conhecer sua implementação.                                                                                                  |
 | **Hook**            | Ponto de extensão acionado em um momento específico do ciclo de vida de um Work (ex: `onFinalize`), que aciona um ou mais plugins que cumprem o papel de Importer.                                                                          |
@@ -70,7 +70,7 @@ O Work resolve isso fornecendo um ponto de entrada único e determinístico para
 | **Linker**          | Papel que um plugin pode cumprir: relacionar um Work a recursos externos (ex: vincular a issue original, a thread de discussão).                                                                                                            |
 | **Worktree**        | A árvore de trabalho Git isolada, criada pelo Work para cada unidade de trabalho, apontando para uma nova branch.                                                                                                                           |
 | **Slug**            | Identificador curto e legível escolhido pelo usuário para nomear um Work, usado na branch e no nome da pasta.                                                                                                                               |
-| **Branch Strategy** | A convenção de nomenclatura de branches do projeto de destino (ex: `gitflow`), descoberta automaticamente por um plugin que cumpre esse papel.                                                                                              |
+| **Branch Convention** | Um padrão de nomenclatura de branches (ex: `gitflow`) e a lista de prefixos que o compõe, declarada por um plugin. Cada repositório usa uma única convenção; na primeira vez que o repositório é usado, o usuário escolhe entre as convenções disponíveis, e essa escolha é lembrada nos usos seguintes.                                          |
 
 ***
 
@@ -78,7 +78,7 @@ O Work resolve isso fornecendo um ponto de entrada único e determinístico para
 
 ### 7.1 Iniciar um desenvolvimento novo
 
-O usuário quer começar uma feature nova em um repositório que já existe localmente. Ele roda `work start <nome parcial do repo>`, escolhe um slug e um prefixo de branch, e cai direto no diretório da nova worktree, pronto para abrir o agente de IA.
+O usuário quer começar uma feature nova em um repositório que já existe localmente. Ele roda `work start <nome parcial do repo>`, escolhe um slug e um prefixo de branch, e cai direto no diretório da nova worktree, pronto para abrir o agente de IA. Se essa for a primeira vez que esse repositório é usado com o Work e houver mais de uma convenção de branch disponível entre os plugins habilitados, ele escolhe uma antes de ver os prefixos — escolha que não será perguntada de novo nas próximas vezes que usar esse mesmo repositório.
 
 ### 7.2 Contribuir em um pull request existente
 
@@ -100,6 +100,10 @@ O usuário quer limpar sua área de trabalho. Ele roda `work archive`, seleciona
 
 O usuário quer que o Work reconheça um novo tipo de origem — por exemplo, links do Jira interno da empresa. Ele aponta o Work para a origem desse plugin (um repositório ou um caminho local) com `work plugin install`, e a partir daí ele passa a estar disponível nos fluxos de `work start`/`resume`/`archive`, sem precisar editar nenhuma configuração à mão. Com `work plugin list` o usuário vê tudo que tem instalado; pode habilitar ou desabilitar um plugin sem removê-lo, atualizar quando o autor publicar uma nova versão, ou remover com `work plugin uninstall` quando não precisar mais dele.
 
+### 7.7 Revisar e desfazer escolhas memorizadas
+
+Passado um tempo, o usuário quer entender por que o Work sempre segue direto sem perguntar de novo em determinada situação — ou quer forçar uma nova pergunta. Ele roda `work memory`, vê tanto as resoluções de plugins concorrentes quanto as convenções de branch escolhidas por repositório, e pode esquecer qualquer uma delas individualmente, fazendo o Work perguntar de novo na próxima ocorrência.
+
 ***
 
 ## 8. Requisitos Funcionais
@@ -110,12 +114,14 @@ O usuário quer que o Work reconheça um novo tipo de origem — por exemplo, li
 * **RF-2.** O plugin escolhido deve processar o argumento e retornar o caminho do repositório local resolvido — essa é a capability obrigatória de todo plugin que cumpre o papel de Starter.
 * **RF-3.** Se o plugin indicar que o argumento resolvido pode originar tanto uma contribuição quanto um fork, o Work deve perguntar ao usuário qual modo deseja antes de prosseguir. No modo contribuição, a worktree faz checkout diretamente na branch resolvida pelo plugin, sem passar pelas etapas de slug e prefixo de branch (RF-4 e RF-5). No modo fork, o fluxo segue normalmente.
 * **RF-4.** Fora do modo contribuição, o Work deve solicitar ao usuário um slug para o Work.
-* **RF-5.** Fora do modo contribuição, o Work deve descobrir a estratégia de branch do projeto de destino delegando a descoberta a um plugin que cumpra esse papel, e apresentar ao usuário os prefixos de branch correspondentes para escolha.
+* **RF-5.** Fora do modo contribuição, o Work deve apresentar ao usuário os prefixos de branch da convenção de branch resolvida para o repositório de destino, para escolha.
+* **RF-23.** Na primeira vez que um repositório é usado em `work start` fora do modo contribuição, se houver mais de uma convenção de branch declarada entre os plugins habilitados, o Work deve apresentar todas as opções para o usuário escolher uma. A escolha deve ser memorizada e reaproveitada automaticamente nas próximas vezes que esse mesmo repositório for usado, sem perguntar novamente.
 * **RF-6.** Se o plugin não fornecer a base branch, o Work deve perguntar ao usuário, via TUI, se deseja partir de uma branch remota ou local, apresentando a lista correspondente para seleção.
 * **RF-7.** O Work deve inicializar a unidade de trabalho em uma pasta padronizada, contendo a worktree na branch resolvida (com o remote apontando para ela) e um arquivo de metadados do Work.
 * **RF-8.** Ao final da inicialização, o Work deve disparar o hook de finalização definido pelo plugin (quando existir), permitindo que plugins que cumprem o papel de Importer enriqueçam a pasta de contexto do Work.
 * **RF-9.** Ao concluir, o comando deve mudar o diretório ativo do terminal para o diretório recém-criado do Work.
 * **RF-10.** Na primeira utilização, o Work deve garantir que exista ao menos um plugin funcional capaz de iniciar um trabalho a partir de um repositório local — sem exigir que o usuário configure ou instale nada manualmente antes do primeiro uso.
+* **RF-24.** Na primeira utilização, o Work deve garantir que exista ao menos uma convenção de branch disponível por padrão — sem exigir que o usuário configure ou instale nada manualmente antes do primeiro uso.
 
 ### `work resume`
 
@@ -136,6 +142,11 @@ O usuário quer que o Work reconheça um novo tipo de origem — por exemplo, li
 * **RF-19.** O usuário deve poder verificar se há atualização disponível para um plugin e aplicá-la — sempre como ação explícita; `work start`, `work resume` e `work archive` nunca devem disparar essa verificação por conta própria.
 * **RF-20.** O usuário deve poder desinstalar um plugin.
 * **RF-21.** Se a instalação de um plugin resultar em conflito de nome com um plugin já instalado, o Work deve falhar de forma explícita e deixar o usuário escolher como resolver — nunca sobrescrever ou renomear automaticamente em silêncio.
+
+### Memória de Escolhas
+
+* **RF-25.** O usuário deve poder trocar a convenção de branch memorizada de um repositório.
+* **RF-26.** O usuário deve poder inspecionar e desfazer, através de um agrupamento de comandos dedicado, qualquer escolha que o Work tenha memorizado automaticamente em seu nome — tanto a resolução de plugins concorrentes (RF-1) quanto a convenção de branch memorizada por repositório (RF-23).
 
 ### Extensibilidade
 
@@ -162,13 +173,13 @@ Fluxo típico de `work start`:
 1. Usuário roda `work start <argumento>` no terminal.
 2. Work identifica silenciosamente qual plugin reconhece o argumento e o invoca.
 3. Work exibe o caminho do repositório resolvido e pede o slug do Work (prompt interativo).
-4. Work descobre a estratégia de branch do projeto e apresenta a lista de prefixos disponíveis para escolha (seleção interativa).
+4. Se for a primeira vez que esse repositório é usado e houver mais de uma convenção de branch disponível, Work pede ao usuário para escolher uma (seleção interativa) — nas próximas vezes, a convenção já escolhida é reaproveitada direto. Com a convenção resolvida, Work apresenta a lista de prefixos correspondentes para escolha.
 5. Se necessário, Work pergunta a origem da base branch (remota ou local) e apresenta a lista correspondente para escolha.
 6. Work exibe uma confirmação com o resumo do que será criado (repositório, branch, slug, localização).
 7. Work cria a worktree, a estrutura de pastas e dispara os hooks de finalização — mostrando progresso em tempo real caso algum plugin leve tempo para rodar.
 8. Terminal já é reposicionado no novo diretório de trabalho, pronto para o usuário iniciar seu agente de IA com o contexto já preparado.
 
-Toda interação de seleção (plugins concorrentes, prefixos de branch, base branch, retomada, arquivamento) deve ser feita via componentes de TUI consistentes — navegação por teclado, sem exigir que o usuário memorize flags. A gestão de plugins (7.6) segue o mesmo paradigma consistente de TUI do restante do produto.
+Toda interação de seleção (plugins concorrentes, convenção de branch, prefixos de branch, base branch, retomada, arquivamento) deve ser feita via componentes de TUI consistentes — navegação por teclado, sem exigir que o usuário memorize flags. A gestão de plugins (7.6) e a revisão de escolhas memorizadas (7.7) seguem o mesmo paradigma consistente de TUI do restante do produto.
 
 ***
 
@@ -189,7 +200,7 @@ Toda interação de seleção (plugins concorrentes, prefixos de branch, base br
 | Plugin externo malicioso ou mal escrito compromete dados do usuário         | Instalação sempre a partir de uma origem explicitamente indicada pelo usuário, nunca de descoberta automática; nenhuma permissão implícita concedida a um plugin além do que ele mesmo requisita ao rodar; Work nunca muda o comportamento de um plugin já instalado sem ação explícita do usuário (RF-19). |
 | Ambiguidade entre múltiplos plugins cujo padrão casa com o mesmo argumento  | Resolução determinística mesmo havendo mais de um plugin candidato: o usuário é consultado quando necessário e a escolha é lembrada, sem exigir configuração manual antecipada de prioridade (RF-1).                |
 | Perda de contexto valioso ao arquivar um trabalho                          | Arquivamento preserva integralmente pastas de contexto e metadados, nunca descarta dados.                                                                                           |
-| Divergência entre a branch strategy descoberta e a realidade do projeto     | Plugin de descoberta é substituível por projeto; usuário sempre revisa a lista de prefixos antes de confirmar.                                                                      |
+| Convenção de branch memorizada para um repositório deixa de refletir a realidade do projeto (ex: o projeto migrou de convenção) | Troca é sempre possível sob demanda (RF-25), sem exigir reinstalação de plugin nem edição manual de estado.                                                                        |
 | Núcleo crescer além do escopo por pressão de features                       | Qualquer nova capacidade que não seja orquestração de worktree é candidata a plugin, não a código do núcleo (RF-22) — tratado como restrição de design, não sugestão. |
 
 ***
@@ -199,7 +210,7 @@ Toda interação de seleção (plugins concorrentes, prefixos de branch, base br
 **Fora do escopo da v1:**
 
 * Plugins específicos além de um conjunto mínimo de referência (ex: um plugin de fallback para repositório local).
-* Suporte a múltiplas estratégias de branch simultâneas dentro do mesmo projeto.
+* Suporte a múltiplas convenções de branch simultâneas dentro do mesmo projeto.
 * Sincronização de estado entre múltiplas máquinas do mesmo usuário.
 * Interface gráfica (além da TUI).
 
@@ -207,6 +218,7 @@ Toda interação de seleção (plugins concorrentes, prefixos de branch, base br
 
 * Métricas e telemetria opcionais de uso local.
 * Integração nativa com múltiplos provedores de forge (GitLab, Bitbucket) via plugins oficiais adicionais.
+* Descoberta automática de convenção de branch a partir do estado real do repositório, por um plugin que a examine diretamente e a resolva sem interromper o usuário — eliminando a entrevista de primeiro uso (RF-23) quando o autor do plugin implementar essa detecção.
 
 ***
 

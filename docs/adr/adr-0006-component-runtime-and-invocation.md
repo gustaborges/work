@@ -3,7 +3,7 @@
 **Status:** Aceito
 **Data:** 2026-08-23
 **Contexto de produto:** `docs/prd.md` — RNF-2, RNF-6
-**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seção 9
+**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seção 11
 
 ## Contexto
 

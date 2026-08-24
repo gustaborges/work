@@ -8,13 +8,15 @@
 
 O PRD estabelece que, fora o Git, o núcleo não embute conhecimento de nenhuma ferramenta específica (RNF-1, RNF-2, RF-22): "o núcleo só conhece contratos e executáveis externos — a única invocação direta e interna é o próprio Git" é uma decisão arquitetural que decorre desse princípio, não um requisito de produto em si — por isso vive aqui, não no PRD. Esta ADR dá a essa decisão o registro formal que as demais ADRs deste conjunto (0001 em diante) já assumem como premissa.
 
-O problema de fundo: como o Work deve executar a lógica de domínio de um plugin (interpretar um argumento, enriquecer contexto, descobrir convenção de branch) sem que um bug ou comportamento malicioso desse plugin comprometa a estabilidade ou a segurança do núcleo?
+O problema de fundo: como o Work deve executar a lógica de domínio de um plugin (interpretar um argumento, enriquecer contexto, relacionar recursos externos) sem que um bug ou comportamento malicioso desse plugin comprometa a estabilidade ou a segurança do núcleo?
 
 ## Decisão
 
-O `git` é a única ferramenta que o núcleo do Work invoca diretamente, in-process. Todo o restante do comportamento de domínio — qualquer plugin que cumpra o papel de Starter, Importer, Linker ou descoberta de Branch Strategy — roda como um processo externo, separado do processo do Work, comunicando-se por um contrato de entrada e saída bem definido e publicamente documentado. O núcleo nunca importa, carrega ou executa código de plugin dentro do seu próprio processo.
+O `git` é a única ferramenta que o núcleo do Work invoca diretamente, in-process. Todo o restante do comportamento de domínio que envolve lógica — qualquer plugin que cumpra o papel de Starter, Importer ou Linker — roda como um processo externo, separado do processo do Work, comunicando-se por um contrato de entrada e saída bem definido e publicamente documentado. O núcleo nunca importa, carrega ou executa código de plugin dentro do seu próprio processo.
 
-Os detalhes concretos do contrato (formato do payload, transporte, ação de handshake de capabilities) estão descritos em `docs/add/add-0001-work-system-architecture.md`, Seção 9 — esta ADR registra apenas a decisão de que a execução é sempre por processo externo, não a mecânica exata dessa comunicação.
+Uma contribuição de plugin sem lógica alguma — o catálogo de convenções de branch (ADR-0010) — não se enquadra nessa decisão por não ter comportamento de domínio a executar: é dado estático do manifesto, não um processo. A decisão aqui registrada é sobre como o Work roda o que precisa ser executado, não uma exigência de que toda contribuição de plugin seja executável.
+
+Os detalhes concretos do contrato (formato do payload, transporte, ação de handshake de capabilities) estão descritos em `docs/add/add-0001-work-system-architecture.md`, Seção 11 — esta ADR registra apenas a decisão de que a execução é sempre por processo externo, não a mecânica exata dessa comunicação.
 
 Essa escolha é o que torna possível a neutralidade de linguagem decidida em ADR-0006: um modelo de execução in-process amarraria necessariamente os plugins à linguagem/runtime do núcleo.
 

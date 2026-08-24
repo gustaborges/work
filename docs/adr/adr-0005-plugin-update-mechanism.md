@@ -3,7 +3,7 @@
 **Status:** Aceito
 **Data:** 2026-08-23
 **Contexto de produto:** `docs/prd.md` — RF-19, RNF-3, RNF-4
-**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seção 8
+**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seção 10
 
 ## Contexto
 
@@ -12,7 +12,7 @@ O gatilho de atualização é comparar apenas um campo opaco de versão declarad
 ## Decisão
 
 * Atualização é sempre explícita, nunca automática/silenciosa (RF-19). Existe um comando somente-leitura para listar o que está desatualizado, um comando de atualização individual e um de atualização em lote (mostrando o que vai mudar, com confirmação). `work start`/`resume`/`archive` nunca disparam nada disso (RNF-4).
-* Checar atualização nunca toca a cópia de trabalho que serve o entrypoint atualmente instalado do plugin — só a consulta explícita e confirmada move o quê está de fato em uso para uma nova referência resolvida. Mecânica exata (fetch vs. pull, leitura do manifesto remoto sem checkout) em `add-0001` §8.
+* Checar atualização nunca toca a cópia de trabalho que serve o entrypoint atualmente instalado do plugin — só a consulta explícita e confirmada move o quê está de fato em uso para uma nova referência resolvida. Mecânica exata (fetch vs. pull, leitura do manifesto remoto sem checkout) em `add-0001` §10.
 * Nenhuma convenção adicional de release (ex: tag) é exigida do autor do plugin além do campo de versão já declarado no manifesto (ADR-0001) — mantém a promessa de baixa fricção de autoria; o custo é uma checagem incremental por plugin, aceitável por só acontecer em consultas explícitas, nunca em `start`/`resume`/`archive`.
 * O resultado da auto-descrição de capabilities (ADR-0001) é cacheado associado à versão declarada do plugin, para plugins instalados a partir de uma origem remota — só é re-executado quando uma atualização aceita uma versão nova (espelha exatamente o gatilho acima, então há um único sinal de "o que mudou" em todo o sistema, não dois). Plugins instalados via link local não têm evento de atualização nem disciplina confiável de versão durante desenvolvimento ativo — para esses, a auto-descrição roda a cada invocação, sem cache. Isso custa um spawn de processo local, não rede nem consulta a LLM, então não conflita com RNF-4.
 
