@@ -16,7 +16,7 @@ O `git` é a única ferramenta que o núcleo do Work invoca diretamente, in-proc
 
 Uma contribuição de plugin sem lógica alguma — o catálogo de convenções de branch (ADR-0010) — não se enquadra nessa decisão por não ter comportamento de domínio a executar: é dado estático do manifesto, não um processo. A decisão aqui registrada é sobre como o Work roda o que precisa ser executado, não uma exigência de que toda contribuição de plugin seja executável.
 
-Os detalhes concretos do contrato (formato do payload, transporte, ação de handshake de capabilities) estão descritos em `docs/add/add-0001-work-system-architecture.md`, Seção 11 — esta ADR registra apenas a decisão de que a execução é sempre por processo externo, não a mecânica exata dessa comunicação.
+Os detalhes concretos do contrato (formato do payload, transporte, convenção de código de saída) estão descritos em `docs/add/add-0001-work-system-architecture.md`, Seção 11 — esta ADR registra apenas a decisão de que a execução é sempre por processo externo, não a mecânica exata dessa comunicação.
 
 Essa escolha é o que torna possível a neutralidade de linguagem decidida em ADR-0006: um modelo de execução in-process amarraria necessariamente os plugins à linguagem/runtime do núcleo.
 

@@ -217,8 +217,6 @@ Um repositório sem nenhum commit não chega a essa etapa: `work start` já falh
 
 Nenhuma tag git é exigida do autor — rastrear a branch e comparar apenas o campo `version` do manifesto é suficiente; o custo é um fetch incremental por plugin checado, pago só em `outdated`/`update` explícitos.
 
-**Cache da auto-descrição.** O resultado do handshake `describe` (Seção 11) é cacheado associado ao `version` do plugin, para `source_type: git` — só é re-executado quando `update` aceita um `version` novo. Plugins `local-link` não têm evento de atualização nem disciplina confiável de bump de `version` durante desenvolvimento ativo — para esses, `describe` roda a cada invocação, sem cache (custa um spawn de processo local, não rede).
-
 ***
 
 ## 11. Contrato de execução de componentes (ADR-0000, ADR-0006)
@@ -229,7 +227,8 @@ Todo componente executável (starter, importer, linker) segue o mesmo protocolo 
 * **Saída:** um único payload JSON via stdout, também no formato acordado por tipo de componente (ex: um starter retorna `{ "repo_path": "...", "slug": "...", "base_branch": "..." }`, campos opcionais conforme as `capabilities` declaradas).
 * **Código de saída:** `0` para sucesso; qualquer valor não-zero é tratado como "este componente não conseguiu resolver o argumento" (para starters) ou como falha de hook (para importers/linkers), sem derrubar o comando do Work — apenas reportando o erro ao usuário.
 * **Sem estado compartilhado implícito:** cada invocação é um processo isolado; nada é assumido sobre o ambiente além de variáveis padrão do shell do usuário.
-* **Ação `describe`:** no `install`/`update` (e a cada invocação para `local-link`, sem cache), o Work invoca o componente com uma ação `describe` sobre o mesmo contrato — a resposta do processo é a fonte de verdade sobre capabilities/versão, cacheada conforme Seção 10.
+
+Nenhum componente é invocado antes do seu primeiro uso real para se autodescrever — `pattern`, `capabilities` e `hooks` são lidos e confiados diretamente do manifesto (ADR-0001). A única checagem feita fora de um uso real é a existência do interpretador declarado no `PATH`, em preflight no `install` (abaixo) — nunca uma invocação do próprio componente.
 
 Uma convenção de branch (`conventions[]`, ADR-0010) não participa deste contrato: não tem `entrypoint` nem processo a invocar — é lida diretamente do manifesto (Seção 4, Seção 8).
 
@@ -263,4 +262,4 @@ Como a origem de todo plugin instalado é sempre uma URL ou caminho local escolh
 ## 14. Questões de design em aberto
 
 1. **Comportamento quando nenhum plugin fallback está habilitado.** Hoje, zero matches na camada `specific` cai no fallback único habilitado (Seção 7) — o caso em que nenhum fallback existe habilitado não tem um comportamento de erro definido: deve orientar o usuário a habilitar um, ou instalar o pacote de referência (Seção 6) novamente?
-2. **Política de compatibilidade de versão do contrato JSON.** O manifesto já tem um campo `version` por pacote (Seção 4/ADR-0005), mas isso versiona o pacote, não o contrato entre Work e plugin em si. Falta definir a política de compatibilidade quando o Work evolui a versão desse contrato e plugins antigos ainda o implementam na versão anterior — isso vale para `components[]`; `conventions[]` (ADR-0010), por ser dado puramente aditivo (nome + prefixos), evolui por adição de campo, sem precisar da mesma política de handshake.
+2. **Política de compatibilidade de versão do contrato JSON.** O manifesto já tem um campo `version` por pacote (Seção 4/ADR-0005), mas isso versiona o pacote, não o contrato entre Work e plugin em si. Falta definir a política de compatibilidade quando o Work evolui a versão desse contrato e plugins antigos ainda o implementam na versão anterior — isso vale para `components[]`; `conventions[]` (ADR-0010), por ser dado puramente aditivo (nome + prefixos), evolui por adição de campo, sem precisar da mesma política.
