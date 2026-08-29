@@ -100,9 +100,9 @@ O usuário quer limpar sua área de trabalho. Ele roda `work archive`, seleciona
 
 O usuário quer que o Work reconheça um novo tipo de origem — por exemplo, links do Jira interno da empresa. Ele aponta o Work para a origem desse plugin (um repositório ou um caminho local) com `work plugin install`, e a partir daí ele passa a estar disponível nos fluxos de `work start`/`resume`/`archive`, sem precisar editar nenhuma configuração à mão. Com `work plugin list` o usuário vê tudo que tem instalado; pode habilitar ou desabilitar um plugin sem removê-lo, atualizar quando o autor publicar uma nova versão, ou remover com `work plugin uninstall` quando não precisar mais dele.
 
-### 7.7 Revisar e desfazer escolhas memorizadas
+### 7.7 Trocar a convenção de branch de um repositório
 
-Passado um tempo, o usuário quer entender por que o Work sempre segue direto sem perguntar de novo em determinada situação — ou quer forçar uma nova pergunta. Ele roda `work memory`, vê tanto as resoluções de plugins concorrentes quanto as convenções de branch escolhidas por repositório, e pode esquecer qualquer uma delas individualmente, fazendo o Work perguntar de novo na próxima ocorrência.
+O projeto migrou de convenção de branch (por exemplo, de gitflow para trunk-based). De dentro de qualquer clone do repositório, o usuário roda `work convention set`, escolhe a nova convenção na mesma TUI de seleção de sempre, e os próximos `work start` nesse repositório passam a oferecer os prefixos dela. `work convention` sem argumento mostra qual convenção está memorizada para o repositório atual.
 
 ***
 
@@ -110,7 +110,7 @@ Passado um tempo, o usuário quer entender por que o Work sempre segue direto se
 
 ### `work start <arg>`
 
-* **RF-1.** O comando deve identificar, entre os plugins instalados e habilitados capazes de iniciar um trabalho, qual deve processar o argumento informado — de forma determinística. Quando mais de um plugin for capaz de processar o mesmo argumento, o Work deve perguntar ao usuário qual utilizar e lembrar a escolha, de modo que a mesma situação de ambiguidade não precise ser perguntada novamente no futuro.
+* **RF-1.** O comando deve identificar, entre os plugins instalados e habilitados capazes de iniciar um trabalho, qual deve processar o argumento informado — de forma determinística. Quando mais de um plugin for capaz de processar o mesmo argumento, o Work deve informar ao usuário que há mais de um plugin candidato, apresentar quais são, e perguntar qual utilizar antes de prosseguir. Essa escolha não é memorizada: a mesma ambiguidade é perguntada novamente a cada ocorrência.
 * **RF-2.** O plugin escolhido deve processar o argumento e retornar o caminho do repositório local resolvido — essa é a capability obrigatória de todo plugin que cumpre o papel de Starter.
 * **RF-3.** Se o plugin indicar que o argumento resolvido pode originar tanto uma contribuição quanto um fork, o Work deve perguntar ao usuário qual modo deseja antes de prosseguir. No modo contribuição, a worktree faz checkout diretamente na branch resolvida pelo plugin, sem passar pelas etapas de slug e prefixo de branch (RF-4 e RF-5). No modo fork, o fluxo segue normalmente.
 * **RF-4.** Fora do modo contribuição, o Work deve solicitar ao usuário um slug para o Work.
@@ -143,10 +143,9 @@ Passado um tempo, o usuário quer entender por que o Work sempre segue direto se
 * **RF-20.** O usuário deve poder desinstalar um plugin.
 * **RF-21.** Se a instalação de um plugin resultar em conflito de nome com um plugin já instalado, o Work deve falhar de forma explícita e deixar o usuário escolher como resolver — nunca sobrescrever ou renomear automaticamente em silêncio.
 
-### Memória de Escolhas
+### Convenção de Branch
 
-* **RF-25.** O usuário deve poder trocar a convenção de branch memorizada de um repositório.
-* **RF-26.** O usuário deve poder inspecionar e desfazer, através de um agrupamento de comandos dedicado, qualquer escolha que o Work tenha memorizado automaticamente em seu nome — tanto a resolução de plugins concorrentes (RF-1) quanto a convenção de branch memorizada por repositório (RF-23).
+* **RF-25.** O usuário deve poder inspecionar e trocar, através de um comando dedicado executável a partir de qualquer clone do repositório, a convenção de branch memorizada para esse repositório (RF-23).
 
 ### Extensibilidade
 
@@ -179,7 +178,7 @@ Fluxo típico de `work start`:
 7. Work cria a worktree, a estrutura de pastas e dispara os hooks de finalização — mostrando progresso em tempo real caso algum plugin leve tempo para rodar.
 8. Terminal já é reposicionado no novo diretório de trabalho, pronto para o usuário iniciar seu agente de IA com o contexto já preparado.
 
-Toda interação de seleção (plugins concorrentes, convenção de branch, prefixos de branch, base branch, retomada, arquivamento) deve ser feita via componentes de TUI consistentes — navegação por teclado, sem exigir que o usuário memorize flags. A gestão de plugins (7.6) e a revisão de escolhas memorizadas (7.7) seguem o mesmo paradigma consistente de TUI do restante do produto.
+Toda interação de seleção (plugins concorrentes, convenção de branch, prefixos de branch, base branch, retomada, arquivamento) deve ser feita via componentes de TUI consistentes — navegação por teclado, sem exigir que o usuário memorize flags. A gestão de plugins (7.6) e a troca de convenção de branch (7.7) seguem o mesmo paradigma consistente de TUI do restante do produto.
 
 ***
 
@@ -198,7 +197,7 @@ Toda interação de seleção (plugins concorrentes, convenção de branch, pref
 | Risco                                                                       | Mitigação                                                                                                                                                                           |
 | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Plugin externo malicioso ou mal escrito compromete dados do usuário         | Instalação sempre a partir de uma origem explicitamente indicada pelo usuário, nunca de descoberta automática; nenhuma permissão implícita concedida a um plugin além do que ele mesmo requisita ao rodar; Work nunca muda o comportamento de um plugin já instalado sem ação explícita do usuário (RF-19). |
-| Ambiguidade entre múltiplos plugins cujo padrão casa com o mesmo argumento  | Resolução determinística mesmo havendo mais de um plugin candidato: o usuário é consultado quando necessário e a escolha é lembrada, sem exigir configuração manual antecipada de prioridade (RF-1).                |
+| Ambiguidade entre múltiplos plugins cujo padrão casa com o mesmo argumento  | Resolução determinística mesmo havendo mais de um plugin candidato: o usuário é informado da ambiguidade e consultado sempre que ela ocorre, sem exigir configuração manual antecipada de prioridade (RF-1). Colisões reais são raras — exigem dois plugins com padrões sobrepostos habilitados ao mesmo tempo.                |
 | Perda de contexto valioso ao arquivar um trabalho                          | Arquivamento preserva integralmente pastas de contexto e metadados, nunca descarta dados.                                                                                           |
 | Convenção de branch memorizada para um repositório deixa de refletir a realidade do projeto (ex: o projeto migrou de convenção) | Troca é sempre possível sob demanda (RF-25), sem exigir reinstalação de plugin nem edição manual de estado.                                                                        |
 | Núcleo crescer além do escopo por pressão de features                       | Qualquer nova capacidade que não seja orquestração de worktree é candidata a plugin, não a código do núcleo (RF-22) — tratado como restrição de design, não sugestão. |

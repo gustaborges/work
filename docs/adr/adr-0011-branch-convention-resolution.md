@@ -2,7 +2,7 @@
 
 **Status:** Aceito
 **Data:** 2026-08-23
-**Contexto de produto:** `docs/prd.md` — RF-5, RF-23, RF-24, RF-25, RF-26, RNF-1, RNF-3, Roadmap (descoberta automática de convenção)
+**Contexto de produto:** `docs/prd.md` — RF-5, RF-23, RF-24, RF-25, RNF-1, RNF-3, Roadmap (descoberta automática de convenção)
 **Governa:** `docs/add/add-0001-work-system-architecture.md`, Seção 6, Seção 8, Seção 9
 
 ## Contexto
@@ -25,17 +25,17 @@ Um repositório sem nenhum commit (`HEAD` unborn) não precisa de tratamento esp
 
 **Fork de PR e identidade de repositório.** Um "fork" no vocabulário do Work (PRD, jornada 7.3) é um checkout de uma nova branch a partir da branch de um pull request existente — nunca a criação de um repositório hospedado distinto. O remote do repositório local permanece o mesmo em qualquer um dos modos de `work start` (7.1, 7.2, 7.3); não existe, no modelo de dados do Work, um cenário em que dois remotes diferentes compartilhem a mesma raiz de histórico e disputem a mesma convenção memorizada. A camada 2 da chave (commit raiz) só entra em jogo na ausência de remote configurado, algo ortogonal ao modo de `work start` escolhido.
 
-**Trocar a convenção memorizada** de um repositório é um comando dedicado mínimo (RF-25), reaproveitando o padrão de escape hatch já estabelecido pela ADR-0004.
+**Trocar a convenção memorizada** de um repositório é um comando de topo dedicado, `work convention` (RF-25), executável de qualquer clone do repositório.
 
-**Agrupamento `work memory`.** Um agrupamento de comando novo e flat (não aninhado sob um grupo "manage" genérico) reúne toda escolha que o Work lembra em nome do usuário e que pode ser inspecionada ou desfeita (RF-26): a prioridade e o esquecimento de colisão entre starters (ADR-0004) e a troca de convenção de branch por repositório (acima) vivem sob esse mesmo namespace — mecanismos de persistência diferentes por baixo (colisão de padrão vs. escolha explícita de convenção), mas o mesmo conceito do ponto de vista do usuário. Sintaxe exata em `add-0001` §9.
+**Comando `work convention`.** A convenção memorizada por repositório é a única escolha que o Work guarda automaticamente em nome do usuário — a colisão de starters (ADR-0004) deixou de ser memorizada. Uma escolha só não justifica um agrupamento de comandos: um comando de topo dedicado a cobre. `work convention` sem argumento mostra a convenção memorizada para o repositório do diretório corrente; `work convention set` re-executa a entrevista e sobrescreve. Roda de qualquer clone do repositório — a chave de identidade (acima) é derivada do git do diretório corrente, não de uma worktree inicializada pelo Work; fora de um repositório git, falha com mensagem clara. Sintaxe exata em `add-0001` §9.
 
 ## Alternativas consideradas
 
 * **Componente executável de detecção dinâmica**, que examina o repositório e devolve o nome da convenção diretamente, eliminando a entrevista. Não é rejeitada como inviável — a complexidade de um script assim é decidida pelo autor do plugin, não imposta pelo núcleo (mesmo raciocínio de ADR-0000/ADR-0006), e poderia inclusive devolver um valor fixo quando detecção real não for implementada. Adiada para uma versão futura (registrada no Roadmap do PRD): v1 resolve inteiramente por entrevista e memorização; um detector dinâmico, quando existir, é um papel executável novo em `components[]` (ADR-0010) que pode pré-preencher ou pular a entrevista sem exigir mudança no modelo de identidade/memorização aqui decidido.
 * **Match de padrão sobre o conteúdo do repositório**, nos moldes do que ADR-0004 faz para starters contra um argumento textual. Rejeitada para v1: convenções são dado estático (nome + prefixos), sem nenhum sinal para comparar contra o estado do repositório — essa comparação só é possível com um componente executável de detecção (ver acima), que é exatamente a extensão futura deixada em aberto, não algo a construir agora.
-* **Reaproveitar o mecanismo de colisão da ADR-0004** (memorização por conjunto exato de componentes colidentes) para a escolha de convenção. Rejeitada: são problemas diferentes — ADR-0004 resolve ambiguidade de *pattern matching* entre starters sobre um argumento; aqui não há colisão, há uma escolha de primeiro uso sem candidatos concorrendo entre si pelo mesmo sinal. Forçar o mesmo mecanismo confundiria dois conceitos de memória diferentes.
-* **Agrupar os escape hatches de convenção sob `work plugin`** em vez de um namespace novo. Rejeitada: mistura gestão de ciclo de vida de plugin (instalar/habilitar/atualizar) com escolhas que o Work lembrou e o usuário pode desfazer — dois modelos mentais diferentes para quem usa o comando. Um grupo `work manage` genérico também foi avaliado e descartado por não agregar informação nenhuma além de `work memory`, com o custo adicional de renomear uma superfície já documentada (ADR-0004) sem ganho claro.
-* **Flag em `work start` ou TUI dedicada só para convenção**, em vez de comando de troca. Rejeitada por inconsistência: toda outra escolha memorizada do produto já usa o padrão de comando de escape hatch (ADR-0004); introduzir um segundo padrão só para convenções não tem justificativa própria.
+* **Reaproveitar o mecanismo de colisão da ADR-0004** para a escolha de convenção. Rejeitada: são problemas diferentes — ADR-0004 resolve ambiguidade de *pattern matching* entre starters sobre um argumento, sempre na hora e sem persistência; aqui há uma escolha de primeiro uso que precisa ser memorizada para não repetir a pergunta. Nada a compartilhar entre os dois.
+* **Agrupar a troca de convenção sob `work plugin`.** Rejeitada: mistura gestão de ciclo de vida de plugin (instalar/habilitar/atualizar) com uma escolha do usuário sobre um repositório — dois modelos mentais diferentes. Um comando de topo dedicado (`work convention`) é mais direto do que qualquer agrupamento, já que é a única escolha memorizada que resta no produto.
+* **Flag em `work start`** em vez de um comando dedicado. Rejeitada: trocar a convenção é uma ação pontual e rara, não ligada ao início de um trabalho específico; embuti-la como flag de `work start` obrigaria o usuário a iniciar um trabalho só para trocar a convenção.
 
 ## Consequências
 

@@ -5,7 +5,7 @@
 
 **Decisões que governam este documento:** ADR-0000 (modelo de execução de plugins), ADR-0001 (manifesto e pacotes), ADR-0002 (instalação e registro), ADR-0003 (bootstrap do pacote de referência), ADR-0004 (prioridade e colisão de starters), ADR-0005 (atualização de plugins), ADR-0006 (runtime e invocação de componentes), ADR-0007 (TUI de gestão de plugins), ADR-0008 (assinatura adiada), ADR-0009 (stack central), ADR-0010 (convenção de branch declarativa), ADR-0011 (resolução de convenção de branch por repositório).
 
-**Requisitos atendidos (referência, não reinterpretação):** `docs/prd.md` — RF-1 a RF-26, RNF-1 a RNF-7. Este documento descreve como a arquitetura é estruturada para satisfazer esses requisitos; não redefine nem reinterpreta o que eles pedem. Uma incompatibilidade encontrada aqui é motivo para revisar o PRD ou uma ADR, nunca para o design divergir silenciosamente.
+**Requisitos atendidos (referência, não reinterpretação):** `docs/prd.md` — RF-1 a RF-25, RNF-1 a RNF-7. Este documento descreve como a arquitetura é estruturada para satisfazer esses requisitos; não redefine nem reinterpreta o que eles pedem. Uma incompatibilidade encontrada aqui é motivo para revisar o PRD ou uma ADR, nunca para o design divergir silenciosamente.
 
 ***
 
@@ -164,12 +164,7 @@ Em `work start <arg>`:
   * zero matches → cai no único fallback habilitado;
   * mais de um match → colisão.
 
-**Colisão.** Reaproveita o mesmo componente de TUI de desambiguação contribuição-vs-fork para perguntar ao usuário qual componente usar. A escolha é memorizada com **chave \= o conjunto exato de componentes que colidiram** naquele match (ex: `{github-issue-starter, generic-tracker-starter}`) — nunca um padrão ou glob inferido dos regexes. Uma colisão futura só reaproveita a memorização quando o matching produzir esse mesmo conjunto de componentes de novo.
-
-**Escape hatches:** vivem sob `work memory` (Seção 9), junto de toda outra escolha que o Work lembra em nome do usuário:
-
-* `work memory priority <nome> --before/--after <outro>` — antecipa uma preferência sem esperar a colisão ocorrer.
-* `work memory forget-choice --between <a>,<b>` — limpa uma memorização existente.
+**Colisão.** O Work informa quais componentes casaram com o argumento e reaproveita o mesmo componente de TUI de desambiguação contribuição-vs-fork para o usuário escolher qual usar. A escolha **não é persistida** (ADR-0004): a mesma colisão é perguntada de novo a cada `work start`. Não há comando de prioridade nem de "esquecer" — uma colisão real exige dois componentes `specific` com padrões sobrepostos habilitados ao mesmo tempo (situação rara), e comparar "especificidade" entre regexes livres para decidir sozinho não é bem-fundamentado (ADR-0004, Alternativas).
 
 ***
 
@@ -190,20 +185,20 @@ Em `work start <arg>`:
 2. Hash do(s) commit(s) raiz (`git rev-list --max-parents=0 HEAD`), quando não há remote — múltiplas raízes são ordenadas e concatenadas em uma única chave composta.
 3. Caminho local absoluto, apenas quando (2) não é confiável: clone raso (`git clone --depth=1`) e sem remote.
 
-Tabela `repo_branch_convention(repo_key, convention_name, chosen_at)` em `work.db`, escrita apenas por essa resolução e pelo comando de troca (Seção 9) — nunca editada à mão.
+Tabela `repo_branch_convention(repo_key, convention_name, chosen_at)` em `work.db`, escrita apenas por essa resolução e por `work convention set` (Seção 9) — nunca editada à mão.
 
 Um repositório sem nenhum commit não chega a essa etapa: `work start` já falha antes por falta de base branch (RF-6).
 
 ***
 
-## 9. `work memory`: agrupamento de escolhas lembradas (ADR-0011)
+## 9. `work convention`: troca da convenção memorizada (ADR-0011)
 
-`work memory` reúne todo comando que inspeciona ou desfaz uma escolha que o Work fez uma vez e lembrou em nome do usuário (RF-26) — é um agrupamento **flat**, não aninhado sob um grupo "manage" genérico. Duas famílias de mecanismo diferentes vivem aqui, cada uma com sua própria chave de persistência por baixo, unificadas pelo mesmo conceito do ponto de vista do usuário:
+A convenção de branch memorizada por repositório (Seção 8) é a única escolha que o Work guarda automaticamente em nome do usuário — a colisão de starters (Seção 7) deixou de ser memorizada. Uma escolha só não justifica um agrupamento de comandos: um único comando de topo a cobre (RF-25).
 
-* **Resolução de colisão entre starters** (ADR-0004, Seção 7): `work memory priority <nome> --before/--after <outro>`, `work memory forget-choice --between <a>,<b>`.
-* **Convenção de branch por repositório** (ADR-0011, Seção 8 acima): `work memory convention set <nome>` — troca a convenção memorizada de um repositório (RF-25), aceitando o repositório corrente por padrão.
+* `work convention` — sem argumento, mostra a convenção memorizada para o repositório do diretório corrente; se ainda não há nenhuma, informa que será perguntada no próximo `work start`.
+* `work convention set` — re-executa a entrevista (lista o catálogo de convenções habilitadas, Seção 8, via o mesmo componente de seleção por TUI) e sobrescreve a linha em `repo_branch_convention` para a chave de identidade do repositório corrente.
 
-`work memory` sem subcomando abre uma listagem simples de tudo que está memorizado atualmente (ambas as famílias), permitindo desfazer item a item — mesma camada fina sobre comandos diretos já estabelecida para `work plugin` (ADR-0007): nunca mantém estado próprio divergente das tabelas que esses comandos leem/escrevem.
+Roda de qualquer clone do repositório: a chave de identidade (Seção 8) é derivada do git do diretório corrente, não de uma worktree inicializada pelo Work. Fora de um repositório git, falha com mensagem clara. É estritamente uma camada fina sobre a tabela `repo_branch_convention` — nunca mantém estado próprio divergente (mesma disciplina de `work plugin`, ADR-0007).
 
 ***
 
