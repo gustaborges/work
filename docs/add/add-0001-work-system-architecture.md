@@ -1,103 +1,127 @@
 # ADD-0001: Arquitetura do Sistema Work
 
 **Status:** Rascunho
-**Data:** 2026-08-23
 
-**Decisões que governam este documento:** ADR-0000 (modelo de execução de plugins), ADR-0001 (manifesto e pacotes), ADR-0002 (instalação e registro), ADR-0003 (bootstrap do pacote de referência), ADR-0004 (prioridade e colisão de starters), ADR-0005 (atualização de plugins), ADR-0006 (runtime e invocação de componentes), ADR-0007 (TUI de gestão de plugins), ADR-0008 (assinatura adiada), ADR-0009 (stack central), ADR-0010 (convenção de branch declarativa), ADR-0011 (resolução de convenção de branch por repositório).
+**Data:** 2026-08-29
 
-**Requisitos atendidos (referência, não reinterpretação):** `docs/prd.md` — RF-1 a RF-25, RNF-1 a RNF-7. Este documento descreve como a arquitetura é estruturada para satisfazer esses requisitos; não redefine nem reinterpreta o que eles pedem. Uma incompatibilidade encontrada aqui é motivo para revisar o PRD ou uma ADR, nunca para o design divergir silenciosamente.
+**Decisões que governam este documento:** ADR-0000 (execução de plugins), ADR-0002 (instalação e registro), ADR-0003 (bootstrap), ADR-0004 (colisão de Starters), ADR-0005 (atualização), ADR-0006 (runtime), ADR-0008 (assinatura), ADR-0009 (stack), ADR-0011 (resolução de convenção) e ADR-0012 (modelo de componentes e manifesto).
+
+**Requisitos atendidos:** `docs/prd.md` — RF-1 a RF-32, RNF-1 a RNF-7. Este documento implementa os requisitos e decisões listados; incompatibilidades devem ser resolvidas no PRD ou em ADR, nunca por divergência silenciosa de design.
 
 ***
 
 ## 1. Visão geral de componentes
 
-O sistema tem três tipos de processo em execução:
+O sistema possui três tipos de processo:
 
-* **Binário core do Work** — o único processo de longa duração, que interpreta comandos, roda a TUI e mantém o estado local.
-* **`git`** — a única ferramenta invocada diretamente/in-process pelo core (ADR-0000), para criar/destruir worktrees e resolver branches remotas/locais.
-* Processos de plugin — subprocessos de curta duração, um por invocação, comunicando com o core por um contrato de entrada/saída bem definido (Seção 11). O core nunca carrega código de plugin no próprio processo.
+* **Binário core do Work** — interpreta comandos, exibe TUI, mantém estado local e controla o lifecycle.
+* **`git`** — ferramenta invocada pelo core para worktrees e resolução de branches.
+* **Processos de plugin** — subprocessos de curta duração, um por operação executável; o core nunca carrega seu código no próprio processo.
 
-O estado do sistema vive inteiramente em disco, sob `~/.work/` (plugins, config, registro) e :comment[\~/workspace/]{#comment-1787524842428 text="isso é convenção da minha máquina; o cli deve, antes de definir o diretorio do workspace, sugeri-lo ao usuário; pode ser que esse diretorio já esteja em uso pelo usuario, o usuario deve ter a oportunidade de especificar o diretório onde ele quer trabalhar; isso nos leva a pensar na experiencia de primeiro uso do pelo usuário. "} (worktrees e contexto de cada Work) — ver Seções 3 e 5.
+O estado vive em `~/.work/` (plugins, configuração e SQLite) e no diretório de workspace escolhido pelo usuário para cada Work. O core cria apenas a worktree e `work-meta.json`; qualquer outro arquivo ou diretório pode ser incorporado por Importers, sem significado especial para o core.
 
 ***
 
 ## 2. Stack concreto
 
-Per ADR-0009:
+Conforme ADR-0009:
 
-* **Linguagem:** Go — binário único, portável, sem runtime externo.
+* **Linguagem:** Go, em binário único e portável.
 * **CLI:** Cobra.
-* **TUI:** Bubble Tea, para todas as telas interativas de seleção (plugins concorrentes, prefixos de branch, base branch, `work resume`, `work archive`, gestão de plugins).
-* **Persistência de estado:** SQLite embutido, via driver Go puro (sem CGO), em `~/.work/state/work.db`.
+* **TUI:** Bubble Tea, para seleções interativas.
+* **Persistência:** SQLite embutido com driver Go puro, em `~/.work/state/work.db`.
 
 ***
 
-## 3.:comment[Layout de diretórios e estado do núcleo]{#comment-1787525101294 text="a pasta contexto e review devem ser removidas deste documento como criações do work cli. APenas worktree e work-meta.json são outputs do CLI; importers externos podem se somar a isso, acrescentando diretorios e arquivos de acordo com suas necessidades, que não importam ao work-cli. "}
+## 3. Layout de diretórios e estado do núcleo
 
-```
-~/workspace/
+O diretório de workspace é escolhido pelo usuário no primeiro uso e guardado na configuração. A estrutura de cada Work é:
+
+```text
+<workspace>/
   in-progress/<repo-name>_<branch-name>/
     worktree/
-    context/
     work-meta.json
-  reviews/
-  archived/<yyyymmdd>_<repo-name>_<branch-name>/
-    context/
+  archived/<yyyymmdd>-<repo-name>_<branch-name>/
     work-meta.json
-    # worktree é destruída na arquivamento; contexto e metadados são preservados
+    # a worktree foi destruída; artefatos de Importers, se houver, são preservados
 ```
 
-`work-meta.json`, criado dentro de cada pasta de Work:
+`work-meta.json` mantém os campos de núcleo, a metadata publicada e os links persistidos:
 
-```json
+```jsonc
 {
   "slug": "meu-trabalho",
   "branch": "feature/meu-trabalho",
   "base_branch": "main",
   "starter": "github-pull-request-starter",
   "branch_convention": "gitflow",
-  "created_at": "2026-08-23T00:00:00Z",
-  "last_accessed_at": "2026-08-23T00:00:00Z",
+  "meta": {
+    "repo_path": "/home/user/projects/project",
+    "start_mode": "contribution",
+    "github.pull_request_number": 212
+  },
+  "links": {
+    "github.pull_request": "https://github.com/example/project/pull/212"
+  },
+  "created_at": "2026-08-29T00:00:00Z",
+  "last_accessed_at": "2026-08-29T00:00:00Z",
   "status": "in-progress"
 }
 ```
 
-`branch_convention` é omitido no modo contribuição (RF-3): esse modo faz checkout direto na branch do PR, sem passar pela resolução de convenção (Seção 8).
-
-Tabela `works` (SQLite, `~/.work/state/work.db`), espelhando `work-meta.json` de cada trabalho para permitir listagem rápida — ordenada por `last_accessed_at` — sem varrer o filesystem (RF-11). `last_accessed_at` é atualizado toda vez que `work resume` seleciona aquele trabalho.
-
-`reviews/` existe no layout mas hoje não é populada por nenhum fluxo definido — ver PRD, Apêndice A ("Escopo exato de um estado em revisão"), item de produto ainda em aberto.
+`branch_convention` é omitida em contribuição. O core materializa em `meta` os dados conhecidos do Work, incluindo `repo_path` e `start_mode` (`new`, `contribution` ou `fork`), e incorpora também a metadata publicada pelo Starter. A tabela `works` espelha os campos necessários para listagem e status. Tabelas ou colunas auxiliares para metadata e links mantêm o mesmo conteúdo do arquivo e são atualizadas transacionalmente; cada chave de link possui um único valor e toda publicação é upsert, portanto a última origem vence.
 
 ***
 
-## 4. Pacote de plugin e manifesto (ADR-0001)
+## 4. Pacote de plugin e manifesto
 
-`plugin.json`, na raiz do pacote:
+`plugin.json`, na raiz do pacote, descreve estaticamente componentes executáveis e convenções declarativas:
 
-```json
+```jsonc
 {
-  "name": "github-pull-request-plugin",
+  "name": "github-plugin",
   "version": "1.2.0",
   "components": [
     {
-      "type": "starter",
       "name": "github-pull-request-starter",
+      "role": "starter",
       "pattern": "^https://github\\.com/[^/]+/[^/]+/pull/\\d+$",
-      "capabilities": [
-        "generate_work_slug",
-        "provide-base-branch",
-        "disambiguate_contribution_fork"
-      ],
       "entrypoint": "starter.py",
-      "runtime": "python3",
-      "hooks": {
-        "onFinalize": ["importers.pr-metadata-importer"]
-      }
+      "runtime": "python3"
     },
     {
-      "type": "importer",
-      "name": "pr-metadata-importer",
+      "name": "github-pull-request-importer",
+      "role": "importer",
+      "on": [{
+        "event": "start:finalized",
+        "starters": ["github-pull-request-starter"]
+      }],
+      "manual": {
+        "display_name": "Contexto do Pull Request",
+        "description": "Importa os artefatos associados ao pull request"
+      },
+      "inputs": ["link:github.pull_request", "meta:start_mode:optional"],
       "entrypoint": "importer.py",
+      "runtime": "python3"
+    },
+    {
+      "name": "github-pull-request-linker",
+      "role": "linker",
+      "key": "github.pull_request",
+      "discover": {
+        "automatic": true,
+        "on": [{
+          "event": "start:finalized",
+          "starters": ["github-pull-request-starter"]
+        }],
+        "inputs": ["meta:repo_path"]
+      },
+      "manual": {
+        "display_name": "Pull Request do GitHub",
+        "description": "Relaciona o Work a um pull request do GitHub"
+      },
+      "entrypoint": "linker.py",
       "runtime": "python3"
     }
   ],
@@ -110,151 +134,138 @@ Tabela `works` (SQLite, `~/.work/state/work.db`), espelhando `work-meta.json` de
 }
 ```
 
-Campos do schema v1 (deliberadamente mínimo — schemas de payload por tipo de componente são definidos incrementalmente):
+O pacote é a unidade atômica de instalação, atualização, habilitação e remoção. A identidade de componente e convenção é o `name` lógico; o nome do pacote é um alias local proposto. Nomes de componente ambíguos entre pacotes habilitados são qualificados como `<alias-do-pacote>/<nome>`.
 
-* `name`, `version` — identidade e versão do pacote (ver ADR-0005 para o papel de `version` na atualização).
-* `components[]` — um ou mais componentes **executáveis**, cada um com: `type` (papel: `starter`/`importer`/`linker`), `name` (identidade lógica, nunca o nome do arquivo), `pattern?` (regex de reconhecimento — ausente/vazio \= fallback universal, ver Seção 7), `capabilities?` (lista aberta de strings — hoje o Work reconhece `generate_work_slug`, `provide-base-branch`, `disambiguate_contribution_fork`; capability desconhecida é ignorada, permitindo adicionar novas sem quebrar plugins existentes), `entrypoint`, `runtime?` (Seção 11), `hooks?` (Seção 11).
-* `conventions[]` — zero ou mais convenções de branch (ADR-0010), cada uma com: `name` (identidade lógica, sujeita às mesmas regras de alias/colisão de `components[]` — ver abaixo) e `prefixes[]` (lista de templates de prefixo, ex: `feature/{slug}`; `{slug}` é o único placeholder reconhecido na v1). Uma entrada de `conventions[]` não tem `entrypoint`, `runtime`, `capabilities` nem `hooks` — é dado estático, nunca invocado como processo (ADR-0010, Seção 8).
+### 4.1 Validação por role
 
-**Identidade e alias.** A identidade de um componente ou de uma convenção é o `name` lógico do manifesto. O `name` do pacote é uma proposta de alias local, não uma garantia de unicidade — unicidade de fato é aplicada no registro (Seção 5). Referenciar um componente ou uma convenção nos comandos usa o nome nu quando não ambíguo entre os habilitados; em colisão entre pacotes diferentes, a referência é qualificada como `<alias-do-pacote>/<nome>` — reaproveita o mesmo mental model de `owner/repo` já usado na instalação, em vez de introduzir um separador novo. O `type` do componente não entra na sintaxe de referência: é metadado visível no manifesto/registro/TUI, não parte da identidade. Uma convenção não tem `type` (Seção 8) — o array em que vive (`conventions[]`) já a distingue de um componente executável.
+`role` é obrigatório e é o discriminador semântico do componente.
+
+| Role | Obrigatório | Permitido | Inválido |
+| --- | --- | --- | --- |
+| `starter` | `name`, `role`, `entrypoint` | `pattern`, `runtime` | `on`, `manual`, `inputs`, `key`, `discover` |
+| `importer` | `name`, `role`, `entrypoint`, ao menos um de `on` ou `manual` | `on`, `manual`, `inputs`, `runtime` | `pattern`, `key`, `discover` |
+| `linker` | `name`, `role`, `key`, `entrypoint`, ao menos um de `discover` ou `manual` | `discover`, `manual`, `runtime` | `pattern` |
+
+`conventions[]` permanece fora de `components[]`; sua entrada tem somente `name` e `prefixes[]`. Campos incompatíveis tornam a instalação ou atualização inválida. Não existe campo `invocation`, `type`, `capabilities` ou `hooks`.
 
 ***
 
-## 5. Instalação e registro (ADR-0002)
+## 5. Instalação e registro
 
-```
+```text
 ~/.work/
-  plugins/<nome>/
-    plugin.json          # manifesto do plugin — não editado pelo usuário
-    source/               # conteúdo clonado, OU symlink em modo local
-    .install-meta.json    # proveniência: origin_url, source_type, pinned_ref, installed_at
+  plugins/<alias>/
+    plugin.json
+    source/
+    .install-meta.json
   config/
     work.json
   state/
     work.db
 ```
 
-`work plugin install <origem>` clona a origem para `plugins/<nome>/source/`, fixando uma referência (`source_type: git`). `work plugin install --local <path>` / `work plugin link <path>` cria um symlink para o caminho local, sem copiar (`source_type: local-link`), para desenvolvimento ativo.
+`work plugin install <origem>` clona fonte remota e fixa uma referência; `work plugin install --local <path>` cria link para desenvolvimento local. O registro é gerado do manifesto e armazena, por componente, alias do pacote, nome, role, entrypoint, runtime, pattern, eventos e filtros, inputs, chave de Linker, descoberta e apresentação manual. Convenções são registradas separadamente com nome e prefixos.
 
-Tabelas geradas em `work.db` (nunca editadas à mão, escritas por `install`/`update`/`enable`/`disable`):
-
-* `plugins(name, source_url, source_type, pinned_ref, version, installed_at, enabled)`
-* `plugin_components(plugin_name, component_type, component_name, pattern, capabilities[], entrypoint, tier)`
-* `plugin_conventions(plugin_name, convention_name, prefixes[])` — espelha `conventions[]` do manifesto (ADR-0010); sem `entrypoint`, `pattern` nem `tier`, já que uma convenção não é avaliada contra nenhum argumento nem executada (Seção 8).
-
-**Fluxo de colisão de alias.** Se o alias resultante do `name` do manifesto já existe no registro apontando para uma `source_url` diferente, `install` falha explicitamente. O usuário resolve com `work plugin install <origem> --as <alias>`, escolhendo o alias local. Reinstalar a mesma `source_url` sob o mesmo alias já existente é idempotente.
-
-`work plugin list` e `work plugin uninstall <nome>` são comandos diretos, sem dependência de TUI.
+Conflito de alias de pacote de origem diferente falha; `--as <alias>` resolve-o. Reinstalação da mesma origem sob o mesmo alias é idempotente. A alteração do modelo de campos é validada pelo mesmo pipeline de instalação e atualização.
 
 ***
 
-## 6. Bootstrap do pacote de referência (ADR-0003)
+## 6. Bootstrap do pacote de referência
 
-Um pacote oficial de referência (contendo, no mínimo, um plugin `default-starter` capaz de localizar um repositório local a partir de texto livre, e uma convenção padrão mínima — `freeform`, com um único prefixo `{slug}`, isto é, sem prefixo — satisfazendo RF-24/ADR-0010) é vendorizado nos assets do binário/release como *seed*. No primeiro uso (`work init` ou primeiro `work start`), ele é "instalado" através do pipeline normal da Seção 5 — grava manifesto, entrada no registro, `.install-meta.json` — nunca como atalho que pule esse pipeline. Sem rede disponível na primeira execução, o seed embutido evita qualquer dependência externa; se mesmo assim a instalação falhar, o Work instrui instalação manual em vez de falhar silenciosamente. `work plugin uninstall <alias-do-pacote-de-referência>` remove esse pacote como qualquer outro.
-
-***
-
-## 7. Resolução de starters: camadas e colisão (ADR-0004)
-
-Em `work start <arg>`:
-
-* **Camada `fallback`** — componentes sem `pattern` (ou `pattern` vazio). Só um pode estar `enabled` por vez; um segundo é erro detectado em `work plugin enable`, não em runtime.
-* **Camada `specific`** — componentes com `pattern`. Todo padrão `specific` habilitado é avaliado localmente contra o argumento (regex, sem subprocesso):
-  * exatamente um match → invoca direto;
-  * zero matches → cai no único fallback habilitado;
-  * mais de um match → colisão.
-
-**Colisão.** O Work informa quais componentes casaram com o argumento e reaproveita o mesmo componente de TUI de desambiguação contribuição-vs-fork para o usuário escolher qual usar. A escolha **não é persistida** (ADR-0004): a mesma colisão é perguntada de novo a cada `work start`. Não há comando de prioridade nem de "esquecer" — uma colisão real exige dois componentes `specific` com padrões sobrepostos habilitados ao mesmo tempo (situação rara), e comparar "especificidade" entre regexes livres para decidir sozinho não é bem-fundamentado (ADR-0004, Alternativas).
+O seed oficial contém, no mínimo, um Starter fallback para repositório local e a convenção `freeform` com prefixo `{slug}`. No primeiro `work init` ou `work start`, ele passa pelo pipeline normal de instalação, sem rede. Pode ser desinstalado como qualquer outro pacote.
 
 ***
 
-## 8. Convenção de branch: catálogo declarativo e resolução por repositório (ADR-0010, ADR-0011)
+## 7. Resolução de Starters e criação do Work
 
-**Catálogo.** Cada componente `conventions[]` habilitado (Seção 4) contribui zero ou mais convenções nomeadas para um catálogo global. Nenhuma delas é avaliada contra o conteúdo do repositório — não há `pattern`, não há processo a rodar (ADR-0010): o catálogo inteiro é conhecido assim que os plugins são lidos no registro (Seção 5).
+Em `work start <arg>`, Starters específicos (`pattern` presente e não vazio) são avaliados localmente contra o argumento. Um único match é usado; múltiplos matches são escolhidos por TUI; ausência de match usa o único fallback habilitado. A colisão é perguntada a cada ocorrência. A ausência de fallback gera erro acionável que orienta habilitar ou instalar um Starter.
 
-**Resolução em `work start`, fora do modo contribuição:**
+O Starter recebe:
 
-1. O Work calcula a chave de identidade do repositório de destino (ver abaixo).
-2. Se essa chave já tem uma convenção memorizada na tabela `repo_branch_convention` (abaixo), ela é usada diretamente — nenhuma pergunta é feita.
-3. Caso contrário, o Work lista todas as convenções do catálogo habilitadas e pede ao usuário para escolher uma (RF-23), via o mesmo componente de seleção por TUI usado no restante do produto (PRD, Seção 10). A escolha é gravada na tabela abaixo.
-4. Com a convenção resolvida (memorizada ou recém-escolhida), o Work apresenta os prefixos dela para escolha (RF-5).
+```json
+{ "arg": "https://github.com/example/project/pull/212" }
+```
 
-**Chave de identidade do repositório**, em camadas (ADR-0011):
+Com sucesso, devolve os dados que conseguiu resolver. Campos de núcleo são explícitos; dados de integração entram em `meta` e relações externas em `links`:
 
-1. URL do remote (`origin`), quando configurado.
-2. Hash do(s) commit(s) raiz (`git rev-list --max-parents=0 HEAD`), quando não há remote — múltiplas raízes são ordenadas e concatenadas em uma única chave composta.
-3. Caminho local absoluto, apenas quando (2) não é confiável: clone raso (`git clone --depth=1`) e sem remote.
+```jsonc
+{
+  "repo_path": "/home/user/projects/project",
+  "base_branch": "feature/source-branch",
+  "start_modes": ["contribution", "fork"],
+  "meta": { "github.pull_request_number": 212 },
+  "links": [{
+    "key": "github.pull_request",
+    "value": "https://github.com/example/project/pull/212"
+  }]
+}
+```
 
-Tabela `repo_branch_convention(repo_key, convention_name, chosen_at)` em `work.db`, escrita apenas por essa resolução e por `work convention set` (Seção 9) — nunca editada à mão.
-
-Um repositório sem nenhum commit não chega a essa etapa: `work start` já falha antes por falta de base branch (RF-6).
-
-***
-
-## 9. `work convention`: troca da convenção memorizada (ADR-0011)
-
-A convenção de branch memorizada por repositório (Seção 8) é a única escolha que o Work guarda automaticamente em nome do usuário — a colisão de starters (Seção 7) deixou de ser memorizada. Uma escolha só não justifica um agrupamento de comandos: um único comando de topo a cobre (RF-25).
-
-* `work convention` — sem argumento, mostra a convenção memorizada para o repositório do diretório corrente; se ainda não há nenhuma, informa que será perguntada no próximo `work start`.
-* `work convention set` — re-executa a entrevista (lista o catálogo de convenções habilitadas, Seção 8, via o mesmo componente de seleção por TUI) e sobrescreve a linha em `repo_branch_convention` para a chave de identidade do repositório corrente.
-
-Roda de qualquer clone do repositório: a chave de identidade (Seção 8) é derivada do git do diretório corrente, não de uma worktree inicializada pelo Work. Fora de um repositório git, falha com mensagem clara. É estritamente uma camada fina sobre a tabela `repo_branch_convention` — nunca mantém estado próprio divergente (mesma disciplina de `work plugin`, ADR-0007).
+Campos opcionais aparecem apenas quando resolvidos. Ausência de `start_modes` significa Work novo. Quando presente, o core oferece exatamente os modos retornados e persiste o modo escolhido em `meta.start_mode`; para ausência, persiste `new`. O core também persiste `repo_path` em `meta.repo_path`, para que ambos possam ser solicitados como inputs. A convenção de branch não é entrada nem saída do Starter. Falha de subprocesso do Starter escolhido falha `work start`; não há resultado `matched: false` ou equivalente.
 
 ***
 
-## 10. Atualização de plugins (ADR-0005)
+## 8. Convenção de branch
 
-* `work plugin outdated` — somente leitura, lista atual → disponível para todos os plugins instalados a partir de uma origem remota.
-* `work plugin update <nome>` — individual.
-* `work plugin update --all` — bulk, mostra diff de referência, confirma a menos que `--yes`.
-
-**Mecânica de checagem.** Usa `git fetch` dentro do clone já existente do plugin (`~/.work/plugins/<nome>/source/`) — **nunca** `git pull` — para que a working tree que serve o entrypoint atualmente instalado jamais seja tocada por uma simples checagem. O manifesto no tip da referência remota rastreada é lido direto do object database (`git show <remote>/<branch>:plugin.json`), sem checkout. Só `update` (explícito, confirmado) move o checkout local para a nova referência resolvida.
-
-Nenhuma tag git é exigida do autor — rastrear a branch e comparar apenas o campo `version` do manifesto é suficiente; o custo é um fetch incremental por plugin checado, pago só em `outdated`/`update` explícitos.
+Cada pacote habilitado contribui seu `conventions[]` para o catálogo global. Fora de contribuição, o Work calcula a identidade do repositório, reutiliza a convenção memorizada em `repo_branch_convention` ou pede uma escolha e a persiste. Depois apresenta seus prefixos. `work convention` exibe a escolha do repositório atual; `work convention set` a substitui. A identidade usa, nesta ordem, URL de `origin`, commits raiz ou caminho absoluto em clone raso sem remote.
 
 ***
 
-## 11. Contrato de execução de componentes (ADR-0000, ADR-0006)
+## 9. Eventos, elegibilidade e Linkers
 
-Todo componente executável (starter, importer, linker) segue o mesmo protocolo — o mesmo envelope de transporte e as mesmas regras abaixo, não o mesmo payload.
+Eventos são identificadores de lifecycle definidos pelo core no formato `<comando>:<evento>`. Plugins se inscrevem, mas não criam eventos. Na v1, `start:finalized` ocorre depois da materialização do Work e de seus metadados de núcleo.
 
-* **Entrada:** um único payload JSON via stdin, no formato acordado por tipo de componente e por ponto de disparo — nunca o mesmo payload para todos. Um starter, invocado direto por `work start <arg>`, recebe o argumento bruto do usuário. Um importer/linker, invocado por um hook (`onFinalize`), nunca recebe argumento bruto — não há mais nenhum neste ponto do fluxo — e sim o contexto do Work já resolvido (ex: `repo_path`, `slug`, `branch`, caminho da pasta de contexto).
-* **Saída:** um único payload JSON via stdout, também no formato acordado por tipo de componente (ex: um starter retorna `{ "repo_path": "...", "slug": "...", "base_branch": "..." }`, campos opcionais conforme as `capabilities` declaradas).
-* **Código de saída:** `0` para sucesso; qualquer valor não-zero é tratado como "este componente não conseguiu resolver o argumento" (para starters) ou como falha de hook (para importers/linkers), sem derrubar o comando do Work — apenas reportando o erro ao usuário.
-* **Sem estado compartilhado implícito:** cada invocação é um processo isolado; nada é assumido sobre o ambiente além de variáveis padrão do shell do usuário.
+`on[]` de Importer e `discover.on[]` de Linker aceitam `event` e filtro opcional `starters`; sem filtro, a inscrição vale para qualquer Starter. O filtro decide elegibilidade e nunca é entregue ao subprocesso.
 
-Nenhum componente é invocado antes do seu primeiro uso real para se autodescrever — `pattern`, `capabilities` e `hooks` são lidos e confiados diretamente do manifesto (ADR-0001). A única checagem feita fora de um uso real é a existência do interpretador declarado no `PATH`, em preflight no `install` (abaixo) — nunca uma invocação do próprio componente.
+Antes de abrir um subprocesso, o core verifica: plugin habilitado; operação disponível para a ativação corrente; inscrição e filtro quando a ativação é por evento; e existência de todos os inputs obrigatórios. Inputs usam `link:<key>` ou `meta:<key>`, com `:optional` para ausência aceitável. Inputs opcionais não participam da elegibilidade e são omitidos da entrada se ausentes.
 
-Uma convenção de branch (`conventions[]`, ADR-0010) não participa deste contrato: não tem `entrypoint` nem processo a invocar — é lida diretamente do manifesto (Seção 4, Seção 8).
-
-**Resolução de interpretador.** Campo opcional `runtime` no manifesto (`"python3"`, `"node"`, `"sh"`; ausente ou `"binary"` \= executável autocontido). O Work nunca depende de shebang ou do bit de execução do SO: quando `runtime` está declarado, invoca explicitamente `<runtime> <entrypoint> [args]`; quando ausente, executa o `entrypoint` diretamente. A presença do interpretador declarado é checada em preflight no `install`: se ausente do `PATH`, o Work falha com mensagem específica ("este plugin requer python3, não encontrado no PATH") em vez de deixar o subprocesso falhar de forma críptica.
-
-`hooks.onFinalize` é uma lista de identificadores `<tipo>.<nome>` (ex: `importers.pr-metadata-importer`), resolvidos dentro dos componentes instalados do tipo correspondente.
+Um Linker é responsável por `key` namespaced. `discover.automatic` permite descoberta solicitada pelo Work; `discover.on[]` permite descoberta por evento. A descoberta recebe apenas seus inputs e devolve opcionalmente `{ "value": "..." }`; sucesso sem valor não altera o estado e não é erro. Com valor, o core faz upsert em `links[key]`. `manual` torna o Linker disponível em `work link`: após seleção, o core coleta um valor não vazio e faz o mesmo upsert, sem iniciar subprocesso.
 
 ***
 
-## 12. TUI `work plugin` (ADR-0007)
+## 10. Importers e staging
 
-`work plugin` sem subcomando abre uma TUI com: lista com nome, versão, origem, quantidade de componentes, estado habilitado/desabilitado. Atalhos:
+Um Importer possui a única operação de domínio `import`, ativável por `on`, `manual` ou ambos. `manual` o torna disponível em `work import` no Work atual. A elegibilidade e os inputs são idênticos entre ativação manual e por evento.
 
-* `[enter]` — detalhes do plugin selecionado.
-* `[space]` — habilitar/desabilitar.
-* `[u]` — atualizar.
-* `[d]` — checar atualizações sob demanda (única ação que dispara rede; nunca automática ao abrir a tela).
-* `[x]` — desinstalar.
-* `[/]` — buscar.
+O core cria um diretório temporário exclusivo para cada execução e envia apenas os inputs resolvidos e `output_dir`:
 
-É estritamente uma camada de apresentação sobre `work plugin install/list/enable/disable/update/uninstall <nome>` — nunca mantém estado próprio divergente do registro (Seção 5).
+```jsonc
+{
+  "inputs": {
+    "github.pull_request": "https://github.com/example/project/pull/212",
+    "start_mode": "contribution"
+  },
+  "output_dir": "/tmp/work/import-01J..."
+}
+```
+
+Após sucesso, o core enumera todo conteúdo produzido, calcula destinos no diretório do Work e verifica todas as colisões antes de modificá-lo. Sem colisões, incorpora os artefatos e remove o temporário. Com colisão ou falha, não incorpora nenhum artefato daquela execução e remove o temporário. O staging é fronteira de dados, não sandbox.
 
 ***
 
-## 13. Integridade de origem sem assinatura formal (ADR-0008)
+## 11. Ordem de `start:finalized` e contrato de execução
 
-Como a origem de todo plugin instalado é sempre uma URL ou caminho local escolhido explicitamente pelo usuário (Seção 5), e a referência de conteúdo é fixada no momento da instalação, isso já dá integridade de conteúdo e reprodutibilidade suficientes para essa origem — sem exigir nenhuma etapa adicional de assinatura na v1. Não há hoje nenhum caminho no produto que instale um plugin sem uma origem fornecida diretamente pelo usuário.
+Ao publicar `start:finalized`, o core executa as fases:
+
+```text
+Starter resolvido
+  → links e metadata do Starter persistidos
+  → Linkers inscritos e elegíveis
+  → novos links persistidos
+  → Importers inscritos e elegíveis
+  → staging, validação de colisões e incorporação
+```
+
+Não há ordem garantida entre componentes do mesmo role dentro de uma fase. A elegibilidade dos Importers é avaliada após os Linkers, permitindo consumir links recém-descobertos.
+
+Todo componente executável recebe exatamente um JSON por stdin, escreve no máximo um JSON estruturado por stdout quando sua operação o exige e usa código de saída para sucesso ou falha. Com `runtime`, o comando é `<runtime> <entrypoint>`; sem ele, o entrypoint é executável autocontido. O runtime é checado na instalação. O core não depende de estado implícito entre invocações e nunca executa componente durante descoberta ou instalação para auto-descrição.
+
+Falhas de Linker ou Importer automáticos são registradas e exibidas como aviso, mas não desfazem o Work já criado. Em comandos manuais, a falha é retornada ao usuário sem alteração de links ou incorporação de artefatos.
 
 ***
 
-## 14. Questões de design em aberto
+## 12. Atualização, TUI e integridade
 
-1. **Comportamento quando nenhum plugin fallback está habilitado.** Hoje, zero matches na camada `specific` cai no fallback único habilitado (Seção 7) — o caso em que nenhum fallback existe habilitado não tem um comportamento de erro definido: deve orientar o usuário a habilitar um, ou instalar o pacote de referência (Seção 6) novamente?
-2. **Política de compatibilidade de versão do contrato JSON.** O manifesto já tem um campo `version` por pacote (Seção 4/ADR-0005), mas isso versiona o pacote, não o contrato entre Work e plugin em si. Falta definir a política de compatibilidade quando o Work evolui a versão desse contrato e plugins antigos ainda o implementam na versão anterior — isso vale para `components[]`; `conventions[]` (ADR-0010), por ser dado puramente aditivo (nome + prefixos), evolui por adição de campo, sem precisar da mesma política.
+`work plugin outdated` consulta atualizações sem mudar checkout; `work plugin update <nome>` e `--all` alteram versões somente mediante ação explícita. A atualização lê e valida o novo manifesto antes de trocar a versão registrada.
+
+`work plugin` oferece TUI sobre os mesmos comandos diretos de gestão. `work import` e `work link` usam a TUI para listar somente componentes manuais disponíveis e elegíveis no Work atual. A origem de todos os plugins é explicitamente escolhida pelo usuário e a referência instalada é fixada; assinatura formal fica adiada conforme ADR-0008.

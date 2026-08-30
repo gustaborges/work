@@ -14,7 +14,7 @@ O problema de fundo: como o Work deve executar a lógica de domínio de um plugi
 
 O `git` é a única ferramenta que o núcleo do Work invoca diretamente, in-process. Todo o restante do comportamento de domínio que envolve lógica — qualquer plugin que cumpra o papel de Starter, Importer ou Linker — roda como um processo externo, separado do processo do Work, comunicando-se por um contrato de entrada e saída bem definido e publicamente documentado. O núcleo nunca importa, carrega ou executa código de plugin dentro do seu próprio processo.
 
-Uma contribuição de plugin sem lógica alguma — o catálogo de convenções de branch (ADR-0010) — não se enquadra nessa decisão por não ter comportamento de domínio a executar: é dado estático do manifesto, não um processo. A decisão aqui registrada é sobre como o Work roda o que precisa ser executado, não uma exigência de que toda contribuição de plugin seja executável.
+Uma contribuição de plugin sem lógica alguma — o catálogo de convenções de branch (ADR-0012) — não se enquadra nessa decisão por não ter comportamento de domínio a executar: é dado estático do manifesto, não um processo. A decisão aqui registrada é sobre como o Work roda o que precisa ser executado, não uma exigência de que toda contribuição de plugin seja executável.
 
 Os detalhes concretos do contrato (formato do payload, transporte, convenção de código de saída) estão descritos em `docs/add/add-0001-work-system-architecture.md`, Seção 11 — esta ADR registra apenas a decisão de que a execução é sempre por processo externo, não a mecânica exata dessa comunicação.
 

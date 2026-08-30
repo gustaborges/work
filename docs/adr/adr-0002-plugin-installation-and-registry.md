@@ -16,7 +16,7 @@ Dois tipos de fonte de instalação, alimentando o mesmo registro:
 * Instalar a partir de uma origem remota — clona o pacote, fixando uma referência de conteúdo no momento da instalação.
 * Instalar a partir de um caminho local (link, sem copiar) — existe para desenvolvimento ativo de um plugin.
 
-**Nome local e colisão de alias.** O nome usado no registro funciona como o alias que o usuário digita nos demais comandos de gestão de plugin (RF-17 a RF-21). Por padrão, a instalação usa o `name` declarado no manifesto do pacote (ADR-0001) como esse alias. Como esse campo é escolhido pelo autor do pacote sem nenhuma coordenação entre autores, dois pacotes de fontes diferentes podem propor o mesmo `name` — a garantia de unicidade não vem do manifesto, vem do registro local do usuário:
+**Nome local e colisão de alias.** O nome usado no registro funciona como o alias que o usuário digita nos demais comandos de gestão de plugin (RF-17 a RF-21). Por padrão, a instalação usa o `name` declarado no manifesto do pacote (ADR-0012) como esse alias. Como esse campo é escolhido pelo autor do pacote sem nenhuma coordenação entre autores, dois pacotes de fontes diferentes podem propor o mesmo `name` — a garantia de unicidade não vem do manifesto, vem do registro local do usuário:
 
 * Se o alias resultante já existe no registro apontando para uma origem diferente, a instalação **falha** com uma mensagem explícita apontando o conflito (RF-21), em vez de sobrescrever ou auto-sufixar silenciosamente — auto-sufixo silencioso violaria RNF-3, já que o mesmo alias passaria a apontar para fontes diferentes em máquinas diferentes dependendo da ordem de instalação.
 * O usuário resolve escolhendo explicitamente um alias alternativo para aquele pacote. Reinstalar a mesma origem sob o mesmo alias já existente é idempotente, não é conflito.
@@ -24,7 +24,7 @@ Dois tipos de fonte de instalação, alimentando o mesmo registro:
 
 **Referência a componente individual.** Comandos que apontam para um componente específico aceitam o nome nu do componente quando ele é único entre os componentes habilitados; em colisão de nome entre pacotes diferentes, a referência é qualificada por pacote (esquema exato em `add-0001` §4).
 
-A instalação separa, no layout de diretórios, config (editado por humano) de estado (gerado pela ferramenta) — layout completo em `add-0001` §5. O registro em si vive inteiramente no estado gerado, nunca editado à mão. Listar plugins instalados (RF-17) e desinstalar (RF-20) são comandos diretos de primeira classe, usáveis em CI/dotfiles sem depender de nenhuma TUI (ver também ADR-0007).
+A instalação separa, no layout de diretórios, config (editado por humano) de estado (gerado pela ferramenta) — layout completo em `add-0001` §5. O registro em si vive inteiramente no estado gerado, nunca editado à mão. Listar plugins instalados (RF-17) e desinstalar (RF-20) são comandos diretos de primeira classe, usáveis em CI/dotfiles sem depender da TUI de gestão descrita no ADD.
 
 ## Alternativas consideradas
 
