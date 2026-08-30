@@ -4,9 +4,9 @@
 
 **Data:** 2026-08-29
 
-**Decisões que governam este documento:** ADR-0000 (execução de plugins), ADR-0002 (instalação e registro), ADR-0003 (bootstrap), ADR-0004 (colisão de Starters), ADR-0005 (atualização), ADR-0006 (runtime), ADR-0008 (assinatura), ADR-0009 (stack), ADR-0011 (resolução de convenção) e ADR-0012 (modelo de componentes e manifesto).
+**Decisões que governam este documento:** ADR-0000 (execução de plugins), ADR-0002 (instalação e registro), ADR-0003 (bootstrap), ADR-0004 (colisão de Starters), ADR-0005 (atualização), ADR-0006 (runtime), ADR-0008 (assinatura), ADR-0009 (stack), ADR-0011 (resolução de convenção), ADR-0012 (modelo de componentes e manifesto) e ADR-0013 (namespaces e estado persistido).
 
-**Requisitos atendidos:** `docs/prd.md` — RF-1 a RF-32, RNF-1 a RNF-7. Este documento implementa os requisitos e decisões listados; incompatibilidades devem ser resolvidas no PRD ou em ADR, nunca por divergência silenciosa de design.
+**Requisitos atendidos:** `docs/prd.md` — RF-1 a RF-38, RNF-1 a RNF-7. Este documento implementa os requisitos e decisões listados; incompatibilidades devem ser resolvidas no PRD ou em ADR, nunca por divergência silenciosa de design.
 
 ***
 
@@ -18,7 +18,7 @@ O sistema possui três tipos de processo:
 * **`git`** — ferramenta invocada pelo core para worktrees e resolução de branches.
 * **Processos de plugin** — subprocessos de curta duração, um por operação executável; o core nunca carrega seu código no próprio processo.
 
-O estado vive em `~/.work/` (plugins, configuração e SQLite) e no diretório de workspace escolhido pelo usuário para cada Work. O core cria apenas a worktree e `work-meta.json`; qualquer outro arquivo ou diretório pode ser incorporado por Importers, sem significado especial para o core.
+O estado vive em `~/.work/` (plugins, configuração e o índice SQLite) e no diretório de workspace escolhido pelo usuário para cada Work. O core cria apenas a worktree e `work-state.json`; qualquer outro arquivo ou diretório pode ser incorporado por Importers, sem significado especial para o core.
 
 ***
 
@@ -29,48 +29,52 @@ Conforme ADR-0009:
 * **Linguagem:** Go, em binário único e portável.
 * **CLI:** Cobra.
 * **TUI:** Bubble Tea, para seleções interativas.
-* **Persistência:** SQLite embutido com driver Go puro, em `~/.work/state/work.db`.
+* **Persistência:** `work-state.json` é o snapshot canônico de cada Work; SQLite embutido com driver Go puro, em `~/.work/state/work.db`, é sua projeção global de consulta.
 
 ***
 
 ## 3. Layout de diretórios e estado do núcleo
 
-O diretório de workspace é escolhido pelo usuário no primeiro uso e guardado na configuração. A estrutura de cada Work é:
+O diretório de workspace é escolhido pelo usuário no primeiro uso que exija sua materialização e guardado na configuração. O core pode sugerir um caminho padrão, mas a localização não é fixa nem faz parte da identidade de um Work. Alterações posteriores da configuração afetam novos Works e não movem automaticamente Works já existentes. A estrutura de cada Work é:
 
 ```text
 <workspace>/
   in-progress/<repo-name>_<branch-name>/
     worktree/
-    work-meta.json
+    work-state.json
   archived/<yyyymmdd>-<repo-name>_<branch-name>/
-    work-meta.json
+    work-state.json
     # a worktree foi destruída; artefatos de Importers, se houver, são preservados
 ```
 
-`work-meta.json` mantém os campos de núcleo, a metadata publicada e os links persistidos:
+`work-state.json` é o snapshot canônico e autocontido de cada Work. Ele possui as seções semânticas `work`, `meta` e `links`, em um único arquivo físico:
 
 ```jsonc
 {
-  "slug": "meu-trabalho",
-  "branch": "feature/meu-trabalho",
-  "base_branch": "main",
-  "starter": "github-pull-request-starter",
-  "branch_convention": "gitflow",
+  "schema": 1,
+  "work": {
+    "slug": "meu-trabalho",
+    "status": "in-progress",
+    "start_mode": "fork",
+    "starter": "github-pull-request-starter",
+    "branch": "feature/meu-trabalho",
+    "base_branch": "main",
+    "branch_convention": "gitflow",
+    "created_at": "2026-08-29T00:00:00Z",
+    "last_accessed_at": "2026-08-29T00:00:00Z"
+  },
   "meta": {
-    "repo_path": "/home/user/projects/project",
-    "start_mode": "contribution",
-    "github.pull_request_number": 212
+    "github.pull_request.number": 212
   },
   "links": {
     "github.pull_request": "https://github.com/example/project/pull/212"
-  },
-  "created_at": "2026-08-29T00:00:00Z",
-  "last_accessed_at": "2026-08-29T00:00:00Z",
-  "status": "in-progress"
+  }
 }
 ```
 
-`branch_convention` é omitida em contribuição. O core materializa em `meta` os dados conhecidos do Work, incluindo `repo_path` e `start_mode` (`new`, `contribution` ou `fork`), e incorpora também a metadata publicada pelo Starter. A tabela `works` espelha os campos necessários para listagem e status. Tabelas ou colunas auxiliares para metadata e links mantêm o mesmo conteúdo do arquivo e são atualizadas transacionalmente; cada chave de link possui um único valor e toda publicação é upsert, portanto a última origem vence.
+`work` contém exclusivamente estado governado e versionado pelo core; plugins não criam nem escrevem suas propriedades. `meta` contém dados extensíveis publicados por componentes, e `links` contém relações externas de primeira classe. `branch_convention` é omitida em contribuição. O caminho do repositório resolvido pelo Starter e o checkout corrente não usam um nome persistido ambíguo; quando um componente precisar acessar o checkout, o core poderá expor a chave inequívoca `work:worktree_path` como input.
+
+Cada chave de link possui um único valor corrente e toda publicação é upsert: a última origem vence. A proveniência operacional (`source_component`, `source_operation`, `recorded_at`) é mantida pelo core no índice, separada da chave e do valor semântico. O arquivo é atualizado por gravação temporária e rename atômico. `work.db` é uma projeção/indexação para consultas globais, como listagem e ordenação; ele pode ser reconstruído ou reconciliado a partir dos snapshots e não é a única fonte do estado de um Work.
 
 ***
 
@@ -101,7 +105,7 @@ O diretório de workspace é escolhido pelo usuário no primeiro uso e guardado 
         "display_name": "Contexto do Pull Request",
         "description": "Importa os artefatos associados ao pull request"
       },
-      "inputs": ["link:github.pull_request", "meta:start_mode:optional"],
+      "inputs": ["link:github.pull_request", "work:start_mode:optional"],
       "entrypoint": "importer.py",
       "runtime": "python3"
     },
@@ -115,7 +119,7 @@ O diretório de workspace é escolhido pelo usuário no primeiro uso e guardado 
           "event": "start:finalized",
           "starters": ["github-pull-request-starter"]
         }],
-        "inputs": ["meta:repo_path"]
+        "inputs": ["work:worktree_path"]
       },
       "manual": {
         "display_name": "Pull Request do GitHub",
@@ -148,6 +152,12 @@ O pacote é a unidade atômica de instalação, atualização, habilitação e r
 
 `conventions[]` permanece fora de `components[]`; sua entrada tem somente `name` e `prefixes[]`. Campos incompatíveis tornam a instalação ou atualização inválida. Não existe campo `invocation`, `type`, `capabilities` ou `hooks`.
 
+### 4.2 Namespaces de dados e Semantic Conventions
+
+`inputs[]` usa a gramática `<source>:<key>[:optional]`, onde `source` é `work`, `meta` ou `link`. `work:<key>` acessa somente a superfície de estado exposta pelo core; `meta:<key>` acessa metadata extensível; e `link:<key>` acessa uma relação externa de primeira classe. O namespace é usado para resolução e elegibilidade, mas não é repetido no payload projetado.
+
+Chaves públicas de `meta` e `link` seguem as Semantic Conventions do Work: definem namespace, chave, significado e representação do valor, sem compor uma whitelist fechada no binário. Dados sem semântica compartilhada usam namespace privado `plugin.<nome-do-plugin>.<key>`. A chave identifica o significado do dado, não seu produtor: múltiplos Linkers podem declarar a mesma `key` sem criar colisão de namespace.
+
 ***
 
 ## 5. Instalação e registro
@@ -164,7 +174,7 @@ O pacote é a unidade atômica de instalação, atualização, habilitação e r
     work.db
 ```
 
-`work plugin install <origem>` clona fonte remota e fixa uma referência; `work plugin install --local <path>` cria link para desenvolvimento local. O registro é gerado do manifesto e armazena, por componente, alias do pacote, nome, role, entrypoint, runtime, pattern, eventos e filtros, inputs, chave de Linker, descoberta e apresentação manual. Convenções são registradas separadamente com nome e prefixos.
+`work plugin install <origem>` clona fonte remota e fixa uma referência; `work plugin install --local <path>` cria link para desenvolvimento local. O registro é gerado do manifesto e armazena, por componente, alias do pacote, nome, role, entrypoint, runtime, pattern, eventos e filtros, inputs, chave de Linker, descoberta e apresentação manual. A instalação valida a gramática e os namespaces de `inputs[]` e a sintaxe das chaves declaradas no manifesto; dados publicados em outputs são validados quando recebidos. Convenções são registradas separadamente com nome e prefixos.
 
 Conflito de alias de pacote de origem diferente falha; `--as <alias>` resolve-o. Reinstalação da mesma origem sob o mesmo alias é idempotente. A alteração do modelo de campos é validada pelo mesmo pipeline de instalação e atualização.
 
@@ -193,15 +203,16 @@ Com sucesso, devolve os dados que conseguiu resolver. Campos de núcleo são exp
   "repo_path": "/home/user/projects/project",
   "base_branch": "feature/source-branch",
   "start_modes": ["contribution", "fork"],
-  "meta": { "github.pull_request_number": 212 },
-  "links": [{
-    "key": "github.pull_request",
-    "value": "https://github.com/example/project/pull/212"
-  }]
+  "meta": { "github.pull_request.number": 212 },
+  "links": {
+    "github.pull_request": "https://github.com/example/project/pull/212"
+  }
 }
 ```
 
-Campos opcionais aparecem apenas quando resolvidos. Ausência de `start_modes` significa Work novo. Quando presente, o core oferece exatamente os modos retornados e persiste o modo escolhido em `meta.start_mode`; para ausência, persiste `new`. O core também persiste `repo_path` em `meta.repo_path`, para que ambos possam ser solicitados como inputs. A convenção de branch não é entrada nem saída do Starter. Falha de subprocesso do Starter escolhido falha `work start`; não há resultado `matched: false` ou equivalente.
+Campos opcionais aparecem apenas quando resolvidos. Ausência de `start_modes` significa Work novo. Quando presente, o core oferece exatamente os modos retornados e persiste o modo escolhido em `work.start_mode`; para ausência, persiste `new`. `repo_path` pertence somente ao contrato de resolução do Starter: ele identifica o repositório de origem para o fluxo de criação e não é promovido automaticamente a metadata ou a input público. A convenção de branch não é entrada nem saída do Starter. Falha de subprocesso do Starter escolhido falha `work start`; não há resultado `matched: false` ou equivalente.
+
+Antes de continuar o fluxo de criação, o core valida que `repo_path` existe, é acessível e identifica um repositório Git local. Falha nessa validação encerra `work start` antes de qualquer materialização do Work, com diagnóstico que identifica o caminho rejeitado. Essa validação pertence ao core porque Git e a criação da worktree fazem parte do lifecycle governado por ele. Uma vez escolhido estaticamente pelo `pattern`, falha do Starter ou resposta estruturalmente inválida continua sendo falha do comando.
 
 ***
 
@@ -209,17 +220,21 @@ Campos opcionais aparecem apenas quando resolvidos. Ausência de `start_modes` s
 
 Cada pacote habilitado contribui seu `conventions[]` para o catálogo global. Fora de contribuição, o Work calcula a identidade do repositório, reutiliza a convenção memorizada em `repo_branch_convention` ou pede uma escolha e a persiste. Depois apresenta seus prefixos. `work convention` exibe a escolha do repositório atual; `work convention set` a substitui. A identidade usa, nesta ordem, URL de `origin`, commits raiz ou caminho absoluto em clone raso sem remote.
 
+Fora do modo contribuição, depois de interpolar o prefixo da convenção com o slug escolhido, o core valida o nome de branch resultante utilizando as regras do próprio Git. Também verifica colisões com branches locais e remotas já existentes antes de materializar a nova branch/worktree. Nome inválido ou colisão impede a criação e retorna o fluxo à escolha que produziu o nome.
+
+O core deve preferir as operações nativas do Git para essas verificações, incluindo `git check-ref-format --branch` para validade sintática e consultas de refs para detectar nomes já existentes, em vez de manter uma implementação paralela das regras de nomes de branch. No modo contribuição essa regra não exige que a branch seja nova, pois o comportamento esperado é justamente fazer checkout da branch resolvida pelo Starter.
+
 ***
 
 ## 9. Eventos, elegibilidade e Linkers
 
-Eventos são identificadores de lifecycle definidos pelo core no formato `<comando>:<evento>`. Plugins se inscrevem, mas não criam eventos. Na v1, `start:finalized` ocorre depois da materialização do Work e de seus metadados de núcleo.
+Eventos são identificadores de lifecycle definidos pelo core no formato `<comando>:<evento>`. Plugins se inscrevem, mas não criam eventos. Na v1, `start:finalized` ocorre depois da materialização do Work e de seu estado de núcleo.
 
 `on[]` de Importer e `discover.on[]` de Linker aceitam `event` e filtro opcional `starters`; sem filtro, a inscrição vale para qualquer Starter. O filtro decide elegibilidade e nunca é entregue ao subprocesso.
 
-Antes de abrir um subprocesso, o core verifica: plugin habilitado; operação disponível para a ativação corrente; inscrição e filtro quando a ativação é por evento; e existência de todos os inputs obrigatórios. Inputs usam `link:<key>` ou `meta:<key>`, com `:optional` para ausência aceitável. Inputs opcionais não participam da elegibilidade e são omitidos da entrada se ausentes.
+Antes de abrir um subprocesso, o core verifica: plugin habilitado; operação disponível para a ativação corrente; inscrição e filtro quando a ativação é por evento; e existência de todos os inputs obrigatórios. Inputs usam `work:<key>`, `link:<key>` ou `meta:<key>`, com `:optional` para ausência aceitável. Inputs opcionais não participam da elegibilidade e são omitidos da entrada se ausentes. O core resolve o namespace, mas projeta no payload somente a chave solicitada e seu valor.
 
-Um Linker é responsável por `key` namespaced. `discover.automatic` permite descoberta solicitada pelo Work; `discover.on[]` permite descoberta por evento. A descoberta recebe apenas seus inputs e devolve opcionalmente `{ "value": "..." }`; sucesso sem valor não altera o estado e não é erro. Com valor, o core faz upsert em `links[key]`. `manual` torna o Linker disponível em `work link`: após seleção, o core coleta um valor não vazio e faz o mesmo upsert, sem iniciar subprocesso.
+Um Linker declara uma `key` namespaced. Vários Linkers podem produzir a mesma chave sem que isso seja colisão: são providers alternativos da mesma relação semântica. `discover.automatic` permite descoberta solicitada pelo Work; `discover.on[]` permite descoberta por evento. A descoberta recebe apenas seus inputs e devolve opcionalmente `{ "value": "..." }`; sucesso sem valor não altera o estado e não é erro. Com valor, o core faz upsert em `links[key]` e registra sua proveniência no índice. `manual` torna o Linker disponível em `work link`: após seleção, o core coleta um valor não vazio e faz o mesmo upsert, sem iniciar subprocesso.
 
 ***
 
@@ -249,7 +264,7 @@ Ao publicar `start:finalized`, o core executa as fases:
 
 ```text
 Starter resolvido
-  → links e metadata do Starter persistidos
+  → estado `work`, links e metadata do Starter persistidos atomicamente
   → Linkers inscritos e elegíveis
   → novos links persistidos
   → Importers inscritos e elegíveis
@@ -260,11 +275,19 @@ Não há ordem garantida entre componentes do mesmo role dentro de uma fase. A e
 
 Todo componente executável recebe exatamente um JSON por stdin, escreve no máximo um JSON estruturado por stdout quando sua operação o exige e usa código de saída para sucesso ou falha. Com `runtime`, o comando é `<runtime> <entrypoint>`; sem ele, o entrypoint é executável autocontido. O runtime é checado na instalação. O core não depende de estado implícito entre invocações e nunca executa componente durante descoberta ou instalação para auto-descrição.
 
-Falhas de Linker ou Importer automáticos são registradas e exibidas como aviso, mas não desfazem o Work já criado. Em comandos manuais, a falha é retornada ao usuário sem alteração de links ou incorporação de artefatos.
+Na v1, o protocolo IPC não possui mensagens intermediárias de progresso, heartbeat ou streaming de status. Durante uma execução, o core pode apresentar um indicador visual contendo o componente e a operação corrente, mas o subprocesso produz somente o resultado final previsto pelo contrato.
+
+O core não impõe timeout próprio às execuções de Starter, Importer ou Linker na v1. Cancelamento explícito pelo usuário ou encerramento do processo continuam podendo interromper a operação. Políticas específicas de retry, latência ou indisponibilidade de serviços externos pertencem ao componente.
+
+Falhas de Linker ou Importer automáticos são registradas e exibidas como aviso, mas não desfazem o Work já criado. Em comandos manuais, a falha é retornada ao usuário sem alteração de links ou incorporação de artefatos. Plugins nunca leem ou escrevem `work-state.json` diretamente: recebem inputs e retornam outputs por contratos IPC; o core converte esses contratos para o snapshot persistido.
 
 ***
 
 ## 12. Atualização, TUI e integridade
+
+`work view` é uma operação somente leitura sobre o Work atual. O core lê o snapshot canônico e apresenta os links persistidos em `links`; não executa Linkers, não dispara descoberta e não atualiza proveniência ou timestamps de links. Fora de um diretório associado a um Work, o comando falha com mensagem acionável.
+
+A apresentação utiliza a chave semântica e o valor persistido. Comportamentos adicionais específicos de representação — por exemplo, oferecer navegação quando uma Semantic Convention definir um valor navegável — podem ser acrescentados sem alterar a semântica básica do comando.
 
 `work plugin outdated` consulta atualizações sem mudar checkout; `work plugin update <nome>` e `--all` alteram versões somente mediante ação explícita. A atualização lê e valida o novo manifesto antes de trocar a versão registrada.
 

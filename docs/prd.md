@@ -13,7 +13,7 @@
 
 ## 1. Sumário executivo
 
-Work é um CLI/TUI que orquestra o início, a retomada e o encerramento de unidades de trabalho de desenvolvimento. Cada Work recebe uma Git Worktree isolada, um arquivo de metadados e uma área própria para artefatos que plugins podem acrescentar. O núcleo conhece Git e o lifecycle do Work; toda lógica específica de uma origem, integração ou enriquecimento é fornecida por plugins externos.
+Work é um CLI/TUI que orquestra o início, a retomada e o encerramento de unidades de trabalho de desenvolvimento. Cada Work recebe uma Git Worktree isolada, um snapshot de estado local e uma área própria para artefatos que plugins podem acrescentar. O núcleo conhece Git e o lifecycle do Work; toda lógica específica de uma origem, integração ou enriquecimento é fornecida por plugins externos.
 
 Além de resolver a origem de um Work, plugins podem publicar metadata e links, descobrir relações externas e importar artefatos. O Work avalia estaticamente quando cada extensão pode rodar, fornece somente os dados declarados por ela e preserva o controle sobre estado, lifecycle e arquivos do Work.
 
@@ -60,7 +60,7 @@ Work reduz esse atrito com um ponto de entrada único e extensível. Um plugin p
 
 | Termo | Definição |
 | --- | --- |
-| **Work** | Unidade de trabalho associada a uma worktree, branch, diretório próprio e metadados locais. |
+| **Work** | Unidade de trabalho associada a uma worktree, branch, diretório próprio e snapshot local de estado. |
 | **Plugin** | Pacote instalável que declara zero ou mais componentes executáveis e/ou convenções de branch. É instalado, atualizado, habilitado e removido como uma unidade. |
 | **Componente** | Contribuição executável declarada em `components[]`. Seu `role` determina contrato, campos de manifesto e operações disponíveis. |
 | **Starter** | Componente que resolve o argumento de `work start`. |
@@ -68,9 +68,11 @@ Work reduz esse atrito com um ponto de entrada único e extensível. Um plugin p
 | **Linker** | Componente responsável por uma chave de link; pode descobrir seu valor e/ou permitir associação manual. |
 | **Convenção de branch** | Contribuição declarativa em `conventions[]`, com nomes e prefixos; não é componente executável. |
 | **Evento** | Ponto de lifecycle definido e publicado pelo Work, ao qual Importers e descobertas de Linkers podem se inscrever. |
-| **Link** | Relação entre um Work e um recurso externo, identificada por chave namespaced, como `github.pull_request`. |
-| **Metadata** | Informação conhecida sobre o Work ou publicada por componentes, separada do espaço de links. |
-| **Input** | Dado que um componente declara querer receber, no formato `link:<key>` ou `meta:<key>`, opcionalmente com o sufixo `:optional`. |
+| **Estado `work`** | Estado de domínio governado e versionado pelo core, exposto seletivamente como `work:<key>`. |
+| **Link** | Relação externa de primeira classe entre um Work e um recurso, identificada por chave semântica, como `github.pull_request`. |
+| **Metadata** | Informação extensível publicada por componentes, distinta do estado do Work e dos links. |
+| **Input** | Dado que um componente declara querer receber, no formato `work:<key>`, `link:<key>` ou `meta:<key>`, opcionalmente com o sufixo `:optional`. |
+| **Semantic Convention** | Contrato público que define namespace, chave, significado e representação de um `link` ou `meta` interoperável. |
 | **Worktree** | Árvore de trabalho Git isolada criada para o Work. |
 | **Slug** | Identificador curto e legível usado na branch e no nome do Work. |
 
@@ -80,6 +82,10 @@ Work reduz esse atrito com um ponto de entrada único e extensível. Um plugin p
 
 ### 7.1 Iniciar um desenvolvimento novo
 
+#### Primeiro uso e raiz de workspace
+
+No primeiro uso que exija criar um Work, se nenhuma raiz de workspace estiver configurada, o Work sugere um diretório padrão e permite que o usuário escolha outro diretório. A escolha é persistida e reutilizada nos próximos comandos. O usuário pode alterar posteriormente a raiz configurada.
+
 O usuário roda `work start <nome parcial do repo>`. O Starter resolve o repositório; como não retorna `start_modes`, o Work cria um Work novo. O usuário escolhe slug, convenção e prefixo de branch e recebe uma worktree pronta.
 
 ### 7.2 Contribuir ou fazer fork de um pull request
@@ -88,7 +94,7 @@ O usuário roda `work start <link do PR>`. O Starter resolve o repositório, a b
 
 ### 7.3 Retomar e arquivar trabalhos
 
-Com `work resume`, o usuário seleciona um Work em ordem de acesso recente. Com `work archive`, seleciona trabalhos ativos, confirma, e o Work destrói as worktrees e arquiva os demais arquivos e metadados.
+Com `work resume`, o usuário seleciona um Work em ordem de acesso recente. Com `work archive`, seleciona trabalhos ativos, confirma, e o Work destrói as worktrees e arquiva os demais arquivos e o snapshot de estado.
 
 ### 7.4 Importar contexto manualmente
 
@@ -98,7 +104,11 @@ Dentro de um Work, o usuário roda `work import`, escolhe um Importer manual dis
 
 Dentro de um Work, o usuário roda `work link`, escolhe um Linker manual disponível e informa um valor. O Work persiste o valor na chave do Linker.
 
-### 7.6 Gerenciar plugins e convenções
+### 7.6 Inspecionar links do Work
+
+Dentro de um Work, o usuário roda `work view` para inspecionar as relações externas atualmente associadas ao Work. O comando apresenta as chaves e os valores persistidos de seus links sem executar Linkers nem alterar o estado.
+
+### 7.7 Gerenciar plugins e convenções
 
 O usuário instala plugins de origem remota ou local, lista-os, habilita/desabilita, atualiza e remove pacotes. Pode também inspecionar ou trocar a convenção de branch memorizada para o repositório atual com `work convention` e `work convention set`.
 
@@ -109,27 +119,33 @@ O usuário instala plugins de origem remota ou local, lista-os, habilita/desabil
 ### `work start <arg>`
 
 * **RF-1.** O Work deve selecionar estaticamente, entre Starters habilitados, aquele cujo `pattern` reconhece o argumento; múltiplos matches devem ser apresentados ao usuário, sem memorização da escolha.
-* **RF-2.** O Starter escolhido deve receber o argumento e devolver os dados que conseguiu resolver, incluindo obrigatoriamente o caminho do repositório local.
+* **RF-2.** O Starter escolhido deve receber o argumento e devolver os dados que conseguiu resolver, incluindo obrigatoriamente o caminho do repositório local. O Work deve rejeitar a resolução se esse caminho não identificar um repositório Git local válido e acessível.
 * **RF-3.** Quando a resposta do Starter contiver `start_modes`, o Work deve oferecer exatamente os modos retornados. A ausência desse campo significa criação de Work novo. No modo contribuição, o Work faz checkout da branch resolvida e não executa as etapas de slug, convenção e prefixo; no modo fork, o fluxo segue como Work novo.
 * **RF-4.** Fora do modo contribuição, o Work deve solicitar um slug.
 * **RF-5.** Fora do modo contribuição, o Work deve apresentar os prefixos da convenção de branch resolvida para escolha.
 * **RF-6.** Se o Starter não fornecer base branch, o Work deve permitir selecionar uma branch remota ou local.
-* **RF-7.** O Work deve criar a worktree, seu diretório e `work-meta.json`; plugins podem acrescentar outros arquivos e diretórios, que não são estrutura criada ou interpretada pelo núcleo.
-* **RF-8.** Após materializar a estrutura e metadados de núcleo, o Work deve publicar `start:finalized`, executar Linkers e Importers inscritos e elegíveis na ordem definida pela arquitetura e mostrar o progresso.
+* **RF-7.** O Work deve criar a worktree, seu diretório e `work-state.json`; plugins podem acrescentar outros arquivos e diretórios, que não são estrutura criada ou interpretada pelo núcleo.
+* **RF-8.** Após materializar a estrutura e o estado de núcleo, o Work deve publicar `start:finalized`, executar Linkers e Importers inscritos e elegíveis na ordem definida pela arquitetura e indicar ao usuário quais extensões estão sendo executadas.
 * **RF-9.** Ao concluir, o comando deve reposicionar o terminal no diretório da worktree recém-criada.
 * **RF-10.** No primeiro uso, o Work deve disponibilizar ao menos um Starter funcional para repositório local sem instalação manual.
 * **RF-23.** No primeiro uso de um repositório fora do modo contribuição, se houver mais de uma convenção habilitada, o usuário deve escolher uma e a escolha deve ser memorizada para esse repositório.
 * **RF-24.** No primeiro uso, o Work deve disponibilizar ao menos uma convenção de branch por padrão.
+* **RF-36.** Quando nenhuma raiz de workspace estiver configurada, o Work deve solicitar sua definição antes da primeira criação de Work, oferecendo um valor padrão sugerido, persistir a escolha e permitir sua alteração posterior.
+* **RF-37.** Fora do modo contribuição, antes de criar uma branch ou worktree, o Work deve garantir que o nome de branch resultante seja válido para Git e não colida com uma branch existente incompatível com a nova criação. Em caso de rejeição, o usuário deve poder corrigir a escolha que originou o nome e tentar novamente.
 
 ### Extensões do Work
 
 * **RF-26.** Antes de executar uma operação de Importer ou descoberta de Linker, o Work deve avaliar estaticamente habilitação, forma de ativação, inscrição no evento, filtro de Starter e inputs obrigatórios; componente inelegível não deve ser executado.
-* **RF-27.** O Work deve projetar ao subprocesso somente os inputs declarados pelo componente; inputs opcionais ausentes devem ser omitidos.
+* **RF-27.** O Work deve resolver inputs nos namespaces `work`, `meta` e `link` e projetar ao subprocesso somente os inputs declarados pelo componente; inputs opcionais ausentes devem ser omitidos.
 * **RF-28.** Para cada execução de Importer, o Work deve fornecer diretório temporário exclusivo, validar todas as colisões antes de alterar o Work e nunca sobrescrever arquivos silenciosamente.
 * **RF-29.** Falha automática de Linker ou Importer após a criação do Work deve concluir `work start` com aviso e diagnóstico, sem desfazer o Work. Uma descoberta bem-sucedida sem valor não é erro.
 * **RF-30.** Dentro de um Work, `work import` deve oferecer Importers que declaram `manual` e estejam elegíveis, e executar a operação `import` selecionada.
 * **RF-31.** Dentro de um Work, `work link` deve oferecer Linkers que declaram `manual`, solicitar um valor não vazio e persistir esse valor sob a chave do Linker.
-* **RF-32.** Links e metadata devem ser persistidos separadamente. Cada chave de link mantém um único valor; publicação pelo Starter, descoberta e associação manual fazem upsert, e a última origem vence.
+* **RF-32.** O estado do Work, metadata e links devem ser persistidos em seções semanticamente distintas no mesmo snapshot canônico. Cada chave de link mantém um único valor; publicação pelo Starter, descoberta e associação manual fazem upsert, e a última origem vence.
+* **RF-33.** O snapshot `work-state.json` deve ser atualizado atomicamente, versionado por schema e controlado exclusivamente pelo core; plugins interagem com estado apenas por inputs e outputs públicos.
+* **RF-34.** O Work deve manter `work.db` como projeção global consultável e ser capaz de reconstruí-la ou reconciliá-la a partir dos snapshots dos Works.
+* **RF-35.** Chaves públicas de `meta` e `link` devem seguir Semantic Conventions; chaves privadas devem usar namespace explícito do plugin. A identidade semântica da chave não deve incluir o componente que produziu seu valor.
+* **RF-38.** Dentro de um Work, `work view` deve listar os links atualmente persistidos no snapshot canônico. A operação é somente leitura e não deve executar descoberta de Linkers nem modificar o Work.
 
 ### `work resume` e `work archive`
 
@@ -161,7 +177,7 @@ O usuário instala plugins de origem remota ou local, lista-os, habilita/desabil
 * **RNF-2. Extensibilidade sem fricção.** Novo plugin não exige mudança no código do Work.
 * **RNF-3. Determinismo.** Preparação e elegibilidade são previsíveis e não dependem de IA.
 * **RNF-4. Zero custo de raciocínio de IA.** Nenhuma jornada do CLI requer LLM.
-* **RNF-5. Auditabilidade do estado.** Work, metadata, links e artefatos permanecem rastreáveis localmente.
+* **RNF-5. Auditabilidade do estado.** O snapshot local canônico preserva Work, metadata, links e artefatos de forma rastreável; o índice global pode ser reconstruído a partir dele.
 * **RNF-6. Portabilidade.** O comportamento é consistente nos sistemas operacionais suportados.
 * **RNF-7. Confiança mínima necessária.** A origem de plugin é escolhida explicitamente pelo usuário e o núcleo nunca carrega código de plugin no próprio processo.
 
@@ -169,9 +185,9 @@ O usuário instala plugins de origem remota ou local, lista-os, habilita/desabil
 
 ## 10. Experiência do usuário
 
-No fluxo de `work start`, o Work resolve e apresenta escolhas necessárias, cria o Work, persiste a resposta do Starter e executa extensões pós-criação. Progresso de Linkers e Importers é exibido; erros automáticos são reportados como avisos com diagnóstico, pois o Work já está disponível.
+No fluxo de `work start`, o Work resolve e apresenta escolhas necessárias, cria o Work, materializa seu estado canônico a partir da resposta do Starter e executa extensões pós-criação. Enquanto Linkers e Importers são executados, o Work indica qual extensão está em execução; erros automáticos são reportados como avisos com diagnóstico, pois o Work já está disponível.
 
-Todas as escolhas — Starters concorrentes, modo de início, convenção, prefixo, base branch, retomada, arquivamento, Importer e Linker manual — usam componentes de TUI consistentes e navegáveis por teclado. `work import` e `work link` são executados no Work atual; fora dele, falham com mensagem clara.
+Todas as escolhas — Starters concorrentes, modo de início, convenção, prefixo, base branch, retomada, arquivamento, Importer e Linker manual — usam componentes de TUI consistentes e navegáveis por teclado. `work view`, assim como `work import` e `work link`, opera sobre o Work atual; fora de um Work, falha com mensagem clara.
 
 ***
 
