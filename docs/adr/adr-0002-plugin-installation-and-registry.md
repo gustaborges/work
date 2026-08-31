@@ -24,7 +24,7 @@ Dois tipos de fonte de instalação, alimentando o mesmo registro:
 
 **Referência a componente individual.** Comandos que apontam para um componente específico aceitam o nome nu do componente quando ele é único entre os componentes habilitados; em colisão de nome entre pacotes diferentes, a referência é qualificada por pacote (esquema exato em `add-0001` §4).
 
-A instalação separa, no layout de diretórios, config (editado por humano) de estado (gerado pela ferramenta) — layout completo em `add-0001` §5. O registro em si vive inteiramente no estado gerado, nunca editado à mão. Listar plugins instalados (RF-17) e desinstalar (RF-20) são comandos diretos de primeira classe, usáveis em CI/dotfiles sem depender da TUI de gestão descrita no ADD.
+A instalação separa, no layout de diretórios, config (editado por humano) de estado (gerado pela ferramenta) — layout completo em `add-0001` §5. O registro em si vive inteiramente no estado gerado, nunca editado à mão. Listar plugins instalados (RF-17) e desinstalar (RF-20) são comandos diretos de primeira classe, usáveis em CI/dotfiles sem depender da TUI de gestão descrita no ADD. Conforme ADR-0015, a policy de Repository Locators é configuração declarativa do usuário: instalação e habilitação não a alteram; ao desinstalar um plugin cujos Locators estejam nela, o Work exige tratamento explícito e remove as referências confirmadas na mesma alteração consistente.
 
 ## Alternativas consideradas
 

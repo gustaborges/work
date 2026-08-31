@@ -11,7 +11,7 @@ Um núcleo 100% vazio faz `work start` "de fábrica" não fazer nada, contradize
 
 ## Decisão
 
-Um pacote oficial de referência (contendo no mínimo um plugin que cumpra o papel de Starter para repositório local e uma convenção de branch padrão mínima — ADR-0012 — satisfazendo RF-24) é instalado automaticamente no primeiro uso, usando **exatamente o mesmo mecanismo** de instalação de qualquer plugin de terceiro (ADR-0002) — nunca como código embutido no núcleo. Para não depender de rede, o pacote vai embutido nos assets do binário/release como *seed*, mas ainda é "instalado" através do pipeline normal (grava manifesto, registro e entrypoint — ver `add-0001` §6). O usuário pode desinstalar esse pacote como qualquer outro, e ele desaparece de fato, sem deixar comportamento fantasma no núcleo.
+Um pacote oficial de referência contém, no mínimo, um Starter fallback para referências a repositório local, um Repository Locator baseado em filesystem e uma convenção de branch `freeform` (ADRs 0012, 0014 e 0015). Ele é instalado automaticamente no primeiro uso, usando **exatamente o mesmo mecanismo** de instalação de qualquer plugin de terceiro (ADR-0002) — nunca como código embutido no núcleo. Para não depender de rede, o pacote vai embutido nos assets do binário/release como *seed*, mas ainda é "instalado" através do pipeline normal (grava manifesto, registro e entrypoint — ver `add-0001` §6); o Locator padrão entra inicialmente na policy global. O usuário pode desinstalar esse pacote como qualquer outro, e ele desaparece de fato, sem deixar comportamento fantasma no núcleo.
 
 ## Alternativas consideradas
 

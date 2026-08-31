@@ -2,11 +2,11 @@
 
 **Status:** Rascunho
 
-**Data:** 2026-08-29
+**Data:** 2026-08-31
 
-**Decisões que governam este documento:** ADR-0000 (execução de plugins), ADR-0002 (instalação e registro), ADR-0003 (bootstrap), ADR-0004 (colisão de Starters), ADR-0005 (atualização), ADR-0006 (runtime), ADR-0008 (assinatura), ADR-0009 (stack), ADR-0011 (resolução de convenção), ADR-0012 (modelo de componentes e manifesto) e ADR-0013 (namespaces e estado persistido).
+**Decisões que governam este documento:** ADR-0000 (execução de plugins), ADR-0002 (instalação e registro), ADR-0003 (bootstrap), ADR-0004 (colisão de Starters), ADR-0005 (atualização), ADR-0006 (runtime), ADR-0008 (assinatura), ADR-0009 (stack), ADR-0011 (resolução de convenção), ADR-0012 (modelo de componentes e manifesto), ADR-0013 (namespaces e estado persistido), ADR-0014 (separação entre origem e localização), ADR-0015 (policy de resolução) e ADR-0016 (Repository Reference e endpoints Git).
 
-**Requisitos atendidos:** `docs/prd.md` — RF-1 a RF-38, RNF-1 a RNF-7. Este documento implementa os requisitos e decisões listados; incompatibilidades devem ser resolvidas no PRD ou em ADR, nunca por divergência silenciosa de design.
+**Requisitos atendidos:** `docs/prd.md` — RF-1 a RF-49, RNF-1 a RNF-9. Este documento implementa os requisitos e decisões listados; incompatibilidades devem ser resolvidas no PRD ou em ADR, nunca por divergência silenciosa de design.
 
 ***
 
@@ -95,6 +95,15 @@ Cada chave de link possui um único valor corrente e toda publicação é upsert
       "runtime": "python3"
     },
     {
+      "name": "filesystem-repository-locator",
+      "role": "repository-locator",
+      "display_name": "Filesystem repositories",
+      "description": "Finds local Git repositories in configured search roots",
+      "accepts": ["git_fetch_urls", "name", "query"],
+      "entrypoint": "locator.py",
+      "runtime": "python3"
+    },
+    {
       "name": "github-pull-request-importer",
       "role": "importer",
       "on": [{
@@ -149,8 +158,9 @@ O pacote é a unidade atômica de instalação, atualização, habilitação e r
 | `starter` | `name`, `role`, `entrypoint` | `pattern`, `runtime` | `on`, `manual`, `inputs`, `key`, `discover` |
 | `importer` | `name`, `role`, `entrypoint`, ao menos um de `on` ou `manual` | `on`, `manual`, `inputs`, `runtime` | `pattern`, `key`, `discover` |
 | `linker` | `name`, `role`, `key`, `entrypoint`, ao menos um de `discover` ou `manual` | `discover`, `manual`, `runtime` | `pattern` |
+| `repository-locator` | `name`, `role`, `entrypoint`, `accepts` não vazio | `runtime`, `display_name`, `description` | `pattern`, `on`, `manual`, `inputs`, `key`, `discover` |
 
-`conventions[]` permanece fora de `components[]`; sua entrada tem somente `name` e `prefixes[]`. Campos incompatíveis tornam a instalação ou atualização inválida. Não existe campo `invocation`, `type`, `capabilities` ou `hooks`.
+`accepts` de `repository-locator` contém apenas `git_fetch_urls`, `name` e `query`. `path` não é aceito porque sua presença faz o core validar diretamente o caminho, sem executar Locators. `conventions[]` permanece fora de `components[]`; sua entrada tem somente `name` e `prefixes[]`. Campos incompatíveis tornam a instalação ou atualização inválida. Não existe campo `invocation`, `type`, `capabilities`, `hooks`, `priority`, `score` ou posição recomendada.
 
 ### 4.2 Namespaces de dados e Semantic Conventions
 
@@ -174,15 +184,15 @@ Chaves públicas de `meta` e `link` seguem as Semantic Conventions do Work: defi
     work.db
 ```
 
-`work plugin install <origem>` clona fonte remota e fixa uma referência; `work plugin install --local <path>` cria link para desenvolvimento local. O registro é gerado do manifesto e armazena, por componente, alias do pacote, nome, role, entrypoint, runtime, pattern, eventos e filtros, inputs, chave de Linker, descoberta e apresentação manual. A instalação valida a gramática e os namespaces de `inputs[]` e a sintaxe das chaves declaradas no manifesto; dados publicados em outputs são validados quando recebidos. Convenções são registradas separadamente com nome e prefixos.
+`work plugin install <origem>` clona fonte remota e fixa uma referência; `work plugin install --local <path>` cria link para desenvolvimento local. O registro é gerado do manifesto e armazena, por componente, alias do pacote, nome, role, entrypoint, runtime, pattern, eventos e filtros, inputs, chave de Linker, descoberta, apresentação manual e `accepts` de Locator. A instalação valida a gramática e os namespaces de `inputs[]`, `accepts` e a sintaxe das chaves declaradas no manifesto; dados publicados em outputs são validados quando recebidos. Convenções são registradas separadamente com nome e prefixos.
 
-Conflito de alias de pacote de origem diferente falha; `--as <alias>` resolve-o. Reinstalação da mesma origem sob o mesmo alias é idempotente. A alteração do modelo de campos é validada pelo mesmo pipeline de instalação e atualização.
+Conflito de alias de pacote de origem diferente falha; `--as <alias>` resolve-o. Reinstalação da mesma origem sob o mesmo alias é idempotente. A alteração do modelo de campos é validada pelo mesmo pipeline de instalação e atualização. A instalação registra Locators, mas não altera automaticamente a Repository Resolution Policy. Se a desinstalação afetar Locators referenciados na policy, o modo interativo apresenta o impacto e confirma a remoção dessas referências na mesma alteração; o modo não interativo exige tratamento explícito.
 
 ***
 
 ## 6. Bootstrap do pacote de referência
 
-O seed oficial contém, no mínimo, um Starter fallback para repositório local e a convenção `freeform` com prefixo `{slug}`. No primeiro `work init` ou `work start`, ele passa pelo pipeline normal de instalação, sem rede. Pode ser desinstalado como qualquer outro pacote.
+O seed oficial contém, no mínimo, um Starter fallback para referências a repositório local, um Repository Locator baseado em filesystem e a convenção `freeform` com prefixo `{slug}`. O Locator padrão é incluído inicialmente na Repository Resolution Policy. No primeiro `work init` ou `work start`, todos passam pelo pipeline normal de instalação, sem rede. Podem ser desinstalados como qualquer outro pacote.
 
 ***
 
@@ -200,7 +210,13 @@ Com sucesso, devolve os dados que conseguiu resolver. Campos de núcleo são exp
 
 ```jsonc
 {
-  "repo_path": "/home/user/projects/project",
+  "repository": {
+    "git_fetch_urls": [
+      "https://github.com/example/project.git",
+      "git@github.com:example/project.git"
+    ],
+    "name": "project"
+  },
   "base_branch": "feature/source-branch",
   "start_modes": ["contribution", "fork"],
   "meta": { "github.pull_request.number": 212 },
@@ -210,9 +226,64 @@ Com sucesso, devolve os dados que conseguiu resolver. Campos de núcleo são exp
 }
 ```
 
-Campos opcionais aparecem apenas quando resolvidos. Ausência de `start_modes` significa Work novo. Quando presente, o core oferece exatamente os modos retornados e persiste o modo escolhido em `work.start_mode`; para ausência, persiste `new`. `repo_path` pertence somente ao contrato de resolução do Starter: ele identifica o repositório de origem para o fluxo de criação e não é promovido automaticamente a metadata ou a input público. A convenção de branch não é entrada nem saída do Starter. Falha de subprocesso do Starter escolhido falha `work start`; não há resultado `matched: false` ou equivalente.
+Campos de `repository` são independentes e opcionais: `path` é uma localização local já resolvida; `git_fetch_urls` são endpoints Git conhecidos para fetch; `name` é nome lógico conhecido, potencialmente ambíguo; e `query` é texto opaco destinado a mecanismos locais. A resposta precisa conter `path` ou informação que torne ao menos um Locator configurado elegível. A referência é transitória: não é promovida automaticamente a `work`, `meta` ou `links`.
 
-Antes de continuar o fluxo de criação, o core valida que `repo_path` existe, é acessível e identifica um repositório Git local. Falha nessa validação encerra `work start` antes de qualquer materialização do Work, com diagnóstico que identifica o caminho rejeitado. Essa validação pertence ao core porque Git e a criação da worktree fazem parte do lifecycle governado por ele. Uma vez escolhido estaticamente pelo `pattern`, falha do Starter ou resposta estruturalmente inválida continua sendo falha do comando.
+Ausência de `start_modes` significa Work novo. Quando presente, o core oferece exatamente os modos retornados e persiste o modo escolhido em `work.start_mode`; para ausência, persiste `new`. A convenção de branch não é entrada nem saída do Starter. Falha de subprocesso do Starter escolhido ou resposta estruturalmente inválida falha `work start`; não há resultado `matched: false` ou equivalente.
+
+### 7.1 Repository Resolution
+
+O pipeline é:
+
+```text
+argument
+  → Starter
+  → Repository Reference
+  → validação direta de path ou chain de Repository Locators
+  → repo_path validado
+  → criação normal do Work
+```
+
+Quando `repository.path` existe, o core valida diretamente que o caminho existe, é acessível e identifica um repositório Git utilizável. Caminho inválido encerra `work start`; Locators e os demais campos não são fallback. Quando não há `path`, o core percorre a Repository Resolution Policy global na ordem declarada. Um Locator participa apenas se ainda existir, seu plugin estiver habilitado e pelo menos um campo de `accepts` estiver presente na referência.
+
+O core projeta ao subprocesso somente os campos aceitos e presentes, além das raízes de busca configuradas:
+
+```jsonc
+{
+  "repository": {
+    "git_fetch_urls": ["https://github.com/example/project.git"],
+    "name": "project"
+  },
+  "repository_roots": ["/home/user/src", "/home/user/projects"]
+}
+```
+
+O Locator retorna somente candidatos:
+
+```json
+{ "matches": [{ "repo_path": "/home/user/src/example/project" }] }
+```
+
+Não há `confidence`, `score`, `priority`, `winner` ou agregação entre Locators. `matches: []` continua para o próximo Locator elegível; falha de processo ou de protocolo interrompe a resolução; candidatos retornados são todos validados e deduplicados pelo core. Um candidato válido conclui a resolução; múltiplos candidatos válidos são apresentados ao usuário e interrompem a chain. Se todos os candidatos de um Locator forem inválidos, a resolução falha com diagnóstico.
+
+`git_fetch_urls` não é identidade canônica universal. Locators que as suportarem comparam endpoints de fetch em todos os remotes locais, não somente `origin`, e preferem operações nativas do Git para consultar URLs e seus rewrites. O core não presume equivalência entre SSH, HTTPS, usuários, protocolos, paths ou sufixos `.git`.
+
+### 7.2 Policy, Locators e raízes de busca
+
+A configuração global mantém a policy declarativa e as raízes de busca separadas da raiz de workspace:
+
+```jsonc
+{
+  "workspace": "/home/user/.workspaces",
+  "repository_roots": ["/home/user/src", "/home/user/projects"],
+  "repository_resolution": {
+    "locators": ["core/filesystem"]
+  }
+}
+```
+
+`work repository` oferece TUI para as mesmas operações dos comandos diretos. `work repository policy` exibe a sequência efetiva, incluindo referências indisponíveis; `policy add`, `remove`, `move` e `set` a modificam. `work repository locator list` mostra todos os Locators instalados e seu estado. `work repository roots list`, `add`, `remove` e `set` administram raízes de busca. Remover da policy deixa o componente instalado e habilitado, apenas fora da estratégia; desabilitar é estado do plugin e preserva a referência na policy para possível reativação.
+
+O filesystem Locator oficial procura somente nas raízes configuradas, com profundidade limitada por sua própria configuração. Não usa `workspace/in-progress` ou `workspace/archived` como catálogo de repositórios. Ele pode usar `name`, `query` e `git_fetch_urls`, retorna todas as correspondências e não depende de serviço externo.
 
 ***
 
@@ -291,4 +362,4 @@ A apresentação utiliza a chave semântica e o valor persistido. Comportamentos
 
 `work plugin outdated` consulta atualizações sem mudar checkout; `work plugin update <nome>` e `--all` alteram versões somente mediante ação explícita. A atualização lê e valida o novo manifesto antes de trocar a versão registrada.
 
-`work plugin` oferece TUI sobre os mesmos comandos diretos de gestão. `work import` e `work link` usam a TUI para listar somente componentes manuais disponíveis e elegíveis no Work atual. A origem de todos os plugins é explicitamente escolhida pelo usuário e a referência instalada é fixada; assinatura formal fica adiada conforme ADR-0008.
+`work plugin` oferece TUI sobre os mesmos comandos diretos de gestão. `work repository` oferece TUI para policy de Locators e raízes de busca, sobre os mesmos comandos diretos de `work repository policy`, `work repository locator list` e `work repository roots`. `work import` e `work link` usam a TUI para listar somente componentes manuais disponíveis e elegíveis no Work atual. A origem de todos os plugins é explicitamente escolhida pelo usuário e a referência instalada é fixada; assinatura formal fica adiada conforme ADR-0008.
