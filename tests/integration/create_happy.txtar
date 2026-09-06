@@ -7,7 +7,8 @@ env WS=$WORK/ws
 work start $WORK/src --workspace $WS --base main --slug add-retry-logic --prefix {slug} --yes
 stdout 'work: created [0-9A-HJKMNP-TV-Z]{26}'
 stdout 'work: branch add-retry-logic  \(from main @ '
-stdout 'work: path .*/ws/in-progress/src_add-retry-logic/worktree'
+# Path separator is '/' on POSIX and '\' on Windows; '.' matches either.
+stdout 'work: path .*ws.in-progress.src_add-retry-logic.worktree'
 
 # The FR-023 notice goes to stderr (no shell integration in the test env).
 stderr 'this shell session was not moved'
