@@ -7,6 +7,7 @@ package bootstrap
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -41,6 +42,10 @@ const (
 // before the atomic swap. A process killed mid-install can leave one behind;
 // install() sweeps stale ones on its next run.
 const stagePrefix = ".work-reference-"
+
+// backupSuffix names the previous package while a replacement is in progress.
+// A restart restores it when the replacement did not reach its destination.
+const backupSuffix = ".old"
 
 // installCheckpoint, when non-nil, is invoked at each named phase of install()
 // so tests can simulate an interruption. It is always nil in production.
@@ -84,35 +89,52 @@ func EnsureSeed(h workhome.Home) error {
 		return diag.Wrap(diag.BootstrapFailed, err, "cannot read the component registry")
 	}
 
-	if current(h, reg, digest) {
+	if err := recoverInterruptedSwap(h); err != nil {
+		return diag.Wrap(diag.BootstrapFailed, err, "cannot recover the previous reference package")
+	}
+
+	isCurrent, err := current(h, reg, digest)
+	if err != nil {
+		return err // already a diag error
+	}
+	if isCurrent {
 		return nil
 	}
 	return install(h, digest)
 }
 
-// current reports whether every seed record is registered and the installed
-// digest matches the embedded one and the plugin directory is intact.
-func current(h workhome.Home, reg *registry.Registry, digest string) bool {
+// current reports whether every seed record and the locator policy entry are
+// present, the installed digest matches the embedded one, and the plugin
+// directory is intact.
+func current(h workhome.Home, reg *registry.Registry, digest string) (bool, error) {
 	if !reg.HasComponent(Alias, componentStarter) ||
 		!reg.HasComponent(Alias, componentLocator) {
-		return false
+		return false, nil
 	}
 	if _, ok := reg.ConventionByName(conventionName); !ok {
-		return false
+		return false, nil
+	}
+
+	cfg, err := config.Load(h.ConfigFile())
+	if err != nil {
+		return false, err
+	}
+	if !slices.Contains(cfg.RepositoryResolution.Locators, LocatorPolicyEntry) {
+		return false, nil
 	}
 
 	meta, err := readInstallMeta(filepath.Join(h.PluginsDir(), Alias, ".install-meta.json"))
 	if err != nil || meta.ContentDigest != digest {
-		return false
+		return false, nil
 	}
 
 	src := filepath.Join(h.PluginsDir(), Alias, "source")
 	for _, name := range binaryNames() {
 		if _, err := os.Stat(filepath.Join(src, name)); err != nil {
-			return false
+			return false, nil
 		}
 	}
-	return true
+	return true, nil
 }
 
 func install(h workhome.Home, digest string) error {
@@ -131,7 +153,8 @@ func install(h workhome.Home, digest string) error {
 	// interrupted run never accumulates partial directories (SC-007, FR-005).
 	sweepStaleStaging(h)
 
-	// Stage the whole package in a temp dir, then swap it in atomically.
+	// Stage the whole package in a temp dir, then replace the destination through
+	// a recoverable rename sequence.
 	staging, err := os.MkdirTemp(h.PluginsDir(), stagePrefix+"*")
 	if err != nil {
 		return diag.Wrap(diag.BootstrapFailed, err, "cannot stage the reference package")
@@ -165,14 +188,22 @@ func install(h workhome.Home, digest string) error {
 	}
 
 	dest := filepath.Join(h.PluginsDir(), Alias)
-	if err := os.RemoveAll(dest); err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "cannot replace the existing reference package")
+	backup := dest + backupSuffix
+	if err := moveDestinationAside(dest, backup); err != nil {
+		return diag.Wrap(diag.BootstrapFailed, err, "cannot prepare the existing reference package for replacement")
 	}
-	if err := checkpoint("dest-removed"); err != nil {
+	if err := checkpoint("dest-backed-up"); err != nil {
 		return diag.Wrap(diag.BootstrapFailed, err, "interrupted while replacing the reference package")
 	}
 	if err := os.Rename(staging, dest); err != nil {
+		if restoreErr := restoreDestination(backup, dest); restoreErr != nil {
+			return diag.Wrapf(diag.BootstrapFailed, err,
+				"cannot install the reference package (and cannot restore the previous package: %v)", restoreErr)
+		}
 		return diag.Wrap(diag.BootstrapFailed, err, "cannot install the reference package")
+	}
+	if err := os.RemoveAll(backup); err != nil {
+		return diag.Wrap(diag.BootstrapFailed, err, "cannot remove the replaced reference package")
 	}
 	if err := checkpoint("renamed"); err != nil {
 		return diag.Wrap(diag.BootstrapFailed, err, "interrupted before registering the reference package")
@@ -185,6 +216,51 @@ func install(h workhome.Home, digest string) error {
 		return diag.Wrap(diag.BootstrapFailed, err, "interrupted before updating the resolution policy")
 	}
 	return addLocatorToPolicy(h)
+}
+
+// recoverInterruptedSwap restores the previous package when a process died
+// after moving it aside but before the staged replacement reached dest. A
+// leftover backup beside a valid destination is safe to discard.
+func recoverInterruptedSwap(h workhome.Home) error {
+	dest := filepath.Join(h.PluginsDir(), Alias)
+	backup := dest + backupSuffix
+
+	_, destErr := os.Lstat(dest)
+	_, backupErr := os.Lstat(backup)
+	switch {
+	case errors.Is(destErr, os.ErrNotExist) && backupErr == nil:
+		return os.Rename(backup, dest)
+	case destErr == nil && backupErr == nil:
+		return os.RemoveAll(backup)
+	case destErr != nil && !errors.Is(destErr, os.ErrNotExist):
+		return destErr
+	case backupErr != nil && !errors.Is(backupErr, os.ErrNotExist):
+		return backupErr
+	}
+	return nil
+}
+
+func moveDestinationAside(dest, backup string) error {
+	if _, err := os.Lstat(dest); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if _, err := os.Lstat(backup); err == nil {
+		return errors.New("previous-package backup already exists")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return os.Rename(dest, backup)
+}
+
+func restoreDestination(backup, dest string) error {
+	if _, err := os.Lstat(backup); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return os.Rename(backup, dest)
 }
 
 // sweepStaleStaging removes staging directories orphaned by a killed install.
