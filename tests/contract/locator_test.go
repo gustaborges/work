@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -136,6 +137,9 @@ func TestLocatorContract(t *testing.T) {
 	})
 
 	t.Run("unreadable root", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("chmod 0000 does not deny directory reads on Windows")
+		}
 		if os.Getuid() == 0 {
 			t.Skip("root bypasses directory permissions")
 		}
