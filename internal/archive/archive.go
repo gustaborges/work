@@ -217,6 +217,9 @@ func archiveOne(ctx context.Context, p Params, row projection.Work, last bool) O
 		return o
 	}
 	origSnapshotPath := row.SnapshotPath
+	// Archive() also bumps last_accessed_at; the compensator must restore the
+	// prior value or a rolled-back Work drifts from its projection row.
+	origLastAccessedAt := state.Work.LastAccessedAt
 	state.Archive(now)
 	if werr := work.Write(origSnapshotPath, state); werr != nil {
 		unwind()
@@ -231,6 +234,7 @@ func archiveOne(ctx context.Context, p Params, row projection.Work, last bool) O
 		}
 		back.Work.Status = work.StatusInProgress
 		back.Work.ArchivedAt = ""
+		back.Work.LastAccessedAt = origLastAccessedAt
 		return work.Write(origSnapshotPath, back)
 	}})
 
