@@ -12,7 +12,7 @@ A escolha de stack do núcleo (Go, Cobra, Bubble Tea, SQLite) é uma decisão ar
 
 * **Go** como linguagem do núcleo — compila para um binário único, multiplataforma, sem exigir runtime externo instalado.
 * **Cobra** como framework de CLI — padrão de mercado para CLIs em Go, usado por `kubectl`, `gh`, `hugo`, entre outros; reduz risco de manutenção por ser amplamente adotado e documentado.
-* **Bubble Tea** como framework de TUI — é a opção idiomática em Go para as telas interativas de seleção que o produto exige em praticamente todo fluxo (plugins concorrentes, prefixos de branch, base branch, `work resume`, `work archive`, gestão de plugins).
+* **Bubble Tea** como framework de TUI — é a opção idiomática em Go para a home e as telas interativas de seleção que o produto exige em praticamente todo fluxo (plugins concorrentes, prefixos de branch, base branch, `work resume`, `work archive` e hubs administrativos).
 * **SQLite embutido**, via driver Go puro sem dependência de CGO, para persistência de estado local — guardado dentro do layout descrito em `docs/add/add-0001-work-system-architecture.md`, Seção 3.
 
 ## Alternativas consideradas

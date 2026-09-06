@@ -11,7 +11,7 @@ O gatilho de atualização é comparar apenas um campo opaco de versão declarad
 
 ## Decisão
 
-* Atualização é sempre explícita, nunca automática/silenciosa (RF-19). Existe um comando somente-leitura para listar o que está desatualizado, um comando de atualização individual e um de atualização em lote (mostrando o que vai mudar, com confirmação). `work start`/`resume`/`archive` nunca disparam nada disso (RNF-4).
+* Atualização é sempre explícita, nunca automática/silenciosa (RF-19). `work plugin update --check [plugin...]` é a consulta somente leitura; `work plugin update <plugin...>` atualiza alvos explícitos; `work plugin update --all` atualiza em lote, mostrando o que vai mudar e exigindo confirmação. `work plugin update` sem alvo abre a seleção TUI. `work start`/`resume`/`archive` nunca disparam nada disso (RNF-4). A gramática transversal é governada pela ADR-0017.
 * Checar atualização nunca toca a cópia de trabalho que serve o entrypoint atualmente instalado do plugin — só a consulta explícita e confirmada move o quê está de fato em uso para uma nova referência resolvida. A mecânica concreta está em `add-0001` §12.
 * Nenhuma convenção adicional de release (ex: tag) é exigida do autor do plugin além do campo de versão já declarado no manifesto (ADR-0012) — mantém a promessa de baixa fricção de autoria; o custo é uma checagem incremental por plugin, aceitável por só acontecer em consultas explícitas, nunca em `start`/`resume`/`archive`.
 

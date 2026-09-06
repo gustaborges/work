@@ -184,7 +184,7 @@ Chaves públicas de `meta` e `link` seguem as Semantic Conventions do Work: defi
     work.db
 ```
 
-`work plugin install <origem>` clona fonte remota e fixa uma referência; `work plugin install --local <path>` cria link para desenvolvimento local. O registro é gerado do manifesto e armazena, por componente, alias do pacote, nome, role, entrypoint, runtime, pattern, eventos e filtros, inputs, chave de Linker, descoberta, apresentação manual e `accepts` de Locator. A instalação valida a gramática e os namespaces de `inputs[]`, `accepts` e a sintaxe das chaves declaradas no manifesto; dados publicados em outputs são validados quando recebidos. Convenções são registradas separadamente com nome e prefixos.
+`work plugin install <source>` aceita origem remota ou caminho local e produz uma instalação fixada; para um caminho local, `--link` cria em seu lugar um vínculo de desenvolvimento. `--link` é inválido com origem remota. O registro é gerado do manifesto e armazena, por componente, alias do pacote, nome, role, entrypoint, runtime, pattern, eventos e filtros, inputs, chave de Linker, descoberta, apresentação manual e `accepts` de Locator. A instalação valida a gramática e os namespaces de `inputs[]`, `accepts` e a sintaxe das chaves declaradas no manifesto; dados publicados em outputs são validados quando recebidos. Convenções são registradas separadamente com nome e prefixos.
 
 Conflito de alias de pacote de origem diferente falha; `--as <alias>` resolve-o. Reinstalação da mesma origem sob o mesmo alias é idempotente. A alteração do modelo de campos é validada pelo mesmo pipeline de instalação e atualização. A instalação registra Locators, mas não altera automaticamente a Repository Resolution Policy. Se a desinstalação afetar Locators referenciados na policy, o modo interativo apresenta o impacto e confirma a remoção dessas referências na mesma alteração; o modo não interativo exige tratamento explícito.
 
@@ -192,13 +192,13 @@ Conflito de alias de pacote de origem diferente falha; `--as <alias>` resolve-o.
 
 ## 6. Bootstrap do pacote de referência
 
-O seed oficial contém, no mínimo, um Starter fallback para referências a repositório local, um Repository Locator baseado em filesystem e a convenção `freeform` com prefixo `{slug}`. O Locator padrão é incluído inicialmente na Repository Resolution Policy. No primeiro `work init` ou `work start`, todos passam pelo pipeline normal de instalação, sem rede. Podem ser desinstalados como qualquer outro pacote.
+O seed oficial contém, no mínimo, um Starter fallback para referências a repositório local, um Repository Locator baseado em filesystem e a convenção `freeform` com prefixo `{slug}`. O Locator padrão é incluído inicialmente na Repository Resolution Policy. No primeiro comando que necessite desse estado — normalmente `work start` — todos passam pelo pipeline normal de instalação, sem rede. Não existe `work init` público. Os componentes do seed podem ser desinstalados como qualquer outro pacote.
 
 ***
 
 ## 7. Resolução de Starters e criação do Work
 
-Em `work start <arg>`, Starters específicos (`pattern` presente e não vazio) são avaliados localmente contra o argumento. Um único match é usado; múltiplos matches são escolhidos por TUI; ausência de match usa o único fallback habilitado. A colisão é perguntada a cada ocorrência. A ausência de fallback gera erro acionável que orienta habilitar ou instalar um Starter.
+Em `work start [source]`, a ausência de `source` em terminal interativo abre sua coleta na TUI; em modo não interativo, falha com uso acionável. Obtido o valor, Starters específicos (`pattern` presente e não vazio) são avaliados localmente contra o argumento. Um único match é usado; múltiplos matches são escolhidos por TUI; ausência de match usa o único fallback habilitado. A colisão é perguntada a cada ocorrência. A ausência de fallback gera erro acionável que orienta habilitar ou instalar um Starter.
 
 O Starter recebe:
 
@@ -281,7 +281,7 @@ A configuração global mantém a policy declarativa e as raízes de busca separ
 }
 ```
 
-`work repository` oferece TUI para as mesmas operações dos comandos diretos. `work repository policy` exibe a sequência efetiva, incluindo referências indisponíveis; `policy add`, `remove`, `move` e `set` a modificam. `work repository locator list` mostra todos os Locators instalados e seu estado. `work repository roots list`, `add`, `remove` e `set` administram raízes de busca. Remover da policy deixa o componente instalado e habilitado, apenas fora da estratégia; desabilitar é estado do plugin e preserva a referência na policy para possível reativação.
+`work repository` oferece TUI para as mesmas operações dos comandos diretos. `work repository policy list` exibe a sequência efetiva, incluindo referências indisponíveis; `policy add`, `remove`, `move` e `replace` a modificam. `add` aceita posicionamento opcional por `--before` ou `--after`; `move` exige exatamente um deles; `replace` substitui a sequência integral. `work repository locator list` mostra todos os Locators instalados e seu estado. `work repository root list`, `add`, `remove` e `replace` administram raízes de busca. Remover da policy deixa o componente instalado e habilitado, apenas fora da estratégia; desabilitar é estado do plugin e preserva a referência na policy para possível reativação.
 
 O filesystem Locator oficial procura somente nas raízes configuradas, com profundidade limitada por sua própria configuração. Não usa `workspace/in-progress` ou `workspace/archived` como catálogo de repositórios. Ele pode usar `name`, `query` e `git_fetch_urls`, retorna todas as correspondências e não depende de serviço externo.
 
@@ -289,7 +289,7 @@ O filesystem Locator oficial procura somente nas raízes configuradas, com profu
 
 ## 8. Convenção de branch
 
-Cada pacote habilitado contribui seu `conventions[]` para o catálogo global. Fora de contribuição, o Work calcula a identidade do repositório, reutiliza a convenção memorizada em `repo_branch_convention` ou pede uma escolha e a persiste. Depois apresenta seus prefixos. `work convention` exibe a escolha do repositório atual; `work convention set` a substitui. A identidade usa, nesta ordem, URL de `origin`, commits raiz ou caminho absoluto em clone raso sem remote.
+Cada pacote habilitado contribui seu `conventions[]` para o catálogo global. Fora de contribuição, o Work calcula a identidade do repositório, reutiliza a convenção memorizada em `repo_branch_convention` ou pede uma escolha e a persiste. Depois apresenta seus prefixos. `work convention` abre a TUI com a escolha atual e a ação de troca; `work convention show` somente a exibe e `work convention set <convention>` a substitui diretamente. A identidade usa, nesta ordem, URL de `origin`, commits raiz ou caminho absoluto em clone raso sem remote.
 
 Fora do modo contribuição, depois de interpolar o prefixo da convenção com o slug escolhido, o core valida o nome de branch resultante utilizando as regras do próprio Git. Também verifica colisões com branches locais e remotas já existentes antes de materializar a nova branch/worktree. Nome inválido ou colisão impede a criação e retorna o fluxo à escolha que produziu o nome.
 
@@ -356,10 +356,40 @@ Falhas de Linker ou Importer automáticos são registradas e exibidas como aviso
 
 ## 12. Atualização, TUI e integridade
 
-`work view` é uma operação somente leitura sobre o Work atual. O core lê o snapshot canônico e apresenta os links persistidos em `links`; não executa Linkers, não dispara descoberta e não atualiza proveniência ou timestamps de links. Fora de um diretório associado a um Work, o comando falha com mensagem acionável.
+`work status [work]` é uma operação somente leitura. O core lê o snapshot canônico e apresenta identidade, estado, branch, localização aplicável — worktree ativa ou diretório arquivado — e links persistidos; não executa extensões, não dispara descoberta e não atualiza acesso recente, proveniência ou timestamps de links. Sem alvo, resolve o Work associado ao diretório corrente; se não houver um, falha com mensagem acionável.
 
 A apresentação utiliza a chave semântica e o valor persistido. Comportamentos adicionais específicos de representação — por exemplo, oferecer navegação quando uma Semantic Convention definir um valor navegável — podem ser acrescentados sem alterar a semântica básica do comando.
 
-`work plugin outdated` consulta atualizações sem mudar checkout; `work plugin update <nome>` e `--all` alteram versões somente mediante ação explícita. A atualização lê e valida o novo manifesto antes de trocar a versão registrada.
+`work plugin update --check [plugin...]` consulta atualizações sem mudar checkout; sem nomes, verifica todos os plugins instalados. `work plugin update <plugin...>` e `work plugin update --all` alteram versões somente mediante ação explícita; `--check` e `--all` são mutuamente exclusivos. `work plugin update` sem alvo abre a seleção TUI. A atualização lê e valida o novo manifesto antes de trocar a versão registrada.
 
-`work plugin` oferece TUI sobre os mesmos comandos diretos de gestão. `work repository` oferece TUI para policy de Locators e raízes de busca, sobre os mesmos comandos diretos de `work repository policy`, `work repository locator list` e `work repository roots`. `work import` e `work link` usam a TUI para listar somente componentes manuais disponíveis e elegíveis no Work atual. A origem de todos os plugins é explicitamente escolhida pelo usuário e a referência instalada é fixada; assinatura formal fica adiada conforme ADR-0008.
+`work` sem argumentos abre uma home TUI que alcança todas as jornadas. `work plugin`, `work repository` e `work convention` são hubs TUI e exibem, após uma operação, seu comando direto equivalente. `work resume`, `work archive`, `work import` e `work link` usam TUI somente para valores omitidos; alvos explícitos pulam a seleção correspondente, mas não validações ou confirmações. Em stdin não interativo, valores obrigatórios ausentes falham sem abrir TUI.
+
+A API administrativa direta é:
+
+```text
+work plugin list
+work plugin install <SOURCE> [--link] [--as <ALIAS>]
+work plugin enable <PLUGIN...>
+work plugin disable <PLUGIN...>
+work plugin update
+work plugin update --check [PLUGIN...]
+work plugin update <PLUGIN...>
+work plugin update --all
+work plugin uninstall <PLUGIN...>
+
+work repository locator list
+work repository policy list
+work repository policy add <LOCATOR> [--before <LOCATOR> | --after <LOCATOR>]
+work repository policy remove <LOCATOR...>
+work repository policy move <LOCATOR> (--before <LOCATOR> | --after <LOCATOR>)
+work repository policy replace <LOCATOR...>
+work repository root list
+work repository root add <PATH...>
+work repository root remove <PATH...>
+work repository root replace <PATH...>
+
+work convention show
+work convention set <CONVENTION>
+```
+
+Comandos de leitura (`status`, `list`, `show` e `plugin update --check`) aceitam `--json` e são puros. `--yes` confirma impactos já determinados, nunca escolhe alvos ou valores. Não há aliases oficiais. A origem de todos os plugins é explicitamente escolhida pelo usuário e a referência instalada é fixada; assinatura formal fica adiada conforme ADR-0008. A ADR-0017 governa a gramática e a semântica transversal dessa superfície.

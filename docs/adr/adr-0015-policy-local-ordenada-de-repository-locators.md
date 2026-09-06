@@ -18,7 +18,7 @@ Manter uma Repository Resolution Policy global, declarativa e ordenada, formada 
 
 Instalar ou habilitar plugin não modifica a policy. Remover um Locator da policy somente deixa de usá-lo; não cria um estado individual de habilitação. Desabilitar o plugin torna seus Locators indisponíveis, mas preserva suas posições na policy. Desinstalar plugin remove, mediante confirmação explícita, as referências afetadas na mesma alteração consistente.
 
-A TUI e os comandos diretos são agrupados em `work repository`: `policy` gerencia a sequência, `locator list` mostra Locators instalados e `roots` administra raízes de busca.
+A TUI e os comandos diretos são agrupados em `work repository`. A API direta usa `policy list|add|remove|move|replace` para a sequência, `locator list` para os Locators instalados e `root list|add|remove|replace` para as raízes de busca. A gramática é governada pela ADR-0017.
 
 ## Consequências
 
