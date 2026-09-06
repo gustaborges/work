@@ -1,0 +1,36 @@
+# S — the workspace root is configured once and then reused silently. Changing
+# config.workspace by hand redirects only later Works; existing ones do not move.
+# Covers US2 scenarios 3 and 4; FR-007.
+
+gitrepo src
+env WS1=$WORK/ws1
+env WS2=$WORK/ws2
+
+# First create: no root configured yet, so --workspace is accepted and persisted.
+work start $WORK/src --workspace $WS1 --base main --slug first --prefix {slug} --yes
+exists $WS1/in-progress/src_first/worktree
+grep '"workspace"' $WORK/dothome/config/work.json
+grep 'ws1' $WORK/dothome/config/work.json
+
+# Second create: root already configured. It is reused without --workspace...
+work start $WORK/src --base main --slug second --prefix {slug} --yes
+exists $WS1/in-progress/src_second/worktree
+
+# ...and passing --workspace again is rejected, pointing at the config file.
+! work start $WORK/src --workspace $WS2 --base main --slug third --prefix {slug} --yes
+stderr 'usage'
+stderr 'work.json'
+! exists $WS1/in-progress/src_third
+! exists $WS2/in-progress/src_third
+
+# Rewrite config.workspace by hand to a fresh root.
+work-set-workspace $WORK/dothome/config/work.json $WS2
+
+# A later create lands under the new root; the first two Works stay put.
+work start $WORK/src --base main --slug fourth --prefix {slug} --yes
+exists $WS2/in-progress/src_fourth/worktree
+exists $WS1/in-progress/src_first/worktree
+exists $WS1/in-progress/src_second/worktree
+! exists $WS1/in-progress/src_fourth
+
+verifycoherent

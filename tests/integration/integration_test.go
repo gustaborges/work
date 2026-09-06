@@ -14,6 +14,7 @@ import (
 	"github.com/rogpeppe/go-internal/testscript"
 
 	"github.com/gustaborges/work/internal/cli"
+	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/projection"
 	"github.com/gustaborges/work/internal/work/verify"
 	"github.com/gustaborges/work/seed"
@@ -62,6 +63,22 @@ func TestScripts(t *testing.T) {
 				}
 				if !neg && err != nil {
 					ts.Fatalf("verifycoherent: %v", err)
+				}
+			},
+			// work-set-workspace <config.json> <path> rewrites the
+			// workspace field, standing in for a user editing work.json.
+			"work-set-workspace": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 2 {
+					ts.Fatalf("usage: work-set-workspace <config.json> <path>")
+				}
+				path := ts.MkAbs(args[0])
+				cfg, err := config.Load(path)
+				if err != nil {
+					ts.Fatalf("load config: %v", err)
+				}
+				cfg.Workspace = args[1]
+				if err := config.Save(path, cfg); err != nil {
+					ts.Fatalf("save config: %v", err)
 				}
 			},
 			// gitrepo <dir> initialises a repo with one commit on main.
