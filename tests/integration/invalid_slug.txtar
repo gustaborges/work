@@ -1,0 +1,24 @@
+# S5 — an invalid slug / derived branch name is rejected before any Git mutation.
+# Covers US3 scenario 2; SC-004; FR-012, FR-013.
+
+gitrepo src
+env WS=$WORK/ws
+
+# Whitespace in the slug -> invalid-branch-name (git check-ref-format rejects it).
+! work start $WORK/src --workspace $WS --base main --slug 'has spaces' --prefix {slug} --yes
+stderr 'error: invalid-branch-name:'
+stderr 'has spaces'
+! stdout .
+
+# '..' in the slug -> invalid-branch-name.
+! work start $WORK/src --workspace $WS --base main --slug '..' --prefix {slug} --yes
+stderr 'error: invalid-branch-name:'
+
+# The source repository is untouched and no Work was materialized.
+exec git -C $WORK/src for-each-ref --format='%(refname:short)' refs/heads
+stdout '^main$'
+! stdout 'has'
+exec git -C $WORK/src status --porcelain
+! stdout .
+! exists $WS
+! exists $WORK/dothome/state/work.db

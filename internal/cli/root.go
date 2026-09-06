@@ -4,8 +4,10 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
 
 	"github.com/spf13/cobra"
 
@@ -59,9 +61,14 @@ func runHome(cmd *cobra.Command) error {
 }
 
 // Execute runs the root command and terminates the process with the exit code
-// for whatever error it returns.
+// for whatever error it returns. An interrupt (Ctrl-C) cancels the command's
+// context so an in-flight `work start` unwinds its partial state and exits with
+// the "cancelled" code rather than leaving orphans (FR-021, S8).
 func Execute() {
-	err := newRootCmd().Execute()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	err := newRootCmd().ExecuteContext(ctx)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, diag.Format(err))
 	}
