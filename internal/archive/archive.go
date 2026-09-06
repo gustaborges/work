@@ -185,8 +185,13 @@ func archiveOne(ctx context.Context, p Params, row projection.Work, last bool) O
 		}
 	}
 
-	// Detect reposition-out before the worktree is destroyed.
-	o.WasCWD = p.CallerCWD != "" && underDir(p.CallerCWD, row.WorktreePath)
+	// Detect reposition-out before the worktree is destroyed. The process's
+	// real cwd is the authority (the CLI-supplied CallerCWD is a fallback for
+	// the check only); Windows cannot delete a directory that is a live
+	// process's cwd, so we must step out of it before step 4 either way.
+	cwd, _ := os.Getwd()
+	o.WasCWD = underDir(cwd, row.WorktreePath) ||
+		(p.CallerCWD != "" && underDir(p.CallerCWD, row.WorktreePath))
 
 	// Step 3: flip the snapshot to archived — THE CANONICAL COMMIT POINT.
 	if failPoint("snapshot", last) {
@@ -228,6 +233,13 @@ func archiveOne(ctx context.Context, p Params, row projection.Work, last bool) O
 		return o
 	}
 	if wt := row.WorktreePath; wt != "" {
+		// Step out of the worktree first when it holds the process cwd: some
+		// platforms (Windows) refuse to remove a directory that is a live
+		// process's working directory. The workspace root is the safe landing
+		// spot the CLI also reports to the shell (research R10).
+		if underDir(cwd, wt) {
+			_ = os.Chdir(p.WorkspaceRoot)
+		}
 		src, srcErr := gitx.SourceRepoOf(wt)
 		switch {
 		case srcErr != nil && !dirExists(wt):

@@ -256,6 +256,42 @@ func TestRunProjectionFaultFailsWhenHealFails(t *testing.T) {
 	}
 }
 
+func TestRunStepsOutOfTheCurrentDirectoryWorktree(t *testing.T) {
+	e, rows := setup(t, "alpha")
+	wt := rows["alpha"].WorktreePath
+	// Put the process cwd inside the worktree being archived; the orchestrator
+	// must step out (to the workspace root) before removing it — Windows cannot
+	// delete a live process's cwd.
+	t.Chdir(wt)
+
+	rep, err := Run(context.Background(), Params{
+		Home: e.home, DB: e.db, WorkspaceRoot: e.ws,
+		Rows: []projection.Work{rows["alpha"]},
+		Now:  time.Date(2026, 9, 6, 10, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if rep.Archived() != 1 {
+		t.Fatalf("cwd-worktree archive failed: %+v", rep.Outcomes[0])
+	}
+	if !rep.Outcomes[0].WasCWD {
+		t.Error("WasCWD not flagged for the current-directory Work")
+	}
+	if got, _ := os.Getwd(); got != mustEval(t, e.ws) && got != e.ws {
+		t.Errorf("cwd = %q after archiving its own worktree, want the workspace root %q", got, e.ws)
+	}
+}
+
+func mustEval(t *testing.T, p string) string {
+	t.Helper()
+	r, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return p
+	}
+	return r
+}
+
 func TestRunMissingWorktreeDegrades(t *testing.T) {
 	e, rows := setup(t, "alpha")
 	// Manually delete the worktree directory (git still has the admin entry).
