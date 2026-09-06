@@ -1,0 +1,34 @@
+# S10b — an explicit target that is already archived or names no Work is
+# reported and dropped from the batch; it never aborts the run. Covers US2 #7;
+# FR-019.
+
+gitrepo src
+env WS=$WORK/ws
+
+seedworks src alpha bravo
+today TODAY
+workid $WS/in-progress/src_alpha/work-state.json ID_ALPHA
+workid $WS/in-progress/src_bravo/work-state.json ID_BRAVO
+
+# Archive alpha up front.
+work archive $ID_ALPHA --yes
+stdout '^work: archived 1 of 1$'
+
+# Now archive alpha (already archived) + bravo (active) + a nonexistent id.
+work archive $ID_ALPHA $ID_BRAVO 01000000000000000000000000 --yes
+stdout '^work: archived 1 of 1$'
+stderr 'already archived'
+stderr 'not found'
+! exists $WS/in-progress/src_bravo
+exists $WS/archived/${TODAY}-src_bravo/work-state.json
+activeorder
+verifycoherent
+
+# A single already-archived explicit target is the whole job -> exit 22.
+! work archive $ID_ALPHA --yes
+stderr '^error: target-archived: '
+
+# A single nonexistent explicit target settles at exit 0 with a note.
+work archive 01000000000000000000000000 --yes
+stdout '^work: archived 0 of 0$'
+stderr 'not found'

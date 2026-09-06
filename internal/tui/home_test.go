@@ -43,16 +43,17 @@ func isQuit(cmd tea.Cmd) bool {
 
 func TestHomeListsShippedJourneys(t *testing.T) {
 	m := newHomeModel()
-	if len(m.items) != 2 || m.items[0].choice != HomeStartWork || m.items[1].choice != HomeResumeWork {
-		t.Fatalf("home items = %+v, want [Start a Work, Resume a Work]", m.items)
+	if len(m.items) != 3 || m.items[0].choice != HomeStartWork ||
+		m.items[1].choice != HomeResumeWork || m.items[2].choice != HomeArchiveWork {
+		t.Fatalf("home items = %+v, want [Start a Work, Resume a Work, Archive Works]", m.items)
 	}
 	view := m.View().Content
-	for _, want := range []string{"Start a Work", "Resume a Work"} {
+	for _, want := range []string{"Start a Work", "Resume a Work", "Archive Works"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view missing %q:\n%s", want, view)
 		}
 	}
-	for _, reserved := range []string{"archive", "status", "import", "link", "plugin", "repository", "convention"} {
+	for _, reserved := range []string{"status", "import", "link", "plugin", "repository", "convention"} {
 		if strings.Contains(strings.ToLower(view), reserved) {
 			t.Errorf("view exposes a later-slice action %q:\n%s", reserved, view)
 		}
@@ -73,6 +74,16 @@ func TestHomeEnterSelectsResumeWork(t *testing.T) {
 	m, cmd := step(newHomeModel(), "down", "enter")
 	if m.choice != HomeResumeWork {
 		t.Errorf("choice = %d, want HomeResumeWork", m.choice)
+	}
+	if !isQuit(cmd) {
+		t.Error("Enter did not quit the program")
+	}
+}
+
+func TestHomeEnterSelectsArchiveWork(t *testing.T) {
+	m, cmd := step(newHomeModel(), "down", "down", "enter")
+	if m.choice != HomeArchiveWork {
+		t.Errorf("choice = %d, want HomeArchiveWork", m.choice)
 	}
 	if !isQuit(cmd) {
 		t.Error("Enter did not quit the program")

@@ -295,6 +295,44 @@ func TestWorktreeAddCollisionIsError(t *testing.T) {
 	}
 }
 
+func TestSourceRepoOfAndWorktreeAddExisting(t *testing.T) {
+	repo := newRepo(t)
+	r := Open(repo)
+	wt := filepath.Join(t.TempDir(), "wt")
+	if err := r.WorktreeAdd(wt, "feature/keep", "main"); err != nil {
+		t.Fatalf("WorktreeAdd: %v", err)
+	}
+
+	src, err := SourceRepoOf(wt)
+	if err != nil {
+		t.Fatalf("SourceRepoOf: %v", err)
+	}
+	if resolved, _ := filepath.EvalSymlinks(src); resolved != mustEval(t, repo) {
+		t.Errorf("SourceRepoOf = %q, want %q", src, repo)
+	}
+
+	// Remove the worktree (branch ref survives), then re-attach it with
+	// WorktreeAddExisting — the archive compensation path.
+	if err := r.WorktreeRemove(wt); err != nil {
+		t.Fatalf("WorktreeRemove: %v", err)
+	}
+	if err := r.WorktreeAddExisting(wt, "feature/keep"); err != nil {
+		t.Fatalf("WorktreeAddExisting on an existing branch: %v", err)
+	}
+	if head, _ := Open(wt).CurrentBranch(); head != "feature/keep" {
+		t.Errorf("re-attached worktree HEAD = %q, want feature/keep", head)
+	}
+}
+
+func mustEval(t *testing.T, p string) string {
+	t.Helper()
+	r, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
 func TestRevParse(t *testing.T) {
 	repo := newRepo(t)
 	full, err := Open(repo).RevParse("HEAD")
