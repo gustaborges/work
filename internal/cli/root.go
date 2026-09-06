@@ -1,4 +1,6 @@
-// Package cli assembles the `work` command tree and owns process exit.
+// Package cli assembles the `work` command tree and owns process exit. Command
+// implementations return errors (diag.Error where the outcome is
+// user-meaningful); Execute maps them to the stable exit codes.
 package cli
 
 import (
@@ -6,9 +8,12 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"github.com/gustaborges/work/internal/diag"
 )
 
-// newRootCmd builds the top-level `work` command.
+// newRootCmd builds the top-level `work` command with its subcommands
+// registered.
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "work",
@@ -23,14 +28,18 @@ func newRootCmd() *cobra.Command {
 	// Only read commands honor --json; mutating commands reject it.
 	root.PersistentFlags().Bool("json", false, "emit machine-readable output (read commands only)")
 
+	root.AddCommand(newStartCmd())
+	root.AddCommand(newShellInitCmd())
+
 	return root
 }
 
-// Execute runs the root command and terminates the process with the
-// appropriate exit code.
+// Execute runs the root command and terminates the process with the exit code
+// for whatever error it returns.
 func Execute() {
-	if err := newRootCmd().Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "work:", err)
-		os.Exit(1)
+	err := newRootCmd().Execute()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, diag.Format(err))
 	}
+	os.Exit(diag.ExitCode(err))
 }
