@@ -1,0 +1,37 @@
+# S12 — a stale / inconsistent index is reconciled back into agreement with the
+# snapshots on the next command, without any snapshot being rewritten.
+# Covers US3 #2; FR-023.
+
+gitrepo src
+env WS=$WORK/ws
+
+seedworks src alpha bravo
+activeorder bravo alpha
+
+workid $WS/in-progress/src_alpha/work-state.json ID_ALPHA
+workid $WS/in-progress/src_bravo/work-state.json ID_BRAVO
+
+snapsums before-sums
+
+# Corrupt the index three ways, touching no snapshot:
+#  - alpha's row time is dragged into the past
+#  - a ghost row is added whose snapshot does not exist on disk
+#  - bravo's real row is deleted
+dbstale $ID_ALPHA 2000-01-01T00:00:00Z
+dbghost 01GHOST00000000000000000000
+dbdroprow $ID_BRAVO
+
+# Any command triggers the reconcile pass.
+! work resume
+stderr '^error: usage: '
+
+# alpha's last_accessed_at is restored from its snapshot, so the recency order
+# is bravo, alpha again; bravo's row is back; the ghost row is dropped.
+activeorder bravo alpha
+dbhasrow $ID_BRAVO
+! dbhasrow 01GHOST00000000000000000000
+dbcount 2
+
+# No snapshot file was modified.
+snapsums after-sums
+cmp before-sums after-sums

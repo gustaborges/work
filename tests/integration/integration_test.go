@@ -3,11 +3,14 @@
 package integration
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -223,6 +226,166 @@ func TestScripts(t *testing.T) {
 				}
 				ts.Setenv(args[0], time.Now().Format("20060102"))
 			},
+			// snapsums <outfile> writes one sorted "<sha256>  <relpath>" line per
+			// work-state.json under $WS to <outfile>, so a rebuild can be shown
+			// to have modified zero snapshots (SC-006) by comparing the file
+			// before and after with `cmp`.
+			"snapsums": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 1 {
+					ts.Fatalf("usage: snapsums <outfile>")
+				}
+				ws := ts.Getenv("WS")
+				if ws == "" {
+					ts.Fatalf("snapsums: $WS is not set")
+				}
+				var lines []string
+				err := filepath.WalkDir(ws, func(p string, d os.DirEntry, err error) error {
+					if err != nil {
+						return err
+					}
+					if d.IsDir() || d.Name() != "work-state.json" {
+						return nil
+					}
+					data, rerr := os.ReadFile(p)
+					if rerr != nil {
+						return rerr
+					}
+					rel, rerr := filepath.Rel(ws, p)
+					if rerr != nil {
+						return rerr
+					}
+					lines = append(lines, fmt.Sprintf("%s  %s", hex.EncodeToString(sha256Sum(data)), filepath.ToSlash(rel)))
+					return nil
+				})
+				if err != nil {
+					ts.Fatalf("snapsums: %v", err)
+				}
+				sort.Strings(lines)
+				if err := os.WriteFile(ts.MkAbs(args[0]), []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+					ts.Fatalf("snapsums: %v", err)
+				}
+			},
+			// dborder <outfile> writes the projection's total recency order
+			// ("<id> <status> <last_accessed_at>" per line, ORDER BY
+			// last_accessed_at DESC, id DESC) to <outfile>, so a rebuild can be
+			// shown to reproduce the classification and order byte-for-byte.
+			"dborder": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 1 {
+					ts.Fatalf("usage: dborder <outfile>")
+				}
+				db := openProjection(ts)
+				defer db.Close()
+				rows, err := db.List()
+				if err != nil {
+					ts.Fatalf("dborder: %v", err)
+				}
+				var b strings.Builder
+				for _, r := range rows {
+					fmt.Fprintf(&b, "%s %s %s\n", r.ID, r.Status, r.LastAccessedAt)
+				}
+				if err := os.WriteFile(ts.MkAbs(args[0]), []byte(b.String()), 0o644); err != nil {
+					ts.Fatalf("dborder: %v", err)
+				}
+			},
+			// dbuserversion <n> asserts the projection's PRAGMA user_version.
+			"dbuserversion": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 1 {
+					ts.Fatalf("usage: dbuserversion <n>")
+				}
+				want, err := strconv.Atoi(args[0])
+				if err != nil {
+					ts.Fatalf("dbuserversion: %v", err)
+				}
+				db := openProjection(ts)
+				defer db.Close()
+				got, err := db.UserVersion()
+				if err != nil {
+					ts.Fatalf("dbuserversion: %v", err)
+				}
+				if (got != want) != neg {
+					ts.Fatalf("user_version = %d, want %d", got, want)
+				}
+			},
+			// dbcount <n> asserts the number of rows in the works table.
+			"dbcount": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 1 {
+					ts.Fatalf("usage: dbcount <n>")
+				}
+				want, err := strconv.Atoi(args[0])
+				if err != nil {
+					ts.Fatalf("dbcount: %v", err)
+				}
+				db := openProjection(ts)
+				defer db.Close()
+				rows, err := db.List()
+				if err != nil {
+					ts.Fatalf("dbcount: %v", err)
+				}
+				if (len(rows) != want) != neg {
+					ts.Fatalf("works rows = %d, want %d", len(rows), want)
+				}
+			},
+			// dbhasrow <id> asserts a works row with that id exists (negate for
+			// "must not exist").
+			"dbhasrow": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 1 {
+					ts.Fatalf("usage: dbhasrow <id>")
+				}
+				db := openProjection(ts)
+				defer db.Close()
+				_, ok, err := db.Get(args[0])
+				if err != nil {
+					ts.Fatalf("dbhasrow: %v", err)
+				}
+				if ok == neg {
+					ts.Fatalf("row %s present=%v, want present=%v", args[0], ok, !neg)
+				}
+			},
+			// dbstale <id> <ts> forces a row's last_accessed_at to <ts>, standing
+			// in for an index that has drifted from its snapshot.
+			"dbstale": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 2 {
+					ts.Fatalf("usage: dbstale <id> <timestamp>")
+				}
+				db := openProjection(ts)
+				defer db.Close()
+				if err := db.SetAccessed(args[0], args[1]); err != nil {
+					ts.Fatalf("dbstale: %v", err)
+				}
+			},
+			// dbdroprow <id> deletes a row, standing in for a projection that has
+			// lost a Work still present on disk.
+			"dbdroprow": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 1 {
+					ts.Fatalf("usage: dbdroprow <id>")
+				}
+				db := openProjection(ts)
+				defer db.Close()
+				if err := db.Delete(args[0]); err != nil {
+					ts.Fatalf("dbdroprow: %v", err)
+				}
+			},
+			// dbghost <id> inserts a row whose snapshot does not exist on disk, so
+			// a reconcile has an orphan to drop.
+			"dbghost": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 1 {
+					ts.Fatalf("usage: dbghost <id>")
+				}
+				ws := ts.Getenv("WS")
+				db := openProjection(ts)
+				defer db.Close()
+				ghostDir := filepath.Join(ws, "in-progress", "ghost_ghost")
+				if err := db.Upsert(projection.Work{
+					ID: args[0], Slug: "ghost", Status: "in-progress", StartMode: "new",
+					Starter: "local-path-starter", Branch: "ghost", BaseBranch: "main",
+					BranchConvention: "freeform", RepoName: "ghost", DirPath: ghostDir,
+					WorktreePath: filepath.Join(ghostDir, "worktree"),
+					SnapshotPath: filepath.Join(ghostDir, "work-state.json"),
+					CreatedAt:    "2026-01-01T00:00:00Z", LastAccessedAt: "2026-01-01T00:00:00Z",
+				}); err != nil {
+					ts.Fatalf("dbghost: %v", err)
+				}
+			},
 			// prearchivedir <archived-root> <name> pre-creates
 			// <archived-root>/<yyyymmdd>-<name>/ (today's date) so the archive
 			// pathing collision-suffix path (-2, -3, ...) is exercised.
@@ -237,6 +400,22 @@ func TestScripts(t *testing.T) {
 			},
 		},
 	})
+}
+
+func sha256Sum(b []byte) []byte {
+	sum := sha256.Sum256(b)
+	return sum[:]
+}
+
+// openProjection opens the projection database for the running scenario. The
+// caller closes it.
+func openProjection(ts *testscript.TestScript) *projection.DB {
+	dbPath := filepath.Join(ts.Getenv("WORK_HOME"), "state", "work.db")
+	db, err := projection.Open(dbPath)
+	if err != nil {
+		ts.Fatalf("open projection: %v", err)
+	}
+	return db
 }
 
 func environ(ts *testscript.TestScript) []string {
