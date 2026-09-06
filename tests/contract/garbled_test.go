@@ -12,7 +12,7 @@ import (
 
 // runBinCtx runs bin with the given stdin under a hard deadline. A binary that
 // blocks on stdin or loops forever trips the deadline and fails the test rather
-// than hanging the suite (roadmap §4 "contrato de processo": never hang).
+// than hanging the suite.
 func runBinCtx(t *testing.T, bin string, stdin []byte) runResult {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -45,7 +45,7 @@ func runBinCtx(t *testing.T, bin string, stdin []byte) runResult {
 // TestSeedBinariesRejectGarbledInput feeds both seed components malformed
 // stdin — truncated JSON, non-UTF-8 bytes, NUL bytes, a large garbage blob, and
 // empty input — and asserts each exits non-zero, writes nothing to stdout, and
-// returns promptly. (T061; roadmap §4.)
+// returns promptly.
 func TestSeedBinariesRejectGarbledInput(t *testing.T) {
 	cases := []struct {
 		name  string

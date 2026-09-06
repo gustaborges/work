@@ -132,6 +132,37 @@ func TestBaseBranchFilterEscClears(t *testing.T) {
 	}
 }
 
+func TestBaseBranchEmptyFilterEnterKeepsFiltering(t *testing.T) {
+	m := newBaseBranchModel(mixedItems())
+	m, _ = bbStep(m, "/", "z", "z", "z")
+	got, cmd := bbStep(m, "enter")
+	if isQuit(cmd) || !got.filtering || got.selected != -1 {
+		t.Errorf("enter on empty filter: quit=%v filtering=%v selected=%d", isQuit(cmd), got.filtering, got.selected)
+	}
+
+	got, cmd = bbStep(got, "q")
+	if isQuit(cmd) || got.filter != "zzzq" {
+		t.Errorf("q after empty-filter enter: quit=%v filter=%q", isQuit(cmd), got.filter)
+	}
+
+	got, _ = bbStep(got, "esc")
+	if got.filtering || got.filter != "" || len(got.visible) != 2 {
+		t.Errorf("esc after empty-filter enter: filtering=%v filter=%q visible=%d", got.filtering, got.filter, len(got.visible))
+	}
+}
+
+func TestBaseBranchEmptyModelIsSafe(t *testing.T) {
+	for _, items := range [][]BaseBranchItem{nil, []BaseBranchItem{}} {
+		m := newBaseBranchModel(items)
+		if len(m.tabs) != 0 || len(m.visible) != 0 || m.cursor != 0 || m.offset != 0 {
+			t.Errorf("empty model = %+v", m)
+		}
+		if got, cmd := bbStep(m, "enter"); isQuit(cmd) || got.selected != -1 {
+			t.Errorf("empty model enter: quit=%v selected=%d", isQuit(cmd), got.selected)
+		}
+	}
+}
+
 func TestBaseBranchCursorClamps(t *testing.T) {
 	m := newBaseBranchModel(mixedItems())
 	m, _ = bbStep(m, "up", "up") // already at top

@@ -17,7 +17,7 @@ import (
 // installPhases are every checkpoint install() passes through, in order. The
 // stress test injects a failure at each in turn.
 var installPhases = []string{
-	"staged", "staged-complete", "dest-removed", "renamed", "registered",
+	"staged", "staged-complete", "dest-backed-up", "renamed", "registered",
 }
 
 func assertConverged(t *testing.T, h workhome.Home) {
@@ -123,6 +123,67 @@ func TestEnsureSeedStressWithInjectedInterruptions(t *testing.T) {
 
 	if injected != 20 {
 		t.Fatalf("injected %d interruptions, want 20", injected)
+	}
+	assertConverged(t, h)
+}
+
+func TestEnsureSeedRecoversAfterDestinationIsBackedUp(t *testing.T) {
+	h := testHome(t)
+	if err := EnsureSeed(h); err != nil {
+		t.Fatal(err)
+	}
+
+	metaPath := filepath.Join(h.PluginsDir(), Alias, ".install-meta.json")
+	if err := os.WriteFile(metaPath,
+		[]byte(`{"origin":"embedded-seed","content_digest":"stale","installed_at":"2020-01-01T00:00:00Z"}`),
+		0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { installCheckpoint = nil })
+	installCheckpoint = func(phase string) error {
+		if phase == "dest-backed-up" {
+			return errors.New("injected interruption")
+		}
+		return nil
+	}
+	if err := EnsureSeed(h); err == nil {
+		t.Fatal("EnsureSeed succeeded despite injected interruption")
+	}
+	installCheckpoint = nil
+
+	dest := filepath.Join(h.PluginsDir(), Alias)
+	if _, err := os.Stat(dest); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("destination after interruption: want absent, got %v", err)
+	}
+	if _, err := os.Stat(dest + backupSuffix); err != nil {
+		t.Fatalf("backup after interruption: %v", err)
+	}
+
+	if err := EnsureSeed(h); err != nil {
+		t.Fatalf("EnsureSeed recovery: %v", err)
+	}
+	if _, err := os.Stat(dest + backupSuffix); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("backup remains after recovery: %v", err)
+	}
+	assertConverged(t, h)
+}
+
+func TestEnsureSeedRepairsMissingLocatorPolicyAfterInterruption(t *testing.T) {
+	h := testHome(t)
+	t.Cleanup(func() { installCheckpoint = nil })
+	installCheckpoint = func(phase string) error {
+		if phase == "registered" {
+			return errors.New("injected interruption")
+		}
+		return nil
+	}
+	if err := EnsureSeed(h); err == nil {
+		t.Fatal("EnsureSeed succeeded despite injected interruption")
+	}
+	installCheckpoint = nil
+
+	if err := EnsureSeed(h); err != nil {
+		t.Fatalf("EnsureSeed recovery: %v", err)
 	}
 	assertConverged(t, h)
 }

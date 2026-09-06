@@ -80,6 +80,10 @@ func newBaseBranchModel(items []BaseBranchItem) baseBranchModel {
 // re-clamps the cursor and scroll offset.
 func (m *baseBranchModel) refilter() {
 	m.visible = m.visible[:0]
+	if len(m.tabs) == 0 {
+		m.cursor, m.offset = 0, 0
+		return
+	}
 	needle := strings.ToLower(strings.TrimSpace(m.filter))
 	for _, row := range m.tabs[m.active].rows {
 		if needle == "" || strings.Contains(strings.ToLower(m.items[row].Label), needle) {
@@ -132,7 +136,6 @@ func (m baseBranchModel) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.filtering = false
 			m.refilter()
 		case "enter":
-			m.filtering = false
 			return m.choose()
 		case "backspace":
 			if r := []rune(m.filter); len(r) > 0 {
