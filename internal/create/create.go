@@ -12,6 +12,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -88,8 +89,8 @@ func Run(ctx context.Context, p Params) (Result, error) {
 
 	var stack []compensator
 	unwind := func() {
-		for i := len(stack) - 1; i >= 0; i-- {
-			_ = stack[i].undo()
+		for _, c := range slices.Backward(stack) {
+			_ = c.undo()
 		}
 		stack = nil
 	}
@@ -185,8 +186,8 @@ func Run(ctx context.Context, p Params) (Result, error) {
 }
 
 // build produces the canonical work.State and the projection.Work row from one
-// set of inputs so the two can never drift (FR-018, T042). Every governed
-// work.* field originates here and nowhere else.
+// set of inputs so the two can never drift (FR-018). Every governed work.*
+// field originates here and nowhere else.
 func build(p Params, dirPath, worktreePath, snapshotPath string) (*work.State, projection.Work) {
 	ts := p.Now.Format(time.RFC3339)
 	ws := work.WorkSection{
