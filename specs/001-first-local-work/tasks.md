@@ -49,11 +49,11 @@ to `develop` or `master` (spec/plan/doc edits are exempt).
 
 **Branch**: one-time `git switch -c develop master && git push -u origin develop`, then `git switch -c feature/001-first-local-work-p1-setup develop` before T001.
 
-- [ ] T001 Initialize Go module `github.com/gustaborges/work` (`go mod init`, `go 1.26`) and create the directory skeleton from plan.md: `cmd/work/`, `internal/`, `seed/starter/`, `seed/locator/`, `seed/manifest/`, `tests/contract/`, `tests/integration/`, `tests/fixtures/`
-- [ ] T002 Add and pin dependencies in `go.mod`: `github.com/spf13/cobra`, `github.com/charmbracelet/bubbletea`, `github.com/charmbracelet/huh`, `github.com/charmbracelet/lipgloss`, `modernc.org/sqlite`, `golang.org/x/term`, `golang.org/x/sys`, `github.com/rogpeppe/go-internal` (testscript); run `go mod tidy`
-- [ ] T003 [P] Create `Makefile` with targets: `seed` (cross-compile `seed/starter` + `seed/locator` for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64 into `seed/dist/<goos>_<goarch>/`), `build` (depends on `seed`; `go build -o bin/work ./cmd/work`), `test` (`go test ./...`), `lint` (`gofmt -l`, `go vet`, `staticcheck`)
-- [ ] T004 [P] Create `.github/workflows/ci.yml`: matrix `ubuntu-latest`/`macos-latest`/`windows-latest`, steps `make seed && make build && make lint && go test ./...`
-- [ ] T005 [P] Append `bin/` and `seed/dist/` to `.gitignore`; add `cmd/work/main.go` stub that calls `internal/cli.Execute()`
+- [X] T001 Initialize Go module `github.com/gustaborges/work` (`go mod init`, `go 1.26`) and create the directory skeleton from plan.md: `cmd/work/`, `internal/`, `seed/starter/`, `seed/locator/`, `seed/manifest/`, `tests/contract/`, `tests/integration/`, `tests/fixtures/`
+- [X] T002 Add and pin dependencies in `go.mod`: `github.com/spf13/cobra`, `github.com/charmbracelet/bubbletea`, `github.com/charmbracelet/huh`, `github.com/charmbracelet/lipgloss`, `modernc.org/sqlite`, `golang.org/x/term`, `golang.org/x/sys`, `github.com/rogpeppe/go-internal` (testscript); run `go mod tidy`
+- [X] T003 [P] Create `Makefile` with targets: `seed` (cross-compile `seed/starter` + `seed/locator` for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64 into `seed/dist/<goos>_<goarch>/`), `build` (depends on `seed`; `go build -o bin/work ./cmd/work`), `test` (`go test ./...`), `lint` (`gofmt -l`, `go vet`, `staticcheck`)
+- [X] T004 [P] Create `.github/workflows/ci.yml`: matrix `ubuntu-latest`/`macos-latest`/`windows-latest`, steps `make seed && make build && make lint && go test ./...`
+- [X] T005 [P] Append `bin/` and `seed/dist/` to `.gitignore`; add `cmd/work/main.go` stub that calls `internal/cli.Execute()`
 
 **Checkpoint**: `make build` produces an (empty-behavior) `bin/work`.
 
