@@ -36,6 +36,20 @@ type locatorResp struct {
 	Matches []map[string]any `json:"matches"`
 }
 
+// locatorInput builds a locator stdin payload with json.Marshal so that
+// Windows paths (whose '\' is a JSON escape character) stay valid.
+func locatorInput(t *testing.T, repo map[string]any, roots []string) string {
+	t.Helper()
+	if repo == nil {
+		repo = map[string]any{}
+	}
+	b, err := json.Marshal(map[string]any{"repository": repo, "repository_roots": roots})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 func decodeLocator(t *testing.T, stdout []byte) locatorResp {
 	t.Helper()
 	var r locatorResp
@@ -58,7 +72,7 @@ func TestLocatorContract(t *testing.T) {
 	t.Run("name match, one repo", func(t *testing.T) {
 		root := t.TempDir()
 		want := makeRepo(t, root, "project")
-		in := `{"repository":{"name":"project"},"repository_roots":["` + root + `"]}`
+		in := locatorInput(t, map[string]any{"name": "project"}, []string{root})
 		res := runBin(t, bin, in)
 		if res.exitCode != 0 {
 			t.Fatalf("exit %d: %s", res.exitCode, res.stderr)
@@ -73,7 +87,7 @@ func TestLocatorContract(t *testing.T) {
 		root := t.TempDir()
 		makeRepo(t, filepath.Join(root, "a"), "project")
 		makeRepo(t, filepath.Join(root, "b"), "project")
-		in := `{"repository":{"name":"project"},"repository_roots":["` + root + `"]}`
+		in := locatorInput(t, map[string]any{"name": "project"}, []string{root})
 		res := runBin(t, bin, in)
 		if res.exitCode != 0 {
 			t.Fatalf("exit %d", res.exitCode)
@@ -87,7 +101,7 @@ func TestLocatorContract(t *testing.T) {
 	t.Run("no match", func(t *testing.T) {
 		root := t.TempDir()
 		makeRepo(t, root, "project")
-		in := `{"repository":{"name":"nope"},"repository_roots":["` + root + `"]}`
+		in := locatorInput(t, map[string]any{"name": "nope"}, []string{root})
 		res := runBin(t, bin, in)
 		if res.exitCode != 0 {
 			t.Fatalf("exit %d", res.exitCode)
@@ -99,7 +113,7 @@ func TestLocatorContract(t *testing.T) {
 	})
 
 	t.Run("empty roots", func(t *testing.T) {
-		in := `{"repository":{"name":"project"},"repository_roots":[]}`
+		in := locatorInput(t, map[string]any{"name": "project"}, []string{})
 		res := runBin(t, bin, in)
 		if res.exitCode != 0 {
 			t.Fatalf("exit %d", res.exitCode)
@@ -115,7 +129,7 @@ func TestLocatorContract(t *testing.T) {
 		clone := makeRepo(t, root, "some-checkout")
 		target := "https://example.com/team/widget.git"
 		git(t, clone, "remote", "add", "upstream", target)
-		in := `{"repository":{"git_fetch_urls":["` + target + `"]},"repository_roots":["` + root + `"]}`
+		in := locatorInput(t, map[string]any{"git_fetch_urls": []string{target}}, []string{root})
 		res := runBin(t, bin, in)
 		if res.exitCode != 0 {
 			t.Fatalf("exit %d: %s", res.exitCode, res.stderr)
@@ -149,7 +163,7 @@ func TestLocatorContract(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { os.Chmod(denied, 0o755) })
-		in := `{"repository":{"name":"x"},"repository_roots":["` + filepath.Join(denied, "sub") + `"]}`
+		in := locatorInput(t, map[string]any{"name": "x"}, []string{filepath.Join(denied, "sub")})
 		res := runBin(t, bin, in)
 		if res.exitCode == 0 {
 			t.Fatalf("want non-zero exit for unreadable root")

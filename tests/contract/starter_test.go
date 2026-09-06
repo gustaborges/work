@@ -26,8 +26,11 @@ func TestStarterContract(t *testing.T) {
 			stdin:     `{"arg":"/tmp/x/repo"}`,
 			wantExit0: true,
 			checkStdin: func(t *testing.T, r resp) {
-				if r.Repository.Path != "/tmp/x/repo" {
-					t.Errorf("path = %q", r.Repository.Path)
+				// The Starter runs filepath.Abs; "/tmp/x/repo" is already
+				// absolute on POSIX but gets a drive prefix on Windows.
+				want, _ := filepath.Abs("/tmp/x/repo")
+				if r.Repository.Path != want {
+					t.Errorf("path = %q, want %q", r.Repository.Path, want)
 				}
 			},
 		},
@@ -46,8 +49,9 @@ func TestStarterContract(t *testing.T) {
 			stdin:     `{"arg":"/r","x":1,"repository":{"foo":"bar"}}`,
 			wantExit0: true,
 			checkStdin: func(t *testing.T, r resp) {
-				if r.Repository.Path != "/r" {
-					t.Errorf("path = %q", r.Repository.Path)
+				want, _ := filepath.Abs("/r")
+				if r.Repository.Path != want {
+					t.Errorf("path = %q, want %q", r.Repository.Path, want)
 				}
 			},
 		},

@@ -37,9 +37,10 @@ stdout '^main$'
 exec git -C $WORK/src status --porcelain
 ! stdout .
 
-# First run performed the offline bootstrap.
+# First run performed the offline bootstrap (binary name is .exe on Windows).
 exists $WORK/dothome/plugins/work-reference/plugin.json
-exists $WORK/dothome/plugins/work-reference/source/starter
+[!windows] exists $WORK/dothome/plugins/work-reference/source/starter
+[windows] exists $WORK/dothome/plugins/work-reference/source/starter.exe
 exists $WORK/dothome/state/registry.json
 grep 'filesystem-repository-locator' $WORK/dothome/config/work.json
 

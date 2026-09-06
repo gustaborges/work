@@ -16,5 +16,6 @@ env WS=$WORK/ws
 work start $WORK/src --workspace $WS --base main --slug offline-ok --prefix {slug} --yes
 stdout 'work: created '
 exists $WS/in-progress/src_offline-ok/worktree
-exists $WORK/dothome/plugins/work-reference/source/starter
+[!windows] exists $WORK/dothome/plugins/work-reference/source/starter
+[windows] exists $WORK/dothome/plugins/work-reference/source/starter.exe
 verifycoherent
