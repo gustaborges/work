@@ -24,6 +24,28 @@ func initRepo(t *testing.T, dir string, remotes map[string]string) {
 	}
 }
 
+// inputJSON builds a locator stdin payload. Using json.Marshal (not string
+// concatenation) keeps Windows paths, whose separators are JSON escape
+// characters, valid.
+func inputJSON(t *testing.T, name string, urls, roots []string) string {
+	t.Helper()
+	repo := map[string]any{}
+	if name != "" {
+		repo["name"] = name
+	}
+	if len(urls) > 0 {
+		repo["git_fetch_urls"] = urls
+	}
+	b, err := json.Marshal(map[string]any{
+		"repository":       repo,
+		"repository_roots": roots,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 func decode(t *testing.T, s string) []string {
 	t.Helper()
 	var resp struct {
@@ -47,7 +69,7 @@ func TestLocatorNameMatch(t *testing.T) {
 	initRepo(t, filepath.Join(root, "other"), nil)
 
 	var out strings.Builder
-	in := `{"repository":{"name":"project"},"repository_roots":["` + root + `"]}`
+	in := inputJSON(t, "project", nil, []string{root})
 	if err := run(strings.NewReader(in), &out); err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -63,7 +85,7 @@ func TestLocatorNameMatchTwoRepos(t *testing.T) {
 	initRepo(t, filepath.Join(root, "b", "project"), nil)
 
 	var out strings.Builder
-	in := `{"repository":{"name":"project"},"repository_roots":["` + root + `"]}`
+	in := inputJSON(t, "project", nil, []string{root})
 	if err := run(strings.NewReader(in), &out); err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -81,7 +103,7 @@ func TestLocatorNoMatchAndEmptyRoots(t *testing.T) {
 	initRepo(t, filepath.Join(root, "project"), nil)
 
 	var out strings.Builder
-	if err := run(strings.NewReader(`{"repository":{"name":"nope"},"repository_roots":["`+root+`"]}`), &out); err != nil {
+	if err := run(strings.NewReader(inputJSON(t, "nope", nil, []string{root})), &out); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 	if got := decode(t, out.String()); len(got) != 0 {
@@ -92,7 +114,7 @@ func TestLocatorNoMatchAndEmptyRoots(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := run(strings.NewReader(`{"repository":{"name":"project"},"repository_roots":[]}`), &out); err != nil {
+	if err := run(strings.NewReader(inputJSON(t, "project", nil, []string{})), &out); err != nil {
 		t.Fatalf("run (empty roots): %v", err)
 	}
 	if got := decode(t, out.String()); len(got) != 0 {
@@ -109,7 +131,7 @@ func TestLocatorFetchURLMatchNonOrigin(t *testing.T) {
 	})
 
 	var out strings.Builder
-	in := `{"repository":{"git_fetch_urls":["` + url + `"]},"repository_roots":["` + root + `"]}`
+	in := inputJSON(t, "", []string{url}, []string{root})
 	if err := run(strings.NewReader(in), &out); err != nil {
 		t.Fatalf("run: %v", err)
 	}

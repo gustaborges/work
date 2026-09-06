@@ -20,8 +20,11 @@ func TestRunHappy(t *testing.T) {
 	if err := json.Unmarshal([]byte(out.String()), &resp); err != nil {
 		t.Fatalf("output not JSON: %v (%q)", err, out.String())
 	}
-	if resp.Repository.Path != "/tmp/x/repo" {
-		t.Errorf("path = %q, want /tmp/x/repo", resp.Repository.Path)
+	// filepath.Abs leaves an absolute POSIX path alone but adds a drive prefix
+	// on Windows.
+	want, _ := filepath.Abs("/tmp/x/repo")
+	if resp.Repository.Path != want {
+		t.Errorf("path = %q, want %q", resp.Repository.Path, want)
 	}
 }
 
