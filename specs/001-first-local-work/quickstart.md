@@ -15,13 +15,14 @@ Success Criteria. Details of shapes and codes live in [`contracts/`](./contracts
 ## Build
 
 ```bash
-make seed      # cross-compiles seed/starter and seed/locator into seed/dist/<goos>_<goarch>/
-make build     # go build -o bin/work ./cmd/work   (embeds seed/dist for the host platform)
+make build     # runs `make seed` (host platform) then go build -o bin/work ./cmd/work
+make install   # copy bin/work to $(DESTDIR)$(PREFIX)/bin  (default ~/.local/bin)
 make test      # unit + contract + integration (testscript)
 ```
 
-`make build` fails if `seed/dist` for the host platform is missing — run `make seed` first
-(the Makefile wires this as a dependency).
+`make build` embeds only the host platform's seed components. `make seed-all` stages
+every release platform (used by `go test ./seed` and `make build-all`); `make release`
+cross-compiles `bin/release/<goos>_<goarch>/work` for every target.
 
 ## Test isolation
 
@@ -77,9 +78,14 @@ work start "$src" \
 - `internal/work/verify.Check(<id>)` passes.
 
 **Interactive variant:** run `work` with no args → home → "Start a Work"; or `work start`
-with no source. Provide the path when prompted, accept the suggested `~/work` (or edit it),
-pick `main`, pick the `{slug}` prefix, type the slug, confirm. Same end state, reachable with
-the keyboard only (FR-029, RF-50).
+with no source. Provide the path when prompted, type the slug (`freeform`'s single `{slug}`
+prefix is applied without asking), pick `main` from the base-branch picker's `Local` tab,
+accept the suggested `~/work` (or edit it), confirm. Same end state, reachable with the
+keyboard only (FR-029, RF-50).
+
+**Enclosing git repo:** the workspace root (and therefore every Work under it) may sit
+inside an unrelated Git repository — `work start` does not reject that. Only a root that
+overlaps a configured `repository_roots` entry is refused.
 
 ---
 
@@ -93,10 +99,11 @@ the keyboard only (FR-029, RF-50).
 work start "$src2"   # interactive
 ```
 
-**Expect:** the base-branch picker shows a **Local** group and a **Remote-tracking** group;
-`main` and `origin/main` each show their (different) short SHA; choosing `origin/main` starts
-the new branch from exactly that revision (`work.base_branch == "origin/main"`, branch tip ==
-`origin/main`'s object).
+**Expect:** the base-branch picker opens on the **Remote** tab with `origin/main` (showing
+its short SHA); switching to the **Local** tab shows `main` with its own, different short
+SHA. Choosing `origin/main` starts the new branch from exactly that revision
+(`work.base_branch == "origin/main"`, branch tip == `origin/main`'s object), distinct from
+local `main`.
 
 ---
 
@@ -182,11 +189,22 @@ no `works` row for it. `config/work.json` and the seed install remain intact.
 **Covers:** US3 scenario 5; FR-021; exit 20.
 
 ```bash
-printf 'n\n' | work start "$src" --workspace "$WS" --base main --slug cancelme --prefix '{slug}'   # decline confirm
+# Declining the confirm prompt requires an interactive terminal — the prompt is
+# only shown when stdin AND stdout are TTYs. Under a pty harness:
+work start "$src" --workspace "$WS" --base main --slug cancelme --prefix '{slug}'   # answer "n" at the confirm
+echo $?    # -> 20
+
+# SIGINT before the commit step: same outcome.
+work start "$src" --workspace "$WS" --base main --slug intr --prefix '{slug}'       # Ctrl-C at the confirm
 echo $?    # -> 20
 ```
 
-**Expect:** exit 20; zero artifacts for `cancelme`.
+A piped-stdin run is non-interactive, so it never reaches a confirm prompt: without
+`--yes` it fails fast with exit 2 (`usage`), mutating nothing — which is also a valid
+"leaves nothing" outcome, just a different code.
+
+**Expect:** exit 20 for the interactive decline / SIGINT; zero artifacts for
+`cancelme` or `intr` in every case.
 
 ---
 

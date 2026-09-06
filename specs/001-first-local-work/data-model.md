@@ -57,7 +57,9 @@ One row of the base-branch picker (R15).
 | `scope` | enum | `local` \| `remote-tracking` |
 | `object_short` | string | short SHA, disambiguates homonyms/divergence |
 
-The chosen row's `refname` is used verbatim as the base for `git worktree add -b`; `short` is stored in `work.base_branch`.
+The interactive picker groups choices by `scope` into a **Remote** tab and a **Local** tab
+(source first, then branch — R15); an empty tab is hidden. The chosen row's `refname` is
+used verbatim as the base for `git worktree add -b`; `short` is stored in `work.base_branch`.
 
 ### 1.5 BranchConventionSelection
 | Field | Type | F1 value |
@@ -174,9 +176,9 @@ Layout: R9. Root overridable via `WORK_HOME`.
 | `repository_roots` | []string | `[]` in F1 (roots are an F3 journey; key present for shape stability) |
 | `repository_resolution.locators` | []string | `["work-reference/filesystem-repository-locator"]` — seeded by bootstrap, unused on the F1 happy path |
 
-Validation: `workspace` must resolve to a writable directory, not inside a git work tree,
-not inside any `repository_roots` entry (R8). Malformed JSON → `diag` `bootstrap-failed`
-with the file path, no partial write.
+Validation: `workspace` must resolve to a writable directory, not inside any
+`repository_roots` entry (R8). An unrelated git repository enclosing the root is allowed.
+Malformed JSON → `diag` `bootstrap-failed` with the file path, no partial write.
 
 ### 4.2 `state/registry.json` (generated, ADR-0002)
 Component registry built from `plugin.json` at bootstrap. One entry per component:

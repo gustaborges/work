@@ -159,27 +159,8 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	repo := gitx.Open(repoPath)
 	repoName := filepath.Base(repoPath)
 
-	// 3. Base branch.
-	choices, err := basebranch.List(repo)
-	if err != nil {
-		return err
-	}
-	if len(choices) == 0 {
-		return diag.New(diag.NoBaseBranch, "the repository has no selectable base branch")
-	}
-	var base basebranch.Choice
-	if f.baseSet {
-		base, err = basebranch.Resolve(choices, f.base)
-	} else if interactive {
-		base, err = selectBase(choices)
-	} else {
-		return diag.New(diag.Usage, "missing --base: name a base branch")
-	}
-	if err != nil {
-		return err
-	}
-
-	// 4. Prefix (freeform convention).
+	// 3. Prefix (freeform convention). A convention that offers a single prefix
+	// is not a choice, so no prompt is shown for it.
 	catalog := convention.Load(reg)
 	prefixes, err := catalog.Prefixes(convention.Freeform)
 	if err != nil {
@@ -198,9 +179,11 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		return diag.New(diag.Usage, "missing --prefix: name a branch prefix")
 	}
 
-	// 5+6. Slug → derived branch name, validated and collision-checked before
+	// 4+5. Slug → derived branch name, validated and collision-checked before
 	// any mutation. In an interactive terminal an invalid name or a collision
 	// returns to the slug prompt so the user can pick another (FR-013, S5, S6).
+	// Asked before the base branch: a rejected slug is the cheapest failure to
+	// recover from, so it comes first.
 	slugFromFlag := f.slugSet
 	var slug, branch string
 	for {
@@ -232,6 +215,26 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			return err
 		}
 		break
+	}
+
+	// 6. Base branch.
+	choices, err := basebranch.List(repo)
+	if err != nil {
+		return err
+	}
+	if len(choices) == 0 {
+		return diag.New(diag.NoBaseBranch, "the repository has no selectable base branch")
+	}
+	var base basebranch.Choice
+	if f.baseSet {
+		base, err = basebranch.Resolve(choices, f.base)
+	} else if interactive {
+		base, err = selectBase(ctx, choices)
+	} else {
+		return diag.New(diag.Usage, "missing --base: name a base branch")
+	}
+	if err != nil {
+		return err
 	}
 
 	// 7. Workspace root. Resolved only once every source- and name-level check
@@ -368,16 +371,15 @@ func retryable(err error, cats ...diag.Category) bool {
 	return slices.Contains(cats, d.Category)
 }
 
-func selectBase(choices []basebranch.Choice) (basebranch.Choice, error) {
-	labels := make([]string, len(choices))
+func selectBase(ctx context.Context, choices []basebranch.Choice) (basebranch.Choice, error) {
+	items := make([]tui.BaseBranchItem, len(choices))
 	for i, c := range choices {
-		scope := "local"
-		if c.Scope == basebranch.ScopeRemoteTracking {
-			scope = "remote"
+		items[i] = tui.BaseBranchItem{
+			Label:  fmt.Sprintf("%-24s %s", c.Short, c.ObjectShort),
+			Remote: c.Scope == basebranch.ScopeRemoteTracking,
 		}
-		labels[i] = fmt.Sprintf("%-24s %s  [%s]", c.Short, c.ObjectShort, scope)
 	}
-	idx, err := tui.SelectBaseBranch(labels)
+	idx, err := tui.SelectBaseBranch(ctx, items)
 	if err != nil {
 		return basebranch.Choice{}, err
 	}

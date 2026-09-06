@@ -120,7 +120,8 @@ specs/001-first-local-work/
 
 ```text
 go.mod                         # module github.com/gustaborges/work
-Makefile                       # `make seed` then `make build`; `make test`
+Makefile                       # `make build` (host-only seed) / `make install` /
+                               #   `make seed-all` / `make release`; `make test`
 cmd/
 └── work/
     └── main.go                # wires cobra root, delegates to internal/cli
@@ -148,7 +149,7 @@ internal/
 │                              #   single/multi/none/error outcomes (ADR-0015)
 ├── convention/               # branch-convention catalog, prefix interpolation, name derivation
 ├── branchname/                # validate (via gitx.refFormat) + collision detection (FR-012)
-├── basebranch/                # list local + remote-tracking refs with short SHA, select (FR-009)
+├── basebranch/                # list local + remote-tracking refs with short SHA; staged Remote/Local tab select (FR-009)
 ├── work/                      # Work domain model, work-state.json (read/write via atomicfile),
 │   └── verify/                #   coherence check: snapshot ↔ worktree ↔ git branch ↔ db (FR-028)
 ├── projection/                # sqlite work.db: open, migrate (user_version), upsert, query
@@ -162,8 +163,8 @@ seed/
 ├── locator/                   # main: filesystem Repository Locator (own tiny binary)
 │   └── main.go
 ├── manifest/plugin.json       # seed plugin.json (starter + repository-locator + freeform)
-├── dist/                      # populated by `make seed`: <goos>_<goarch>/{starter,locator}[.exe]
-└── embed.go                   # //go:embed dist/** ; exposes per-GOOS/GOARCH asset lookup
+├── dist/                      # populated by `make seed` (host) / `make seed-all`: <goos>_<goarch>/{starter,locator}[.exe]
+└── embed.go                   # //go:embed dist ; exposes per-GOOS/GOARCH asset lookup
 
 tests/
 ├── integration/               # *.txtar testscript files (create, cancel, rollback, offline,
@@ -172,7 +173,7 @@ tests/
 └── fixtures/                  # self-contained git bundles, fake-shell harness
 ```
 
-**Structure Decision**: Single Go project (Option 1). The core binary is `cmd/work`; all logic sits under `internal/` in small role-focused packages that mirror the F1 pipeline stages (source → Starter → Repository Reference → path validation / Locator chain → base/slug/prefix → branch-name validation → worktree → snapshot → projection → shell repositioning), each independently testable. `seed/` is a physically separate concern: two standalone `main` packages built ahead of the core and embedded as opaque platform binaries, so the core depends on them only through `internal/ipc` — never by import. `tests/` holds the cross-package contract and integration suites that the roadmap's cross-cutting gates require.
+**Structure Decision**: Single Go project (Option 1). The core binary is `cmd/work`; all logic sits under `internal/` in small role-focused packages that mirror the F1 pipeline stages (source → Starter → Repository Reference → path validation / Locator chain → prefix → slug → branch-name validation → base branch → workspace root → worktree → snapshot → projection → shell repositioning), each independently testable. `seed/` is a physically separate concern: two standalone `main` packages built ahead of the core and embedded as opaque platform binaries, so the core depends on them only through `internal/ipc` — never by import. `tests/` holds the cross-package contract and integration suites that the roadmap's cross-cutting gates require.
 
 ## Branching Strategy
 

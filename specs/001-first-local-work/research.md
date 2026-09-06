@@ -59,9 +59,9 @@ ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017.
 **Decision.** The seed package's two executable components are **Go programs, cross-compiled per platform, embedded in the release binary** and extracted at bootstrap.
 
 - `seed/starter/` and `seed/locator/` are independent `main` packages.
-- `make seed` cross-compiles them for every target in R1 into `seed/dist/<goos>_<goarch>/{starter,locator}` (`.exe` on Windows).
-- `seed/embed.go` embeds `seed/dist/**` via `//go:embed`; a lookup returns the pair matching the running `runtime.GOOS`/`GOARCH`.
-- Release builds are **per-platform** (GoReleaser): each `work` artifact embeds only its own OS/arch seed pair, so size overhead is ~2 small static binaries (~1–2 MB compressed each).
+- `make seed` compiles them for the **host** platform into `seed/dist/<goos>_<goarch>/{starter,locator}` (`.exe` on Windows); `make seed-all` does every target in R1.
+- `seed/embed.go` embeds `seed/dist` via `//go:embed`; a lookup returns the pair matching the running `runtime.GOOS`/`GOARCH`. A default `make build` therefore carries only the host pair.
+- Release builds are **per-platform** (`make release`, later GoReleaser): each `work` artifact embeds only its own OS/arch seed pair, so size overhead is ~2 small static binaries.
 - At bootstrap (R11) the core writes, through the normal install pipeline: `~/.work/plugins/<alias>/source/{starter,locator}`, `~/.work/plugins/<alias>/plugin.json` (**no `runtime` field** → executed directly per ADR-0006), `.install-meta.json` (origin = `embedded-seed`, content digest), and the generated registry entries.
 - `plugin.json` also carries the `freeform` convention (`prefixes: ["{slug}"]`) — pure manifest data, no executable.
 
@@ -111,7 +111,7 @@ On any error before step 3 the temp file is removed and no canonical file is tou
 **Decision.**
 - **Cobra** for the command tree: `work` (no args → TUI home), `work start [SOURCE]`, `work shell-init <shell>`. Persistent `--json` wired only on read commands.
 - **Bubble Tea v2** + **Lipgloss** for the `work` home model (a simple menu; F1 lists only "Start a Work").
-- **`huh`** (charmbracelet) for each individual prompt in `work start`: base-branch select, prefix select, slug text input with inline validation, and the final confirm. `huh` is built on Bubble Tea and removes hundreds of lines of hand-rolled model code.
+- **`huh`** (charmbracelet) for each individual prompt in `work start`: prefix select, slug text input with inline validation, workspace-root edit, and the final confirm; the staged base-branch picker is a small hand-rolled Bubble Tea model (Remote/Local tabs). `huh` is built on Bubble Tea and removes hundreds of lines of hand-rolled model code.
 - **Interactive detection:** `golang.org/x/term.IsTerminal` on *both* stdin and stdout. If either is not a TTY the process is non-interactive: no TUI is ever constructed; a missing required value fails with usage guidance and a stable exit code (FR-024, RF-51).
 
 **Rationale.** ADR-0009 fixes Cobra + Bubble Tea. `huh` is the idiomatic 2025+ way to build exactly the kind of discrete selection/confirm prompts F1 needs, all keyboard-navigable (PRD §10), and it shares the Bubble Tea renderer so the home and the prompts look consistent.
@@ -155,7 +155,7 @@ Preflight: `git --version` parsed once; error if `git` absent or < 2.5.
 
 ## R8 — Workspace-root default suggestion (FR-006, RNF-6, ADD §3)
 
-**Decision.** Suggested default on first use: **`~/work`** on every platform (`%USERPROFILE%\work` on Windows). The user may accept or type another path. Validation before persisting: path (after `~` expansion + `filepath.Abs` + symlink resolve) is creatable/writable, is a directory (or does not exist and its parent is writable → created), is **not** inside any configured `repository_root` and not inside a git work tree, and is not a file. On accept the core creates `<root>/in-progress/` and `<root>/archived/` and writes `workspace` to `~/.work/config/work.json`. Later changes affect only new Works (FR-007) — no migration of existing ones.
+**Decision.** Suggested default on first use: **`~/work`** on every platform (`%USERPROFILE%\work` on Windows). The user may accept or type another path. Validation before persisting: path (after `~` expansion + `filepath.Abs` + symlink resolve) is creatable/writable, is a directory (or does not exist and its parent is writable → created), is **not** inside any configured `repository_root`, and is not a file. An unrelated git repository enclosing the root is **allowed** — the workspace root, and therefore materialized Works, may live inside one; only overlap with a configured `repository_root` (a source-clone location) is rejected. On accept the core creates `<root>/in-progress/` and `<root>/archived/` and writes `workspace` to `~/.work/config/work.json`. Later changes affect only new Works (FR-007) — no migration of existing ones.
 
 **Rationale.** The spec Assumptions allow a per-platform value as long as it is "explicit, writable, persisted, and separate from the source clones". A single memorable rule (`~/work`) beats platform-specific `XDG`/`Library` paths for a directory the user will `cd` into daily; keeping worktrees out of the `~/.work` state dir avoids mixing user-facing checkouts with tool internals (ADD §3 keeps them separate anyway).
 
@@ -305,11 +305,13 @@ Diagnostics quote only the path the user supplied and the category — never rep
 
 ## R15 — Base-branch listing & selection (FR-009)
 
-**Decision.** One `git for-each-ref --format '%(refname) %(objectname:short) %(refname:short) %(upstream:short)' refs/heads refs/remotes`, drop `refs/remotes/*/HEAD`. Present two groups — **Local** and **Remote-tracking** — each row `"<short-name>  <short-sha>  <subject-first-line?>"`. When a local and a remote name coincide but point at different objects, both appear with their differing short SHAs so the choice is unambiguous (spec edge case). The selected entry keeps its full `refname`; the branch is created from that exact ref (`git worktree add -b <new> <dir> <refname>`), and `work.base_branch` stores the short name. No network (`refs/remotes` is whatever was already fetched).
+**Decision.** One `git for-each-ref --format '%(refname) %(objectname:short) %(refname:short) %(upstream:short)' refs/heads refs/remotes`, drop `refs/remotes/*/HEAD`. The interactive selection is staged: **source first, branch second**. A tabbed picker groups the refs into a **Remote** tab and a **Local** tab (Remote first); `←/→`/`Tab` switches tabs, `↑/↓` moves, `/` filters the active tab (case-insensitive substring), `Enter` selects. Each row is `"<short-name>  <short-sha>"`. It is a small Bubble Tea model styled from huh's default (Charm) theme so it matches the rest of the guided flow. A tab with no refs is not shown, and the tab bar is omitted when only one kind exists. `Other work` is a reserved third source for a later slice and is not rendered. When a local and a remote name coincide but point at different objects, each appears on its own tab with its differing short SHA so the choice is unambiguous (spec edge case). The selected entry keeps its full `refname`; the branch is created from that exact ref (`git worktree add -b <new> <dir> <refname>`), and `work.base_branch` stores the short name. No network (`refs/remotes` is whatever was already fetched).
 
-**Rationale.** FR-009 wants homonymous/divergent refs distinguishable and an exact revision selectable — short SHA per row does both. Using the full refname for `worktree add` pins the exact revision (FR-011 / acceptance scenario 3: "new branch starts exactly from the selected revision").
+**Rationale.** FR-009 wants homonymous/divergent refs distinguishable and an exact revision selectable — the short SHA per row does both, and splitting by source keeps each list short and keeps the "which remote / is this local?" question explicit. Using the full refname for `worktree add` pins the exact revision (FR-011 / acceptance scenario 3: "new branch starts exactly from the selected revision"). `--base` is unaffected: it still resolves a short name or `remote/short` against the full ref list in one shot.
 
 **Alternatives considered.**
+- One flat list mixing local and remote refs with `[local]`/`[remote]` tags — rejected: on a repo with many branches × many remotes the list is unreadable and dirties the scrollback.
+- Two sequential `huh` selects (kind, then branch) — rejected: a dead-end when the chosen kind is empty, and no way back; the tabbed picker has neither problem.
 - `git branch -a` text parsing — rejected: locale-dependent, needs the `*`/`remotes/` prefixes stripped, no SHA.
 - `git ls-remote` — rejected: network; F1 is offline.
 

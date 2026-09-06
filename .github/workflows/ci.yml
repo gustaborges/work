@@ -29,7 +29,11 @@ jobs:
       - name: Verify git is new enough for worktree add -b
         run: git --version
 
-      - run: make seed
-      - run: make build
+      # seed-all exercises the cross-compile for every release platform; the
+      # full-matrix embed check in ./seed then runs before `make build` trims
+      # seed/dist back to the host platform.
+      - run: make seed-all
       - run: make lint
       - run: go test ./...
+      - name: Host build smoke test
+        run: make build
