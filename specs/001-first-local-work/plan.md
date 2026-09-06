@@ -173,7 +173,7 @@ tests/
 └── fixtures/                  # self-contained git bundles, fake-shell harness
 ```
 
-**Structure Decision**: Single Go project (Option 1). The core binary is `cmd/work`; all logic sits under `internal/` in small role-focused packages that mirror the F1 pipeline stages (source → Starter → Repository Reference → path validation / Locator chain → base/slug/prefix → branch-name validation → worktree → snapshot → projection → shell repositioning), each independently testable. `seed/` is a physically separate concern: two standalone `main` packages built ahead of the core and embedded as opaque platform binaries, so the core depends on them only through `internal/ipc` — never by import. `tests/` holds the cross-package contract and integration suites that the roadmap's cross-cutting gates require.
+**Structure Decision**: Single Go project (Option 1). The core binary is `cmd/work`; all logic sits under `internal/` in small role-focused packages that mirror the F1 pipeline stages (source → Starter → Repository Reference → path validation / Locator chain → prefix → slug → branch-name validation → base branch → workspace root → worktree → snapshot → projection → shell repositioning), each independently testable. `seed/` is a physically separate concern: two standalone `main` packages built ahead of the core and embedded as opaque platform binaries, so the core depends on them only through `internal/ipc` — never by import. `tests/` holds the cross-package contract and integration suites that the roadmap's cross-cutting gates require.
 
 ## Branching Strategy
 

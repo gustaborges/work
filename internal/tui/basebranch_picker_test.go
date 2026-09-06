@@ -184,6 +184,24 @@ func TestBaseBranchAbortLeavesNoSelection(t *testing.T) {
 	}
 }
 
+func TestBaseBranchViewCollapsesOnSelect(t *testing.T) {
+	// After a choice the picker must not leave the branch list on screen: its
+	// View collapses to an empty frame and the caller prints the completed step.
+	got, cmd := bbStep(newBaseBranchModel(mixedItems()), "enter")
+	if !isQuit(cmd) || got.selected < 0 {
+		t.Fatalf("enter did not select: selected=%d quit=%v", got.selected, isQuit(cmd))
+	}
+	if v := got.View().Content; v != "" {
+		t.Errorf("resolved picker still renders a frame:\n%q", v)
+	}
+
+	// Aborting collapses the same way.
+	ab, _ := bbStep(newBaseBranchModel(mixedItems()), "q")
+	if v := ab.View().Content; v != "" {
+		t.Errorf("aborted picker still renders a frame:\n%q", v)
+	}
+}
+
 func TestBaseBranchViewHeightIsConstant(t *testing.T) {
 	// A long Local list and a short Remote list: the frame must stay the same
 	// height across tab switches, filtering, and cursor moves, or Bubble Tea's

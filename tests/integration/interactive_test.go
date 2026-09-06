@@ -314,8 +314,9 @@ func TestInteractiveRecovery(t *testing.T) {
 	c.expect("branch-collision")
 	c.expect("Slug")
 
-	// A free slug completes the journey.
+	// A free slug completes the journey and collapses to its completed summary.
 	c.send("fresh\r")
+	c.expect("✓ fresh")
 	c.expect("work: created ")
 	if code := c.wait(); code != 0 {
 		t.Fatalf("recovered start exited %d, want 0", code)
@@ -412,6 +413,9 @@ func TestInteractiveBaseBranchTabs(t *testing.T) {
 	c.send("/origin/main")
 	c.expect("origin/main")
 	c.send("\r")
+	// The picker collapses to the completed-step summary once a ref is chosen.
+	c.expect("✓ origin/main")
+	c.expect("[remote]")
 	c.expect("work: created ")
 	if code := c.wait(); code != 0 {
 		t.Fatalf("start exited %d, want 0", code)

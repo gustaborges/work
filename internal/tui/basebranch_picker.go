@@ -51,7 +51,8 @@ type baseBranchModel struct {
 	cursor    int   // index into visible
 	offset    int   // index into visible of the first shown row
 
-	selected  int // index into items, or -1 while unresolved / on abort
+	selected  int  // index into items, or -1 while unresolved / on abort
+	done      bool // selection or abort finished; View then collapses to nothing
 	hasDarkBg bool
 }
 
@@ -122,6 +123,7 @@ func (m baseBranchModel) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Ctrl-C always aborts.
 	if s == "ctrl+c" {
 		m.selected = -1
+		m.done = true
 		return m, tea.Quit
 	}
 
@@ -159,6 +161,7 @@ func (m baseBranchModel) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch s {
 	case "q", "esc":
 		m.selected = -1
+		m.done = true
 		return m, tea.Quit
 	case "/":
 		m.filtering = true
@@ -198,12 +201,20 @@ func (m *baseBranchModel) switchTab(key string) {
 func (m baseBranchModel) choose() (tea.Model, tea.Cmd) {
 	if m.cursor < len(m.visible) {
 		m.selected = m.visible[m.cursor]
+		m.done = true
 		return m, tea.Quit
 	}
 	return m, nil // empty filter result: ignore
 }
 
 func (m baseBranchModel) View() tea.View {
+	// Once resolved the picker collapses: the caller prints the chosen branch as
+	// a completed step, so an empty view here clears the list frame rather than
+	// leaving the whole selector on screen.
+	if m.done {
+		return tea.NewView("")
+	}
+
 	t := huh.ThemeCharm(m.hasDarkBg).Focused
 	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	// Matches the fuchsia accent huh uses for its select cursor.

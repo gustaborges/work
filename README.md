@@ -122,11 +122,14 @@ its own prompt — every validation still runs.
 
 ```
 work start ~/src/acme-api
-  → base branch?   (Local / Remote-tracking groups, each with a short SHA)
-  → prefix?        ({slug})
   → slug?          add-retry-logic
+  → base branch?   (Remote / Local tabs, each row with a short SHA)
+  → workspace root? (~/work — accept or edit; asked only once per machine)
   → Create Work … ?  [y/N]
 ```
+
+`freeform`'s single `{slug}` prefix is applied without asking. Each answered step
+collapses in place to a `✓ <value>` line as you move to the next.
 
 ### Flags
 

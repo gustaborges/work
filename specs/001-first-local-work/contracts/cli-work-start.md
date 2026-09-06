@@ -37,26 +37,35 @@ work start [SOURCE] [--workspace PATH] [--base REF] [--slug SLUG] [--prefix PREF
 
 ## Interactive flow (stdin AND stdout are TTYs)
 
-Ordered; each explicit flag skips **only** its own step, never validation:
+Ordered; each explicit flag skips **only** its own step, never validation. As each step
+resolves, its prompt is replaced in place by a one-line completed summary (the step title,
+then `✓ <chosen value>`), separated from the next prompt by exactly one blank line; a value
+supplied by flag renders no summary.
 
 1. **Source** — if `SOURCE` omitted: prompt for a path.
 2. **Resolve + validate repository** (R14): abs+symlink resolve; must be a readable dir, a
    usable non-bare git repo, ≥1 commit, ≥1 base branch. Failure → the interactive flow
    re-prompts for another path (does not exit) for `invalid-path`/`unusable-repo`; `no-base-branch`
    exits 12 (not correctable by a different path to the same repo).
-3. **Workspace root** — if none configured and `--workspace` absent: suggest `~/work`
-   (`%USERPROFILE%\work` on Windows), allow editing, validate (R8), persist. If already
-   configured: reuse silently.
-4. **Base branch** — if `--base` absent: a picker with a `Remote` / `Local` tab bar over
+3. **Prefix** — if `--prefix` absent: show the branch convention's prefixes and select. A
+   convention that offers a single prefix (`freeform` → `{slug}`) is not a choice: no prompt
+   and no completed summary are shown.
+4. **Slug** — if `--slug` absent: text prompt with inline validation. Asked before the base
+   branch: a rejected slug is the cheapest failure to recover from (no repo scan), so it
+   comes first.
+5. **Derive + validate branch name** (R16): `interpolate(prefix, slug)`; `git check-ref-format`;
+   collision check against local + remote-tracking + worktree branches. Any failure → return to
+   step 4 (slug) with a specific message; no mutation has occurred (SC-004).
+6. **Base branch** — if `--base` absent: a picker with a `Remote` / `Local` tab bar over
    the branch list (`←/→`/`Tab` to switch, `↑/↓` to move, `/` to filter the active tab,
    `Enter` to select); each row `<short>  <short-sha>`; select one (FR-009). A tab with no
    refs is hidden, and the tab bar is omitted when only one kind exists. `Other work` is a
-   reserved source for a later slice and is not shown.
-5. **Prefix** — if `--prefix` absent: show the `freeform` prefixes (one: `{slug}`); select.
-6. **Slug** — if `--slug` absent: text prompt with inline validation.
-7. **Derive + validate branch name** (R16): `interpolate(prefix, slug)`; `git check-ref-format`;
-   collision check against local + remote-tracking + worktree branches. Any failure → return to
-   step 6 (slug) with a specific message; no mutation has occurred (SC-004).
+   reserved source for a later slice and is not shown. On selection the list collapses to the
+   completed summary `✓ <short>  <short-sha> [remote|local]`.
+7. **Workspace root** — if none configured and `--workspace` absent: suggest `~/work`
+   (`%USERPROFILE%\work` on Windows), allow editing, validate (R8), persist. If already
+   configured: reuse silently (no prompt, no summary). Deferred to here so a run rejected at
+   an earlier step never persists a root or creates its directories (SC-004).
 8. **Confirm** — show repo, base branch (+ short SHA), derived branch name, workspace root,
    and target directory. Proceed on confirm (or `--yes`). Decline → exit 20.
 9. **Materialize** (transactional, R10): lock → `git worktree add -b <branch> <dir>/worktree
@@ -75,7 +84,7 @@ exit 20.
   `--prefix`; plus `--workspace` when no root is configured. Any missing → exit 2 with a
   message naming the missing flag. **No** repository mutation, **no** config write on that failure.
 - `--yes` is required to pass the confirm step; without it → exit 2.
-- All validations from the interactive flow still run (steps 2, 7). A validation failure exits
+- All validations from the interactive flow still run (steps 2, 5). A validation failure exits
   with its code (10/11/12/13/14/15) — there is no re-prompt.
 - On success, behavior matches interactive step 9–10 minus the confirm prompt.
 
