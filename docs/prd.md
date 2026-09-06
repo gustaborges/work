@@ -34,6 +34,7 @@ Work reduz esse atrito com um ponto de entrada único e extensível. Um plugin p
 * Permitir que plugins acrescentem contexto e relações externas sem controlar o lifecycle do Work.
 * Manter o núcleo pequeno, auditável e independente de integrações específicas.
 * Oferecer extensibilidade por pacotes instaláveis, sem alterar o código do Work.
+* Permitir que qualquer jornada seja descoberta pela TUI, sem exigir memorização profunda da CLI.
 
 ***
 
@@ -90,7 +91,7 @@ Work reduz esse atrito com um ponto de entrada único e extensível. Um plugin p
 
 No primeiro uso que exija criar um Work, se nenhuma raiz de workspace estiver configurada, o Work sugere um diretório padrão e permite que o usuário escolha outro diretório. A escolha é persistida e reutilizada nos próximos comandos. O usuário pode alterar posteriormente a raiz configurada.
 
-O usuário roda `work start <nome ou referência do repo>`. O Starter interpreta o argumento e devolve uma Repository Reference. Se ela já contiver um caminho local, o Work valida diretamente o repositório; caso contrário, usa a Repository Resolution Policy configurada para localizar um clone local. Resolvido exatamente um repositório válido, o fluxo de criação do Work prossegue normalmente. Como o Starter não retorna `start_modes`, o Work cria um Work novo. O usuário escolhe slug, convenção e prefixo de branch e recebe uma worktree pronta.
+O usuário roda `work start [nome ou referência do repo]`. Sem argumento, a TUI coleta a origem; com argumento, o Starter o interpreta e devolve uma Repository Reference. Se ela já contiver um caminho local, o Work valida diretamente o repositório; caso contrário, usa a Repository Resolution Policy configurada para localizar um clone local. Resolvido exatamente um repositório válido, o fluxo de criação do Work prossegue normalmente. Como o Starter não retorna `start_modes`, o Work cria um Work novo. O usuário escolhe slug, convenção e prefixo de branch e recebe uma worktree pronta.
 
 ### 7.2 Contribuir ou fazer fork de um pull request
 
@@ -98,29 +99,29 @@ O usuário roda `work start <link do PR>`. O Starter resolve o repositório, a b
 
 ### 7.3 Retomar e arquivar trabalhos
 
-Com `work resume`, o usuário seleciona um Work em ordem de acesso recente. Com `work archive`, seleciona trabalhos ativos, confirma, e o Work destrói as worktrees e arquiva os demais arquivos e o snapshot de estado.
+Com `work resume`, o usuário seleciona um Work em ordem de acesso recente; `work resume <work>` pula a seleção. Com `work archive`, seleciona trabalhos ativos, confirma, e o Work destrói as worktrees e arquiva os demais arquivos e o snapshot de estado; alvos explícitos em `work archive <work...>` pulam apenas a seleção, não a confirmação.
 
 ### 7.4 Importar contexto manualmente
 
-Dentro de um Work, o usuário roda `work import`, escolhe um Importer manual disponível e o Work executa-o somente se todos os inputs obrigatórios estiverem presentes. Os arquivos produzidos são incorporados após validação de colisões.
+Dentro de um Work, o usuário roda `work import`, escolhe um Importer manual disponível e o Work executa-o somente se todos os inputs obrigatórios estiverem presentes. `work import <importer>` pula a seleção. Os arquivos produzidos são incorporados após validação de colisões.
 
 ### 7.5 Associar um link manualmente
 
-Dentro de um Work, o usuário roda `work link`, escolhe um Linker manual disponível e informa um valor. O Work persiste o valor na chave do Linker.
+Dentro de um Work, o usuário roda `work link`, escolhe um Linker manual disponível e informa um valor. Em uso direto, `work link <linker> <valor>` fornece ambos. O Work persiste o valor na chave do Linker.
 
-### 7.6 Inspecionar links do Work
+### 7.6 Inspecionar o Work
 
-Dentro de um Work, o usuário roda `work view` para inspecionar as relações externas atualmente associadas ao Work. O comando apresenta as chaves e os valores persistidos de seus links sem executar Linkers nem alterar o estado.
+Dentro de um Work, o usuário roda `work status` para inspecionar identidade, estado, branch, localização e links persistidos sem executar extensões nem alterar o estado. Fora dele, `work status <work>` inspeciona um alvo explícito.
 
-### 7.7 Gerenciar plugins e convenções
+### 7.7 Gerenciar plugins, descoberta e convenções
 
-O usuário instala plugins de origem remota ou local, lista-os, habilita/desabilita, atualiza e remove pacotes. Pode também inspecionar ou trocar a convenção de branch memorizada para o repositório atual com `work convention` e `work convention set`.
+O usuário entra em `work plugin` para instalar, listar, habilitar/desabilitar, atualizar e remover pacotes por TUI. `work repository` abre a gestão da descoberta de clones; `work convention` mostra a escolha atual e permite trocá-la. Cada TUI torna visível o comando direto equivalente para automação.
 
 ***
 
 ## 8. Requisitos funcionais
 
-### `work start <arg>`
+### `work start [source]`
 
 * **RF-1.** O Work deve selecionar estaticamente, entre Starters habilitados, aquele cujo `pattern` reconhece o argumento; múltiplos matches devem ser apresentados ao usuário, sem memorização da escolha.
 * **RF-2.** O Starter escolhido deve receber o argumento e devolver uma Repository Reference, além dos demais dados de início que conseguir resolver. A referência pode conter diretamente o caminho de um repositório local ou identificadores suficientes para uma tentativa posterior de localização. Antes de qualquer materialização do Work, o Work deve resolver a referência para exatamente um repositório Git local válido e acessível.
@@ -143,13 +144,13 @@ O usuário instala plugins de origem remota ou local, lista-os, habilita/desabil
 * **RF-27.** O Work deve resolver inputs nos namespaces `work`, `meta` e `link` e projetar ao subprocesso somente os inputs declarados pelo componente; inputs opcionais ausentes devem ser omitidos.
 * **RF-28.** Para cada execução de Importer, o Work deve fornecer diretório temporário exclusivo, validar todas as colisões antes de alterar o Work e nunca sobrescrever arquivos silenciosamente.
 * **RF-29.** Falha automática de Linker ou Importer após a criação do Work deve concluir `work start` com aviso e diagnóstico, sem desfazer o Work. Uma descoberta bem-sucedida sem valor não é erro.
-* **RF-30.** Dentro de um Work, `work import` deve oferecer Importers que declaram `manual` e estejam elegíveis, e executar a operação `import` selecionada.
-* **RF-31.** Dentro de um Work, `work link` deve oferecer Linkers que declaram `manual`, solicitar um valor não vazio e persistir esse valor sob a chave do Linker.
+* **RF-30.** Dentro de um Work, `work import` deve oferecer Importers que declaram `manual` e estejam elegíveis, e executar a operação `import` selecionada; um Importer explícito deve pular a seleção sem pular a validação de elegibilidade.
+* **RF-31.** Dentro de um Work, `work link` deve oferecer Linkers que declaram `manual`, solicitar um valor não vazio e persistir esse valor sob a chave do Linker; Linker e valor explícitos devem permitir a mesma operação sem TUI.
 * **RF-32.** O estado do Work, metadata e links devem ser persistidos em seções semanticamente distintas no mesmo snapshot canônico. Cada chave de link mantém um único valor; publicação pelo Starter, descoberta e associação manual fazem upsert, e a última origem vence.
 * **RF-33.** O snapshot `work-state.json` deve ser atualizado atomicamente, versionado por schema e controlado exclusivamente pelo core; plugins interagem com estado apenas por inputs e outputs públicos.
 * **RF-34.** O Work deve manter `work.db` como projeção global consultável e ser capaz de reconstruí-la ou reconciliá-la a partir dos snapshots dos Works.
 * **RF-35.** Chaves públicas de `meta` e `link` devem seguir Semantic Conventions; chaves privadas devem usar namespace explícito do plugin. A identidade semântica da chave não deve incluir o componente que produziu seu valor.
-* **RF-38.** Dentro de um Work, `work view` deve listar os links atualmente persistidos no snapshot canônico. A operação é somente leitura e não deve executar descoberta de Linkers nem modificar o Work.
+* **RF-38.** `work status [work]` deve apresentar identidade, estado, branch, localização aplicável e links atualmente persistidos no snapshot canônico. Sem alvo, deve usar o Work associado ao diretório corrente. A operação é somente leitura, não executa extensões e não modifica o Work nem seu acesso recente.
 * **RF-39.** O Work deve permitir que plugins forneçam Repository Locators independentemente dos Starters. Um Starter não deve precisar conhecer quais Repository Locators estão instalados ou configurados na máquina.
 * **RF-40.** O usuário deve poder manter múltiplos Repository Locators instalados e habilitados e definir explicitamente quais deles participam da Repository Resolution Policy e em qual ordem.
 * **RF-41.** A instalação ou habilitação de um plugin não deve inserir silenciosamente seus Repository Locators na Repository Resolution Policy existente. Em fluxo interativo, o Work pode oferecer ao usuário a configuração imediata dos novos Locators.
@@ -164,18 +165,18 @@ O usuário instala plugins de origem remota ou local, lista-os, habilita/desabil
 
 ### `work resume` e `work archive`
 
-* **RF-11.** `work resume` deve listar trabalhos existentes do mais recentemente acessado ao mais antigo e abrir o selecionado.
+* **RF-11.** `work resume` deve listar trabalhos existentes do mais recentemente acessado ao mais antigo e abrir o selecionado; com alvo explícito, deve abri-lo diretamente.
 * **RF-12.** A seleção em `work resume` deve atualizar o acesso recente e reposicionar o terminal na worktree.
-* **RF-13.** `work archive` deve listar trabalhos ativos com multi-seleção.
+* **RF-13.** `work archive` deve listar trabalhos ativos com multi-seleção; com alvos explícitos, deve pular a seleção e ainda exigir a confirmação aplicável.
 * **RF-14.** Após confirmação, deve destruir as worktrees selecionadas e mover os demais arquivos para a área de arquivados.
 * **RF-15.** O estado persistido deve refletir o arquivamento.
 
 ### Gestão de plugins e convenções
 
-* **RF-16.** O usuário deve poder instalar plugin de origem remota ou caminho local.
+* **RF-16.** O usuário deve poder instalar plugin de origem remota ou caminho local como conteúdo fixado; para desenvolvimento, `--link` deve permitir vincular um caminho local sem copiar.
 * **RF-17.** O usuário deve poder listar plugins instalados.
 * **RF-18.** O usuário deve poder habilitar ou desabilitar plugin sem desinstalá-lo.
-* **RF-19.** O usuário deve poder verificar e aplicar atualização explicitamente; comandos de Work não verificam atualizações automaticamente.
+* **RF-19.** O usuário deve poder verificar atualizações com `work plugin update --check` e aplicá-las explicitamente a plugins nomeados ou a todos; comandos de Work não verificam atualizações automaticamente.
 * **RF-20.** O usuário deve poder desinstalar plugin.
 * **RF-21.** Conflito de alias de plugin na instalação deve falhar explicitamente, sem sobrescrita ou renomeação silenciosa.
 * **RF-25.** O usuário deve poder inspecionar e trocar a convenção de branch memorizada a partir de qualquer clone do repositório.
@@ -183,6 +184,12 @@ O usuário instala plugins de origem remota ou local, lista-os, habilita/desabil
 ### Extensibilidade
 
 * **RF-22.** Todo comportamento além da orquestração de worktrees via Git deve ser delegado a plugins externos, descobertos e instalados pelo usuário.
+
+### Superfície CLI/TUI
+
+* **RF-50.** `work` sem argumentos deve abrir uma home TUI da qual todas as jornadas públicas sejam alcançáveis; `work plugin`, `work repository` e `work convention` devem abrir os hubs de seus domínios.
+* **RF-51.** Em terminal interativo, valores de seleção omitidos devem ser coletados por TUI e valores explícitos devem pular somente a seleção correspondente. Em stdin não interativo, valor obrigatório ausente deve falhar com uso acionável sem tentar abrir TUI.
+* **RF-52.** Comandos de leitura devem aceitar `--json` e não alterar estado; mutações devem ter saída e códigos de saída estáveis. `--yes` pode confirmar impactos já determinados, mas não escolher alvos ou valores.
 
 ***
 
@@ -197,16 +204,21 @@ O usuário instala plugins de origem remota ou local, lista-os, habilita/desabil
 * **RNF-7. Confiança mínima necessária.** A origem de plugin é escolhida explicitamente pelo usuário e o núcleo nunca carrega código de plugin no próprio processo.
 * **RNF-8. Componibilidade de extensões.** Starters e mecanismos de localização de repositório devem poder evoluir independentemente. A criação de um novo Starter não deve exigir implementação própria das estratégias locais de localização já disponíveis ao usuário.
 * **RNF-9. Política local explícita.** A precedência entre mecanismos de localização pertence à configuração do usuário e não deve depender de ordem de instalação, prioridade autodeclarada pelo plugin ou heurística oculta do core.
+* **RNF-10. CLI progressiva e consistente.** Toda jornada deve ser alcançável a partir de `work` sem argumentos; comandos cotidianos permanecem rasos, enquanto comandos diretos para automação seguem uma gramática regular, têm saída e códigos de saída estáveis e nunca dependem de TUI.
 
 ***
 
 ## 10. Experiência do usuário
 
+`work` sem argumentos abre a home TUI, da qual todas as jornadas são alcançáveis. Os comandos cotidianos são `work start [source]`, `work resume [work]`, `work archive [work...]`, `work status [work]`, `work import [importer]` e `work link [linker] [value]`. Ausência de alvo usa TUI quando a operação exige escolha; alvo explícito pula essa seleção. Em stdin não interativo, valor obrigatório ausente falha com uso acionável em vez de tentar abrir TUI.
+
 No fluxo de `work start`, o Work resolve e apresenta escolhas necessárias, cria o Work, materializa seu estado canônico a partir da resposta do Starter e executa extensões pós-criação. Enquanto Linkers e Importers são executados, o Work indica qual extensão está em execução; erros automáticos são reportados como avisos com diagnóstico, pois o Work já está disponível.
 
-Todas as escolhas — Starters concorrentes, modo de início, convenção, prefixo, base branch, retomada, arquivamento, Importer e Linker manual — usam componentes de TUI consistentes e navegáveis por teclado. `work view`, assim como `work import` e `work link`, opera sobre o Work atual; fora de um Work, falha com mensagem clara.
+Todas as escolhas — Starters concorrentes, modo de início, convenção, prefixo, base branch, retomada, arquivamento, Importer e Linker manual — usam componentes de TUI consistentes e navegáveis por teclado. `work status` usa o Work atual quando não recebe um Work explícito; `work import` e `work link` operam sempre sobre o Work atual. Quando esse contexto não puder ser resolvido, falham com mensagem clara.
 
-`work repository` abre a gestão de Repository Resolution. `work repository policy` inspeciona a sequência efetiva de Locators e permite `add`, `remove`, `move` e `set`; `work repository locator list` mostra todos os Locators instalados e seu estado; `work repository roots` gerencia as raízes de busca. Remover um Locator da policy apenas deixa de usá-lo na estratégia; desabilitar continua sendo uma operação exclusiva do plugin.
+`work plugin`, `work repository` e `work convention` são hubs TUI. Na API direta, o verbo vem após um caminho de recursos no singular: `plugin list|install|enable|disable|update|uninstall`, `repository policy list|add|remove|move|replace`, `repository locator list`, `repository root list|add|remove|replace` e `convention show|set`. Remover um Locator da policy apenas deixa de usá-lo na estratégia; desabilitar continua sendo uma operação exclusiva do plugin. A superfície completa e suas semânticas transversais são governadas pela ADR-0017.
+
+Comandos de leitura aceitam `--json` e não alteram acesso recente, configuração, checkout ou proveniência. `--yes` confirma impactos já determinados, mas nunca escolhe alvo, modo ou valor. Não existem aliases oficiais de comandos ou recursos.
 
 ***
 
@@ -237,6 +249,8 @@ Todas as escolhas — Starters concorrentes, modo de início, convenção, prefi
 ***
 
 ## 13. Roadmap / fora do escopo da v1
+
+O sequenciamento da v1 em fatias verticais, com demonstração e critério de saída por entrega, está em [`docs/roadmap.md`](roadmap.md).
 
 **Fora do escopo da v1:** plugins de integração além do conjunto mínimo de referência; múltiplas convenções simultâneas por repositório; sincronização entre máquinas; interface gráfica; sandbox de segurança para plugins.
 

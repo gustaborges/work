@@ -1,0 +1,48 @@
+# S7 — a failure at any materialization boundary rolls back completely: no
+# orphan branch, worktree, Work directory, snapshot, or projection row, and the
+# durable config / seed install are left intact.
+# Covers US3 scenario 4; SC-003; FR-020.
+
+gitrepo src
+env WS=$WORK/ws
+
+# First run persists the workspace root before it fails, so later runs omit
+# --workspace (a configured root rejects it).
+env WORK_FAIL_AT=worktree
+! work start $WORK/src --workspace $WS --base main --slug rollme --prefix {slug} --yes
+stderr 'error: materialization-failed:'
+! stdout 'work: created'
+exec git -C $WORK/src for-each-ref refs/heads/rollme
+! stdout .
+exec git -C $WORK/src worktree list --porcelain
+! stdout 'rollme'
+! exists $WS/in-progress/src_rollme
+! exists $WORK/dothome/state/work.db
+
+env WORK_FAIL_AT=snapshot
+! work start $WORK/src --base main --slug rollme --prefix {slug} --yes
+stderr 'error: materialization-failed:'
+exec git -C $WORK/src for-each-ref refs/heads/rollme
+! stdout .
+! exists $WS/in-progress/src_rollme
+! exists $WORK/dothome/state/work.db
+
+env WORK_FAIL_AT=projection
+! work start $WORK/src --base main --slug rollme --prefix {slug} --yes
+stderr 'error: materialization-failed:'
+exec git -C $WORK/src for-each-ref refs/heads/rollme
+! stdout .
+! exists $WS/in-progress/src_rollme
+! exists $WORK/dothome/state/work.db
+
+# Durable state survived every rollback.
+exists $WORK/dothome/plugins/work-reference/plugin.json
+grep 'filesystem-repository-locator' $WORK/dothome/config/work.json
+grep '"workspace"' $WORK/dothome/config/work.json
+
+# With the fault cleared, the same command now succeeds and is coherent.
+env WORK_FAIL_AT=
+work start $WORK/src --base main --slug rollme --prefix {slug} --yes
+stdout 'work: created '
+exists $WS/in-progress/src_rollme/worktree
+verifycoherent

@@ -1,0 +1,19 @@
+# Normalize line endings: store LF in the repo and check out LF on every
+# platform. Keeps `gofmt -l` (and the shell snippets) stable on Windows CI,
+# where core.autocrlf would otherwise rewrite every file to CRLF on checkout.
+* text=auto eol=lf
+
+# Explicitly LF for the file types the toolchain and runtime are strict about.
+*.go   text eol=lf
+*.sh   text eol=lf
+*.fish text eol=lf
+*.txtar text eol=lf
+
+# PowerShell tolerates LF; keep it consistent with the other snippets.
+*.ps1  text eol=lf
+
+# Never touch binary blobs.
+*.exe  binary
+*.dll  binary
+*.so   binary
+*.dylib binary

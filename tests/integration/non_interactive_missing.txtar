@@ -1,0 +1,35 @@
+# S9 — a non-interactive run with a missing required value fails with exit 2,
+# names the flag, and never opens a TUI or mutates any state.
+# Covers US2 scenario 5; FR-024, RF-51.
+#
+# testscript drives `work` with non-TTY stdin/stdout, so every invocation here
+# is already non-interactive.
+
+gitrepo src
+env WS=$WORK/ws
+
+# Missing --slug: exit 2, stderr names the flag.
+! work start $WORK/src --workspace $WS --base main --prefix {slug} --yes
+stderr 'usage'
+stderr '--slug'
+! stdout .
+
+# Missing SOURCE: exit 2, stderr mentions the source argument.
+! work start --workspace $WS --base main --slug x --prefix {slug} --yes
+stderr 'usage'
+stderr 'SOURCE|source'
+
+# Missing --yes (the confirm cannot be answered without a TTY): exit 2.
+! work start $WORK/src --workspace $WS --base main --slug x --prefix {slug}
+stderr '--yes'
+
+# Bare `work` with no subcommand, non-interactive: exit 2, points at `work start`.
+! work
+stderr 'work start'
+! stdout .
+
+# None of the failing runs bootstrapped, wrote config, or created a Work.
+! exists $WS
+! exists $WORK/dothome/config/work.json
+! exists $WORK/dothome/plugins/work-reference
+! exists $WORK/dothome/state/work.db
