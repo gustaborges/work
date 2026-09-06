@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://work.dev/schemas/work-state/1.json",
+  "title": "work-state.json (schema 1) — F1",
+  "description": "Canonical, self-contained snapshot of a Work. Authority over the Work's persisted state (ADR-0013). Written only by the core, atomically (temp + rename). Plugins never read or write this file.",
+  "type": "object",
+  "required": ["schema", "work", "meta", "links"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "Schema version. F1 emits 1."
+    },
+    "work": {
+      "type": "object",
+      "description": "Core-governed domain state. Plugins cannot create or write keys here.",
+      "required": [
+        "id",
+        "slug",
+        "status",
+        "start_mode",
+        "starter",
+        "branch",
+        "base_branch",
+        "branch_convention",
+        "created_at",
+        "last_accessed_at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Opaque, sortable, stable identity generated at creation (e.g. ULID)."
+        },
+        "slug": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Short human-readable identifier chosen by the user."
+        },
+        "status": {
+          "enum": ["in-progress"],
+          "description": "F1 only ever writes 'in-progress'. 'archived' arrives with F2."
+        },
+        "start_mode": {
+          "enum": ["new"],
+          "description": "F1 only ever writes 'new'. 'contribution' / 'fork' arrive with F4."
+        },
+        "starter": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Logical name of the Starter that resolved the source. F1: 'local-path-starter'."
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The created branch name (interpolate(prefix, slug); for 'freeform' == slug)."
+        },
+        "base_branch": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Short name of the base ref the branch was started from."
+        },
+        "branch_convention": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Resolved convention name. F1: 'freeform'. Omitted only in contribution mode (unreachable in F1), hence required here."
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339 UTC. Set once."
+        },
+        "last_accessed_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339 UTC. Equals created_at at creation; bumped on resume (F2)."
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "description": "Extensible metadata published by components. Empty in F1.",
+      "additionalProperties": true
+    },
+    "links": {
+      "type": "object",
+      "description": "First-class external relations, one value per semantic key. Empty in F1.",
+      "additionalProperties": { "type": "string" }
+    }
+  },
+  "examples": [
+    {
+      "schema": 1,
+      "work": {
+        "id": "01JB0K3M7Q8ZC4X2N6R9WFD5AE",
+        "slug": "add-retry-logic",
+        "status": "in-progress",
+        "start_mode": "new",
+        "starter": "local-path-starter",
+        "branch": "add-retry-logic",
+        "base_branch": "main",
+        "branch_convention": "freeform",
+        "created_at": "2026-09-05T14:03:11Z",
+        "last_accessed_at": "2026-09-05T14:03:11Z"
+      },
+      "meta": {},
+      "links": {}
+    }
+  ]
+}
