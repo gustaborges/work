@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rogpeppe/go-internal/testscript"
 
@@ -99,6 +100,56 @@ func TestScripts(t *testing.T) {
 					if out, err := cmd.CombinedOutput(); err != nil {
 						ts.Fatalf("git %s: %v\n%s", strings.Join(c, " "), err, out)
 					}
+				}
+			},
+			// seedworks <src> <slug>... runs `work start` once per slug against
+			// the repo at <src>, into $WS, with a >1 s gap between runs so each
+			// Work's last_accessed_at is distinct and the recency order is
+			// unambiguous. The Work directory for slug <s> is
+			// $WS/in-progress/<basename(src)>_<s>/. Used by the F2 resume and
+			// archive scenarios.
+			"seedworks": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) < 2 {
+					ts.Fatalf("usage: seedworks <src> <slug>...")
+				}
+				src := ts.MkAbs(args[0])
+				ws := ts.Getenv("WS")
+				if ws == "" {
+					ts.Fatalf("seedworks: $WS is not set")
+				}
+				for i, slug := range args[1:] {
+					if i > 0 {
+						time.Sleep(1100 * time.Millisecond)
+					}
+					err := ts.Exec("work", "start", src,
+						"--workspace", ws, "--base", "main",
+						"--slug", slug, "--prefix", "{slug}", "--yes")
+					if err != nil {
+						ts.Fatalf("seedworks %s: %v", slug, err)
+					}
+				}
+			},
+			// dirty <worktree-dir> writes an untracked file into a Work's
+			// worktree so git status --porcelain reports it as dirty.
+			"dirty": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 1 {
+					ts.Fatalf("usage: dirty <worktree-dir>")
+				}
+				dir := ts.MkAbs(args[0])
+				if err := os.WriteFile(filepath.Join(dir, "UNTRACKED.txt"), []byte("dirty\n"), 0o644); err != nil {
+					ts.Fatalf("dirty: %v", err)
+				}
+			},
+			// prearchivedir <archived-root> <name> pre-creates
+			// <archived-root>/<yyyymmdd>-<name>/ (today's date) so the archive
+			// pathing collision-suffix path (-2, -3, ...) is exercised.
+			"prearchivedir": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 2 {
+					ts.Fatalf("usage: prearchivedir <archived-root> <name>")
+				}
+				p := filepath.Join(ts.MkAbs(args[0]), time.Now().Format("20060102")+"-"+args[1])
+				if err := os.MkdirAll(p, 0o755); err != nil {
+					ts.Fatalf("prearchivedir: %v", err)
 				}
 			},
 		},
