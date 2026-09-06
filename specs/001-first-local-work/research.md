@@ -111,7 +111,7 @@ On any error before step 3 the temp file is removed and no canonical file is tou
 **Decision.**
 - **Cobra** for the command tree: `work` (no args → TUI home), `work start [SOURCE]`, `work shell-init <shell>`. Persistent `--json` wired only on read commands.
 - **Bubble Tea v2** + **Lipgloss** for the `work` home model (a simple menu; F1 lists only "Start a Work").
-- **`huh`** (charmbracelet) for each individual prompt in `work start`: base-branch select, prefix select, slug text input with inline validation, and the final confirm. `huh` is built on Bubble Tea and removes hundreds of lines of hand-rolled model code.
+- **`huh`** (charmbracelet) for each individual prompt in `work start`: prefix select, slug text input with inline validation, workspace-root edit, and the final confirm; the staged base-branch picker is a small hand-rolled Bubble Tea model (Remote/Local tabs). Each resolved prompt is then replaced by a compact completed widget (`tui.StepDone`). `huh` is built on Bubble Tea and removes hundreds of lines of hand-rolled model code.
 - **Interactive detection:** `golang.org/x/term.IsTerminal` on *both* stdin and stdout. If either is not a TTY the process is non-interactive: no TUI is ever constructed; a missing required value fails with usage guidance and a stable exit code (FR-024, RF-51).
 
 **Rationale.** ADR-0009 fixes Cobra + Bubble Tea. `huh` is the idiomatic 2025+ way to build exactly the kind of discrete selection/confirm prompts F1 needs, all keyboard-navigable (PRD §10), and it shares the Bubble Tea renderer so the home and the prompts look consistent.

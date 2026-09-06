@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -130,6 +131,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	// terminal an invalid or unusable path returns to the path prompt instead
 	// of exiting, so the user can correct it without restarting (FR-013, S4).
 	var repoPath string
+	promptedPath := false
 	for {
 		s := strings.TrimSpace(source)
 		if s == "" {
@@ -140,6 +142,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			if err != nil {
 				return err
 			}
+			promptedPath = true
 			continue
 		}
 		ref, ierr := starter.Invoke(home.PluginsDir(), starterComp, s)
@@ -158,28 +161,12 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	}
 	repo := gitx.Open(repoPath)
 	repoName := filepath.Base(repoPath)
-
-	// 3. Base branch.
-	choices, err := basebranch.List(repo)
-	if err != nil {
-		return err
-	}
-	if len(choices) == 0 {
-		return diag.New(diag.NoBaseBranch, "the repository has no selectable base branch")
-	}
-	var base basebranch.Choice
-	if f.baseSet {
-		base, err = basebranch.Resolve(choices, f.base)
-	} else if interactive {
-		base, err = selectBase(ctx, choices)
-	} else {
-		return diag.New(diag.Usage, "missing --base: name a base branch")
-	}
-	if err != nil {
-		return err
+	if interactive && promptedPath {
+		tui.StepDone(errOut, "Local repository path", repoPath)
 	}
 
-	// 4. Prefix (freeform convention).
+	// 3. Prefix (freeform convention). A convention that offers a single prefix
+	// is not a choice, so no prompt — and no completed step — is shown for it.
 	catalog := convention.Load(reg)
 	prefixes, err := catalog.Prefixes(convention.Freeform)
 	if err != nil {
@@ -194,14 +181,20 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		if err != nil {
 			return err
 		}
+		if len(prefixes) > 1 {
+			tui.StepDone(errOut, "Branch prefix", prefix)
+		}
 	default:
 		return diag.New(diag.Usage, "missing --prefix: name a branch prefix")
 	}
 
-	// 5+6. Slug → derived branch name, validated and collision-checked before
+	// 4+5. Slug → derived branch name, validated and collision-checked before
 	// any mutation. In an interactive terminal an invalid name or a collision
 	// returns to the slug prompt so the user can pick another (FR-013, S5, S6).
+	// Asked before the base branch: a rejected slug is the cheapest failure to
+	// recover from, so it comes first.
 	slugFromFlag := f.slugSet
+	promptedSlug := false
 	var slug, branch string
 	for {
 		switch {
@@ -212,6 +205,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			if err != nil {
 				return err
 			}
+			promptedSlug = true
 		default:
 			return diag.New(diag.Usage, "missing --slug: name the Work")
 		}
@@ -233,11 +227,37 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		}
 		break
 	}
+	if interactive && promptedSlug {
+		tui.StepDone(errOut, "Slug", slug)
+	}
+
+	// 6. Base branch.
+	choices, err := basebranch.List(repo)
+	if err != nil {
+		return err
+	}
+	if len(choices) == 0 {
+		return diag.New(diag.NoBaseBranch, "the repository has no selectable base branch")
+	}
+	var base basebranch.Choice
+	if f.baseSet {
+		base, err = basebranch.Resolve(choices, f.base)
+	} else if interactive {
+		base, err = selectBase(ctx, choices)
+	} else {
+		return diag.New(diag.Usage, "missing --base: name a base branch")
+	}
+	if err != nil {
+		return err
+	}
+	if interactive && !f.baseSet {
+		tui.StepDone(errOut, "Base branch", formatBaseChoice(base))
+	}
 
 	// 7. Workspace root. Resolved only once every source- and name-level check
 	// has passed, so a rejected run never persists a root or creates its dirs
 	// (SC-004).
-	workspaceRoot, err := resolveWorkspace(home, cfg, f, interactive)
+	workspaceRoot, err := resolveWorkspace(home, cfg, f, interactive, errOut)
 	if err != nil {
 		return err
 	}
@@ -322,7 +342,7 @@ func requireNonInteractiveFlags(source string, cfg *config.Config, f startFlags)
 
 // resolveWorkspace applies the F1 workspace-root rule: reuse a configured root
 // silently; on a machine with none, persist the supplied/prompted value.
-func resolveWorkspace(home workhome.Home, cfg *config.Config, f startFlags, interactive bool) (string, error) {
+func resolveWorkspace(home workhome.Home, cfg *config.Config, f startFlags, interactive bool, errOut io.Writer) (string, error) {
 	if strings.TrimSpace(cfg.Workspace) != "" {
 		if f.workspaceSet {
 			return "", diag.New(diag.Usage,
@@ -332,6 +352,7 @@ func resolveWorkspace(home workhome.Home, cfg *config.Config, f startFlags, inte
 	}
 
 	var raw string
+	prompted := false
 	switch {
 	case f.workspaceSet:
 		raw = f.workspace
@@ -344,6 +365,7 @@ func resolveWorkspace(home workhome.Home, cfg *config.Config, f startFlags, inte
 		if err != nil {
 			return "", err
 		}
+		prompted = true
 	default:
 		return "", diag.New(diag.Usage, "missing --workspace: no workspace root is configured yet")
 	}
@@ -355,7 +377,20 @@ func resolveWorkspace(home workhome.Home, cfg *config.Config, f startFlags, inte
 	if err := workspace.Persist(home, abs); err != nil {
 		return "", err
 	}
+	if prompted {
+		tui.StepDone(errOut, "Workspace root", abs)
+	}
 	return abs, nil
+}
+
+// formatBaseChoice renders a resolved base branch for its completed-step widget:
+// "<short>  <short-sha> [remote|local]".
+func formatBaseChoice(c basebranch.Choice) string {
+	scope := "local"
+	if c.Scope == basebranch.ScopeRemoteTracking {
+		scope = "remote"
+	}
+	return fmt.Sprintf("%s  %s [%s]", c.Short, c.ObjectShort, scope)
 }
 
 // retryable reports whether err is a diag.Error whose category is one the
