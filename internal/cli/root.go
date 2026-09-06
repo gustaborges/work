@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/gustaborges/work/internal/diag"
+	"github.com/gustaborges/work/internal/tui"
 )
 
 // newRootCmd builds the top-level `work` command with its subcommands
@@ -20,8 +21,9 @@ func newRootCmd() *cobra.Command {
 		Short:         "Isolated, reproducible units of work backed by git worktrees",
 		SilenceErrors: true,
 		SilenceUsage:  true,
+		Args:          cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmd.Help()
+			return runHome(cmd)
 		},
 	}
 
@@ -32,6 +34,28 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newShellInitCmd())
 
 	return root
+}
+
+// runHome handles `work` with no subcommand: in an interactive terminal it
+// opens the TUI home and dispatches the chosen journey; otherwise it prints a
+// one-line command summary and exits 2 without rendering any TUI (RF-51,
+// contracts/cli-work-home.md).
+func runHome(cmd *cobra.Command) error {
+	if !tui.IsInteractive() {
+		return diag.New(diag.Usage,
+			"run `work start <path>` to create a Work; see `work --help` for all commands")
+	}
+	choice, err := tui.RunHome(cmd.Context())
+	if err != nil {
+		return err
+	}
+	switch choice {
+	case tui.HomeStartWork:
+		return runStart(cmd, "", startFlags{})
+	default:
+		// Left the home without choosing anything.
+		return nil
+	}
 }
 
 // Execute runs the root command and terminates the process with the exit code

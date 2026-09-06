@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/gustaborges/work/internal/diag"
@@ -29,6 +30,19 @@ func TestRootRejectsUnknownSubcommand(t *testing.T) {
 	root.SetErr(&bytes.Buffer{})
 	if err := root.Execute(); err == nil {
 		t.Fatal("unknown subcommand: want error")
+	}
+}
+
+func TestBareWorkNonInteractiveIsUsage(t *testing.T) {
+	out, errb, code := runWork(t)
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2\nstderr: %s", code, errb)
+	}
+	if out != "" {
+		t.Errorf("stdout should be empty, got %q", out)
+	}
+	if !strings.Contains(errb, "work start") {
+		t.Errorf("stderr does not point at `work start`: %s", errb)
 	}
 }
 
