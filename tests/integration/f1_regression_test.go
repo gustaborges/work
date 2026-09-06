@@ -1,9 +1,8 @@
 //go:build unix
 
 // F1 regression guard (SC-007): F2 must not change the `work start` journey.
-// The full F1 quickstart S1–S12 runs as the create_*/invalid_*/branch_collision/
-// rollback/shell_integration/non_interactive_missing scenarios in this package,
-// executed unchanged by `go test ./...` on every CI OS. This file adds an
+// The full F1 quickstart scenarios S1–S12 are covered by a mix of testscript
+// .txtar files and unix-only pty tests in this package. This file adds an
 // explicit assertion that `work start`'s stdout contract is byte-stable and that
 // the lazy schema-2 upgrade is the only F1-visible change F2 introduces.
 package integration
