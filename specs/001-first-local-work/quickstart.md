@@ -182,11 +182,22 @@ no `works` row for it. `config/work.json` and the seed install remain intact.
 **Covers:** US3 scenario 5; FR-021; exit 20.
 
 ```bash
-printf 'n\n' | work start "$src" --workspace "$WS" --base main --slug cancelme --prefix '{slug}'   # decline confirm
+# Declining the confirm prompt requires an interactive terminal — the prompt is
+# only shown when stdin AND stdout are TTYs. Under a pty harness:
+work start "$src" --workspace "$WS" --base main --slug cancelme --prefix '{slug}'   # answer "n" at the confirm
+echo $?    # -> 20
+
+# SIGINT before the commit step: same outcome.
+work start "$src" --workspace "$WS" --base main --slug intr --prefix '{slug}'       # Ctrl-C at the confirm
 echo $?    # -> 20
 ```
 
-**Expect:** exit 20; zero artifacts for `cancelme`.
+A piped-stdin run is non-interactive, so it never reaches a confirm prompt: without
+`--yes` it fails fast with exit 2 (`usage`), mutating nothing — which is also a valid
+"leaves nothing" outcome, just a different code.
+
+**Expect:** exit 20 for the interactive decline / SIGINT; zero artifacts for
+`cancelme` or `intr` in every case.
 
 ---
 

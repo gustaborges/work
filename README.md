@@ -1,0 +1,176 @@
+# work
+
+`work` turns an already-cloned Git repository into an **isolated unit of work**: a
+dedicated [`git worktree`](https://git-scm.com/docs/git-worktree) on its own branch,
+a canonical `work-state.json` snapshot, and a lookup record in a local SQLite
+projection. One command takes you from a local clone to a ready checkout — offline,
+with no network and no AI on the path.
+
+This repository is the **F1 — First Local Work** slice. The only commands are
+`work start`, the guided `work` home, and `work shell-init`.
+
+## Requirements
+
+- Go **1.26+** (to build)
+- System **git ≥ 2.5** on `PATH` (needs `worktree add -b` and `check-ref-format --branch`)
+- A POSIX shell (bash/zsh/fish) or PowerShell 7+ for automatic terminal repositioning
+
+## Build
+
+```sh
+make seed      # cross-compile the embedded seed components into seed/dist/<goos>_<goarch>/
+make build     # go build -o bin/work ./cmd/work  (embeds seed/dist for the host platform)
+make test      # unit + contract + integration suites
+make lint      # gofmt, go vet, staticcheck — all must be clean
+```
+
+`make build` depends on `make seed`; building without a populated `seed/dist` for the
+host platform fails on purpose.
+
+## Install
+
+Put the built binary on your `PATH`:
+
+```sh
+make build
+install -m 0755 bin/work ~/.local/bin/work      # or anywhere on PATH
+```
+
+or, straight from the module:
+
+```sh
+git clone https://github.com/gustaborges/work && cd work
+make build && cp bin/work /usr/local/bin/
+```
+
+State lives under `~/.work` (override with `WORK_HOME`):
+
+| Path | Contents |
+|---|---|
+| `~/.work/config/work.json` | workspace root, repository roots, resolution policy (human-editable) |
+| `~/.work/state/work.db` | SQLite projection — rebuildable from snapshots |
+| `~/.work/state/registry.json` | component registry (generated) |
+| `~/.work/plugins/work-reference/` | the embedded seed package, installed on first run |
+
+## Shell integration (optional but recommended)
+
+Without integration, `work start` cannot move your shell into the new worktree — it
+prints the path and tells you so. To have the shell follow automatically, add the
+wrapper to your startup file:
+
+```sh
+# ~/.bashrc
+eval "$(work shell-init bash)"
+
+# ~/.zshrc
+eval "$(work shell-init zsh)"
+
+# ~/.config/fish/config.fish
+work shell-init fish | source
+
+# PowerShell $PROFILE
+Invoke-Expression (& work shell-init powershell | Out-String)
+```
+
+`work shell-init <shell>` is read-only: it prints a snippet to stdout and exits. The
+snippet defines a `work` function that runs the real binary, then `cd`s into the
+worktree path the binary drops in a private temp file (`$WORK_CD_FILE`). It never
+edits your rc files and is safe to source more than once.
+
+## Walkthrough — `work start`
+
+### Non-interactive (scriptable)
+
+Every required choice is a flag; nothing is prompted:
+
+```sh
+work start ~/src/acme-api \
+  --workspace ~/work \
+  --base main \
+  --slug add-retry-logic \
+  --prefix '{slug}' \
+  --yes
+```
+
+Output on success (exactly these three lines, to stdout):
+
+```
+work: created 01K4RA6M9QF3B7YV2ZP8XW1E0T
+work: branch add-retry-logic  (from main @ 1a2b3c4)
+work: path /home/you/work/in-progress/acme-api_add-retry-logic/worktree
+```
+
+The result:
+
+- `~/work/in-progress/acme-api_add-retry-logic/` holds `worktree/` and
+  `work-state.json` and nothing else;
+- `worktree/` is checked out on a new branch `add-retry-logic`, started from `main`;
+- the **source repository is untouched** — no new branches, no changed HEAD;
+- one row in `~/.work/state/work.db` matches the snapshot.
+
+### Interactive (guided)
+
+Run `work` with no arguments to open the home, choose **Start a Work**, then follow
+the prompts; or run `work start` with no source. Each flag you *do* pass skips only
+its own prompt — every validation still runs.
+
+```
+work start ~/src/acme-api
+  → base branch?   (Local / Remote-tracking groups, each with a short SHA)
+  → prefix?        ({slug})
+  → slug?          add-retry-logic
+  → Create Work … ?  [y/N]
+```
+
+### Flags
+
+| Flag | Meaning |
+|---|---|
+| `SOURCE` | path to a local git repository (F1: a path only — no name/URL lookup) |
+| `--workspace PATH` | workspace root; validated and persisted only when none is configured yet |
+| `--base REF` | base branch — a local or remote-tracking ref (`main` or `origin/main`) |
+| `--slug SLUG` | short identifier; non-empty, no whitespace, no `..`, no leading `-` |
+| `--prefix PREFIX` | convention prefix; `freeform` offers exactly `{slug}` |
+| `--yes` | skip the confirmation prompt (never fills in any other value) |
+
+`--json` is rejected on `work start` — it is a mutation.
+
+## Transactional guarantee
+
+Creation is atomic up to the moment the projection row is committed. Any failure or
+cancellation before that point — an invalid path, a bad slug, a branch collision, a
+crash mid-materialization, Ctrl-C at the prompt — unwinds every step and leaves **no
+orphan branch, worktree, directory, snapshot, or row**. Bootstrap and config always
+survive a failed creation.
+
+## Exit codes
+
+`work` reports a stable token and exit code for every outcome
+(`error: <token>: <message>` on stderr):
+
+| Code | Token | Meaning |
+|---:|---|---|
+| 0 | `ok` | success |
+| 2 | `usage` | missing/invalid flag or arg; non-interactive run missing a required value |
+| 10 | `invalid-path` | `SOURCE` does not resolve to an existing readable path |
+| 11 | `unusable-repo` | path exists but is not a usable non-bare repo with ≥1 commit |
+| 12 | `no-base-branch` | the repository has no selectable base branch |
+| 13 | `invalid-branch-name` | the derived branch name is rejected by `git check-ref-format` |
+| 14 | `branch-collision` | the branch already exists (local, remote-tracking, or bound to a worktree) |
+| 15 | `destination-unavailable` | the target Work directory is already occupied |
+| 16 | `bootstrap-failed` | `git` missing/too old, or the seed package could not be installed |
+| 17 | `materialization-failed` | a step failed during creation; all effects were rolled back |
+| 20 | `cancelled` | declined at the confirmation prompt, or interrupted before commit |
+
+## Project layout
+
+```
+cmd/work/            entry point → internal/cli
+internal/            role-focused packages mirroring the start pipeline
+seed/                two standalone binaries (starter + locator), embedded via //go:embed
+tests/contract/      golden stdin/stdout JSON against the built seed binaries
+tests/integration/   testscript scenarios driving the built work binary
+specs/001-first-local-work/   spec, plan, research, data model, contracts, quickstart
+```
+
+See `specs/001-first-local-work/quickstart.md` for the full validation scenarios.

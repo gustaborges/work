@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/gustaborges/work/internal/config"
@@ -35,6 +36,22 @@ const (
 	conventionName   = "freeform"
 	installOrigin    = "embedded-seed"
 )
+
+// stagePrefix names the temp directories install() stages the package in
+// before the atomic swap. A process killed mid-install can leave one behind;
+// install() sweeps stale ones on its next run.
+const stagePrefix = ".work-reference-"
+
+// installCheckpoint, when non-nil, is invoked at each named phase of install()
+// so tests can simulate an interruption. It is always nil in production.
+var installCheckpoint func(phase string) error
+
+func checkpoint(phase string) error {
+	if installCheckpoint == nil {
+		return nil
+	}
+	return installCheckpoint(phase)
+}
 
 type installMeta struct {
 	Origin        string `json:"origin"`
@@ -110,12 +127,19 @@ func install(h workhome.Home, digest string) error {
 		return diag.Wrap(diag.BootstrapFailed, err, "cannot read the embedded reference binaries")
 	}
 
+	// Sweep any staging dir a previously-killed install left behind, so an
+	// interrupted run never accumulates partial directories (SC-007, FR-005).
+	sweepStaleStaging(h)
+
 	// Stage the whole package in a temp dir, then swap it in atomically.
-	staging, err := os.MkdirTemp(h.PluginsDir(), ".work-reference-*")
+	staging, err := os.MkdirTemp(h.PluginsDir(), stagePrefix+"*")
 	if err != nil {
 		return diag.Wrap(diag.BootstrapFailed, err, "cannot stage the reference package")
 	}
 	defer os.RemoveAll(staging)
+	if err := checkpoint("staged"); err != nil {
+		return diag.Wrap(diag.BootstrapFailed, err, "interrupted while staging the reference package")
+	}
 
 	srcDir := filepath.Join(staging, "source")
 	if err := os.MkdirAll(srcDir, 0o755); err != nil {
@@ -136,18 +160,45 @@ func install(h workhome.Home, digest string) error {
 		return diag.Wrap(diag.BootstrapFailed, err, "cannot write install metadata")
 	}
 
+	if err := checkpoint("staged-complete"); err != nil {
+		return diag.Wrap(diag.BootstrapFailed, err, "interrupted before installing the reference package")
+	}
+
 	dest := filepath.Join(h.PluginsDir(), Alias)
 	if err := os.RemoveAll(dest); err != nil {
 		return diag.Wrap(diag.BootstrapFailed, err, "cannot replace the existing reference package")
 	}
+	if err := checkpoint("dest-removed"); err != nil {
+		return diag.Wrap(diag.BootstrapFailed, err, "interrupted while replacing the reference package")
+	}
 	if err := os.Rename(staging, dest); err != nil {
 		return diag.Wrap(diag.BootstrapFailed, err, "cannot install the reference package")
+	}
+	if err := checkpoint("renamed"); err != nil {
+		return diag.Wrap(diag.BootstrapFailed, err, "interrupted before registering the reference package")
 	}
 
 	if err := registerComponents(h, manifest); err != nil {
 		return err
 	}
+	if err := checkpoint("registered"); err != nil {
+		return diag.Wrap(diag.BootstrapFailed, err, "interrupted before updating the resolution policy")
+	}
 	return addLocatorToPolicy(h)
+}
+
+// sweepStaleStaging removes staging directories orphaned by a killed install.
+// A best-effort cleanup: anything it cannot remove is retried on the next run.
+func sweepStaleStaging(h workhome.Home) {
+	entries, err := os.ReadDir(h.PluginsDir())
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), stagePrefix) {
+			_ = os.RemoveAll(filepath.Join(h.PluginsDir(), e.Name()))
+		}
+	}
 }
 
 func registerComponents(h workhome.Home, manifest *plugin.Manifest) error {

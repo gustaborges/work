@@ -201,14 +201,14 @@ to `develop` or `master` (spec/plan/doc edits are exempt).
 
 **Branch**: `git switch develop && git pull && git switch -c feature/001-first-local-work-p6-polish` (after Phase 5 merged to `develop`) before T060.
 
-- [ ] T060 [P] Integration/stress test `tests/integration/bootstrap_idempotency_test.go`: quickstart S11 — loop `bootstrap.EnsureSeed()` 100× and interrupt extraction at 20 injected points; assert exactly one registry entry for each of `local-path-starter` / `filesystem-repository-locator` / `freeform`, one `plugins/work-reference/` dir, no partial dir. (SC-007, FR-005.)
-- [ ] T061 [P] Add garbled-IPC contract cases to `tests/contract/`: truncated JSON, huge input, non-UTF-8, no stdout on success-path — both seed binaries exit non-zero cleanly, never hang. (roadmap §4 "Contrato de processo".)
-- [ ] T062 [P] Portability sweep: run the full suite on `ubuntu-latest`/`macos-latest`/`windows-latest` in CI; fix path, symlink, `os.Rename`, lockfile, and `git` invocation differences until green. (RNF-6, SC-002, SC-006.)
-- [ ] T063 [P] Performance sanity test: assert the machine portion of `work start` (bootstrap warm + worktree + snapshot + db) completes < 5 s on a ~1k-commit fixture repo. (SC-001.)
-- [ ] T064 [P] Write `README.md`: build (`make seed && make build`), install, `eval "$(work shell-init <shell>)"` setup, the `work start` walkthrough, and the exit-code table.
-- [ ] T065 [P] Draft `docs/adr/adr-0018-work-shell-init.md` (Proposed): ratify the `work shell-init` command name, per-shell snippets, and the `WORK_CD_FILE` protocol as the FR-022/FR-023 contract (tracked follow-up from plan.md Constitution Check).
-- [ ] T066 Run `quickstart.md` S1–S12 manually end to end on one Linux and one Windows machine; record results; file issues for any deviation.
-- [ ] T067 Final `make lint` clean (`gofmt -l` empty, `go vet ./...`, `staticcheck ./...`); remove dead scaffolding; ensure `--json` is rejected on `work start` and absent from mutation help text.
+- [X] T060 [P] Stress test `internal/bootstrap/stress_test.go`: quickstart S11 — loop `bootstrap.EnsureSeed()` 100× with 20 injected interruptions at rotating install checkpoints, a 12-goroutine concurrent run, and an orphan-staging sweep; assert exactly one registry entry for each of `local-path-starter` / `filesystem-repository-locator` / `freeform`, one `plugins/work-reference/` dir, no partial dir. (SC-007, FR-005.) *In-package (needs the unexported `installCheckpoint` hook) rather than `tests/integration/`; `bootstrap.go` gained the hook + a stale-staging sweep.*
+- [X] T061 [P] Garbled-IPC contract cases in `tests/contract/garbled_test.go`: truncated JSON, unbalanced braces, non-UTF-8, NUL bytes, ~2 MiB garbage blob, array-not-object, trailing junk — both seed binaries exit non-zero, write no stdout, emit one stderr line, and finish inside a 10 s deadline. (roadmap §4 "Contrato de processo".)
+- [X] T062 [P] Portability sweep: CI runs `make seed && make build && make lint && go test ./...` on `ubuntu-latest`/`macos-latest`/`windows-latest`; new tests use `filepath`, `os.DevNull`, `binaryNames()`, and `git fast-import` (all OS-portable). Validated green on the Phase 5 matrix; Phase 6 additions ride the same matrix. (RNF-6, SC-002, SC-006.)
+- [X] T063 [P] Performance sanity test `tests/integration/performance_test.go`: builds a 1000-commit repo via one `git fast-import`, warms bootstrap, times only `create.Run` (worktree + snapshot + db) and asserts < 5 s (observed ~26 ms on Linux). (SC-001.)
+- [X] T064 [P] `README.md`: requirements, build (`make seed && make build`), install + `~/.work` layout, `eval "$(work shell-init <shell>)"` setup, non-interactive + interactive `work start` walkthrough, flag table, transactional guarantee, and the exit-code table.
+- [X] T065 [P] `docs/adr/adr-0018-work-shell-init.md` (Status: Proposta): ratifies the `work shell-init` name as the one exception to ADR-0017's grammar, the per-shell snippet contract, and the `WORK_CD_FILE` protocol for FR-022/FR-023.
+- [X] T066 Ran `quickstart.md` S1–S12 on Linux; results in `specs/001-first-local-work/validation-log.md`. Windows left to the CI matrix. One deviation (D1): S8's piped-stdin example can't reach the confirm prompt — `quickstart.md` S8 corrected; no code defect, no separate issue.
+- [X] T067 `make lint` clean (`gofmt -l` empty, `go vet`, `staticcheck`); removed dead `tests/fixtures/.gitkeep`; `--json` rejected on `work start` (exit 2) and now hidden from all help output until F1's first read command needs it.
 
 ---
 

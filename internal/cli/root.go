@@ -29,8 +29,11 @@ func newRootCmd() *cobra.Command {
 		},
 	}
 
-	// Only read commands honor --json; mutating commands reject it.
+	// Only read commands honor --json; mutating commands reject it. It stays
+	// hidden until F1's first read command needs it, so it never appears in the
+	// help for `work start` (a mutation) or the bare `work` home.
 	root.PersistentFlags().Bool("json", false, "emit machine-readable output (read commands only)")
+	_ = root.PersistentFlags().MarkHidden("json")
 
 	root.AddCommand(newStartCmd())
 	root.AddCommand(newShellInitCmd())
