@@ -13,6 +13,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -198,6 +200,21 @@ func needSeed(t *testing.T) {
 	}
 }
 
+// gitIn runs `git -C dir args...` with the test git identity.
+func gitIn(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t",
+		"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t",
+		"GIT_CONFIG_GLOBAL="+filepath.Join(t.TempDir(), "gc"),
+		"GIT_CONFIG_SYSTEM="+os.DevNull,
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
 // T043 — `work` no-args opens the home listing only "Start a Work"; q exits 0
 // with no state change; selecting the entry reaches the path prompt.
 func TestHomeReachability(t *testing.T) {
@@ -257,5 +274,103 @@ func TestStartNoSourcePrompts(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(ws, "in-progress", "src_guided", "work-state.json")); err != nil {
 		t.Fatalf("snapshot missing: %v", err)
+	}
+}
+
+// T056 — in an interactive terminal a bad path, a bad branch name, and a branch
+// collision each return to the prompt that produced them; a later valid choice
+// completes the same journey without restarting `work start`. (US3 #1–#3.)
+func TestInteractiveRecovery(t *testing.T) {
+	needSeed(t)
+	bin := buildWorkBin(t)
+	env, homeDir, _ := ptyEnv(t)
+
+	repo := filepath.Join(homeDir, "src")
+	makeRepo(t, repo)
+	gitIn(t, repo, "branch", "taken")
+	ws := filepath.Join(homeDir, "ws")
+
+	// Only SOURCE and the slug are prompted.
+	c := newConsole(t, bin, env, "start",
+		"--workspace", ws, "--base", "main", "--prefix", "{slug}", "--yes")
+
+	// Bad path -> notice + re-prompt, no exit.
+	c.expect("repository path")
+	c.send("/no/such/path\r")
+	c.expect("invalid-path")
+	c.expect("repository path")
+	c.send(repo + "\r")
+
+	// Slug that git rejects as a ref -> back to the slug prompt.
+	c.expect("Slug")
+	c.send("bad:slug\r")
+	c.expect("invalid-branch-name")
+	c.expect("Slug")
+
+	// Slug that collides with an existing branch -> back to the slug prompt.
+	c.send("taken\r")
+	c.expect("branch-collision")
+	c.expect("Slug")
+
+	// A free slug completes the journey.
+	c.send("fresh\r")
+	c.expect("work: created ")
+	if code := c.wait(); code != 0 {
+		t.Fatalf("recovered start exited %d, want 0", code)
+	}
+	if _, err := os.Stat(filepath.Join(ws, "in-progress", "src_fresh", "worktree")); err != nil {
+		t.Fatalf("worktree missing after recovery: %v", err)
+	}
+	// The rejected choices left no branches behind: only main, taken, and fresh.
+	out, _ := exec.Command("git", "-C", repo, "for-each-ref", "--format=%(refname:short)", "refs/heads").Output()
+	got := strings.Fields(string(out))
+	sort.Strings(got)
+	if want := []string{"fresh", "main", "taken"}; !slices.Equal(got, want) {
+		t.Errorf("branches after recovery = %v, want %v", got, want)
+	}
+}
+
+// T055 — declining the confirmation prompt exits 20 and materializes nothing.
+func TestInteractiveCancelAtConfirm(t *testing.T) {
+	needSeed(t)
+	bin := buildWorkBin(t)
+	env, homeDir, workHome := ptyEnv(t)
+
+	repo := filepath.Join(homeDir, "src")
+	makeRepo(t, repo)
+	ws := filepath.Join(homeDir, "ws")
+
+	// No --yes, so the confirm prompt is shown.
+	c := newConsole(t, bin, env, "start", repo,
+		"--workspace", ws, "--base", "main", "--slug", "cancelme", "--prefix", "{slug}")
+	c.expect("Create Work")
+	c.send("n") // Reject -> submit
+	if code := c.wait(); code != 20 {
+		t.Fatalf("declining the confirm exited %d, want 20", code)
+	}
+	if _, err := os.Stat(filepath.Join(ws, "in-progress", "src_cancelme")); !os.IsNotExist(err) {
+		t.Fatalf("declined create left a Work directory: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workHome, "state", "work.db")); err == nil {
+		t.Fatalf("declined create left a projection database")
+	}
+	if out, _ := exec.Command("git", "-C", repo, "branch", "--list", "cancelme").CombinedOutput(); len(out) != 0 {
+		t.Fatalf("declined create left branch cancelme: %s", out)
+	}
+
+	// An interrupt delivered before the commit step also rolls back to exit 20.
+	// (The declined run above already persisted the workspace root.)
+	c2 := newConsole(t, bin, env, "start", repo,
+		"--base", "main", "--slug", "intr", "--prefix", "{slug}")
+	c2.expect("Create Work")
+	c2.send("\x03") // Ctrl-C
+	if code := c2.wait(); code != 20 {
+		t.Fatalf("Ctrl-C at the confirm exited %d, want 20", code)
+	}
+	if out, _ := exec.Command("git", "-C", repo, "branch", "--list", "intr").CombinedOutput(); len(out) != 0 {
+		t.Fatalf("interrupted create left branch intr: %s", out)
+	}
+	if _, err := os.Stat(filepath.Join(ws, "in-progress", "src_intr")); !os.IsNotExist(err) {
+		t.Fatalf("interrupted create left a Work directory: %v", err)
 	}
 }

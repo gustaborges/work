@@ -1,0 +1,39 @@
+# S6 — a branch-name collision is detected before any mutation and the
+# diagnostic states which kind: local, remote-tracking, or bound to a worktree.
+# Covers US3 scenario 3; FR-012; edge cases.
+
+gitrepo origin
+exec git clone -q $WORK/origin local
+env WS=$WORK/ws
+
+# Local branch already exists.
+exec git -C local branch mine
+! work start $WORK/local --workspace $WS --base main --slug mine --prefix {slug} --yes
+stderr 'error: branch-collision:'
+stderr 'local branch'
+! stdout .
+! exists $WS
+
+# Remote-tracking branch already exists.
+exec git -C origin branch upstream-feature
+exec git -C local fetch -q origin
+! work start $WORK/local --workspace $WS --base main --slug upstream-feature --prefix {slug} --yes
+stderr 'error: branch-collision:'
+stderr 'remote-tracking'
+! exists $WS
+
+# Branch already bound to another worktree.
+exec git -C local worktree add --quiet -b bound $WORK/bound-wt
+! work start $WORK/local --workspace $WS --base main --slug bound --prefix {slug} --yes
+stderr 'error: branch-collision:'
+stderr 'worktree'
+! exists $WS
+
+# A fresh name succeeds; re-running the same command then collides on the
+# branch it just created.
+work start $WORK/local --workspace $WS --base main --slug once --prefix {slug} --yes
+stdout 'work: created '
+! work start $WORK/local --base main --slug once --prefix {slug} --yes
+stderr 'error: branch-collision:'
+
+verifycoherent

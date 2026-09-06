@@ -1,0 +1,43 @@
+# S4 — an unusable source is caught before any Git or Work mutation, with a
+# category-specific diagnostic that quotes only the supplied path.
+# Covers US3 scenario 1; SC-004; FR-003, FR-027.
+
+env WS=$WORK/ws
+
+# A path that does not exist -> invalid-path.
+! work start $WORK/nope --workspace $WS --base main --slug x --prefix {slug} --yes
+stderr 'error: invalid-path:'
+! stdout .
+
+# A directory that is not a Git repository -> unusable-repo.
+mkdir $WORK/plain
+! work start $WORK/plain --workspace $WS --base main --slug x --prefix {slug} --yes
+stderr 'error: unusable-repo:'
+
+# A bare repository -> unusable-repo.
+exec git init -q --bare $WORK/bare.git
+! work start $WORK/bare.git --workspace $WS --base main --slug x --prefix {slug} --yes
+stderr 'error: unusable-repo:'
+
+# A repository with no commit -> unusable-repo.
+exec git init -q -b main $WORK/empty
+! work start $WORK/empty --workspace $WS --base main --slug x --prefix {slug} --yes
+stderr 'error: unusable-repo:'
+
+# The source is rejected before workspace resolution: nothing is created and no
+# workspace root is persisted.
+! exists $WS
+! exists $WORK/dothome/state/work.db
+grep '"workspace": ""' $WORK/dothome/config/work.json
+
+# A usable repository with a commit but no branch -> no-base-branch.
+gitrepo nobranch
+exec git -C nobranch checkout -q --detach HEAD
+exec git -C nobranch branch -D main
+! work start $WORK/nobranch --workspace $WORK/ws2 --base main --slug x --prefix {slug} --yes
+stderr 'error: no-base-branch:'
+! exists $WORK/ws2
+! exists $WORK/dothome/state/work.db
+
+# The seed install is intact (bootstrap is allowed to persist).
+exists $WORK/dothome/plugins/work-reference/plugin.json

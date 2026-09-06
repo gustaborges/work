@@ -2,8 +2,10 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -119,40 +121,45 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		return diag.Wrap(diag.BootstrapFailed, err, "cannot read the component registry")
 	}
 
-	// 1. SOURCE.
-	if strings.TrimSpace(source) == "" {
-		if !interactive {
-			return diag.New(diag.Usage, "no SOURCE given: pass a path to a local git repository")
-		}
-		source, err = tui.InputPath()
-		if err != nil {
-			return err
-		}
-	}
-
-	// 2. Resolve via the Starter, then validate the path directly.
 	starterComp, err := starter.Select(reg)
 	if err != nil {
 		return err
 	}
-	ref, err := starter.Invoke(home.PluginsDir(), starterComp, source)
-	if err != nil {
-		return err
-	}
-	repoPath, err := reporef.ValidatePath(ref.Path)
-	if err != nil {
-		return err
+
+	// 1+2. SOURCE → Starter → validated repository path. In an interactive
+	// terminal an invalid or unusable path returns to the path prompt instead
+	// of exiting, so the user can correct it without restarting (FR-013, S4).
+	var repoPath string
+	for {
+		s := strings.TrimSpace(source)
+		if s == "" {
+			if !interactive {
+				return diag.New(diag.Usage, "no SOURCE given: pass a path to a local git repository")
+			}
+			source, err = tui.InputPath()
+			if err != nil {
+				return err
+			}
+			continue
+		}
+		ref, ierr := starter.Invoke(home.PluginsDir(), starterComp, s)
+		if ierr == nil {
+			repoPath, ierr = reporef.ValidatePath(ref.Path)
+		}
+		if ierr != nil {
+			if interactive && retryable(ierr, diag.InvalidPath, diag.UnusableRepo) {
+				fmt.Fprintln(errOut, diag.Format(ierr))
+				source = ""
+				continue
+			}
+			return ierr
+		}
+		break
 	}
 	repo := gitx.Open(repoPath)
 	repoName := filepath.Base(repoPath)
 
-	// 3. Workspace root.
-	workspaceRoot, err := resolveWorkspace(home, cfg, f, interactive)
-	if err != nil {
-		return err
-	}
-
-	// 4. Base branch.
+	// 3. Base branch.
 	choices, err := basebranch.List(repo)
 	if err != nil {
 		return err
@@ -172,7 +179,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		return err
 	}
 
-	// 5. Prefix (freeform convention).
+	// 4. Prefix (freeform convention).
 	catalog := convention.Load(reg)
 	prefixes, err := catalog.Prefixes(convention.Freeform)
 	if err != nil {
@@ -191,29 +198,47 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		return diag.New(diag.Usage, "missing --prefix: name a branch prefix")
 	}
 
-	// 6. Slug.
-	var slug string
-	switch {
-	case f.slugSet:
-		slug = strings.TrimSpace(f.slug)
-	case interactive:
-		slug, err = tui.InputSlug()
+	// 5+6. Slug → derived branch name, validated and collision-checked before
+	// any mutation. In an interactive terminal an invalid name or a collision
+	// returns to the slug prompt so the user can pick another (FR-013, S5, S6).
+	slugFromFlag := f.slugSet
+	var slug, branch string
+	for {
+		switch {
+		case slugFromFlag:
+			slug = strings.TrimSpace(f.slug)
+		case interactive:
+			slug, err = tui.InputSlug()
+			if err != nil {
+				return err
+			}
+		default:
+			return diag.New(diag.Usage, "missing --slug: name the Work")
+		}
+
+		branch, err = catalog.DeriveName(convention.Freeform, prefix, slug)
+		if err == nil {
+			err = branchname.Validate(branch)
+		}
+		if err == nil {
+			err = branchname.DetectCollision(repo, branch)
+		}
 		if err != nil {
+			if interactive && retryable(err, diag.InvalidBranchName, diag.BranchCollision) {
+				fmt.Fprintln(errOut, diag.Format(err))
+				slugFromFlag = false
+				continue
+			}
 			return err
 		}
-	default:
-		return diag.New(diag.Usage, "missing --slug: name the Work")
+		break
 	}
 
-	// 7. Derive + validate the branch name (before any mutation).
-	branch, err := catalog.DeriveName(convention.Freeform, prefix, slug)
+	// 7. Workspace root. Resolved only once every source- and name-level check
+	// has passed, so a rejected run never persists a root or creates its dirs
+	// (SC-004).
+	workspaceRoot, err := resolveWorkspace(home, cfg, f, interactive)
 	if err != nil {
-		return err
-	}
-	if err := branchname.Validate(branch); err != nil {
-		return err
-	}
-	if err := branchname.DetectCollision(repo, branch); err != nil {
 		return err
 	}
 
@@ -331,6 +356,16 @@ func resolveWorkspace(home workhome.Home, cfg *config.Config, f startFlags, inte
 		return "", err
 	}
 	return abs, nil
+}
+
+// retryable reports whether err is a diag.Error whose category is one the
+// interactive flow can recover from by re-prompting.
+func retryable(err error, cats ...diag.Category) bool {
+	var d *diag.Error
+	if !errors.As(err, &d) {
+		return false
+	}
+	return slices.Contains(cats, d.Category)
 }
 
 func selectBase(choices []basebranch.Choice) (basebranch.Choice, error) {

@@ -101,9 +101,19 @@ func Run(ctx context.Context, p Params) (Result, error) {
 		}
 		return Result{}, diag.New(cat, msg)
 	}
+	// cancelled unwinds every effect so far and reports exit 20. It is checked
+	// at every step boundary so an interrupt before the commit point never
+	// leaves an orphan branch, worktree, directory, or snapshot (R10, FR-021).
+	cancelled := func() (Result, error, bool) {
+		if ctx.Err() == nil {
+			return Result{}, nil, false
+		}
+		unwind()
+		return Result{}, diag.New(diag.Cancelled, "creation cancelled"), true
+	}
 
-	if ctx.Err() != nil {
-		return Result{}, diag.New(diag.Cancelled, "creation cancelled")
+	if r, err, done := cancelled(); done {
+		return r, err
 	}
 
 	repo := gitx.Open(p.SourceRepo)
@@ -119,6 +129,10 @@ func Run(ctx context.Context, p Params) (Result, error) {
 	}
 	stack = append(stack, compensator{"lock", func() error { release(); return nil }})
 
+	if r, err, done := cancelled(); done {
+		return r, err
+	}
+
 	// Step 2: own the Work directory.
 	if failPoint("dir") {
 		return fail(diag.MaterializationFailed, nil, "injected failure at step: dir")
@@ -127,6 +141,10 @@ func Run(ctx context.Context, p Params) (Result, error) {
 		return fail(diag.MaterializationFailed, err, "cannot create the Work directory")
 	}
 	stack = append(stack, compensator{"dir", func() error { return os.RemoveAll(dirPath) }})
+
+	if r, err, done := cancelled(); done {
+		return r, err
+	}
 
 	// Step 3: create the branch and its worktree in one git call.
 	if failPoint("worktree") {
@@ -142,6 +160,10 @@ func Run(ctx context.Context, p Params) (Result, error) {
 
 	baseObject, _ := repo.Run("rev-parse", "--short", p.BaseRefname)
 
+	if r, err, done := cancelled(); done {
+		return r, err
+	}
+
 	// Step 4: write the canonical snapshot atomically.
 	if failPoint("snapshot") {
 		return fail(diag.MaterializationFailed, nil, "injected failure at step: snapshot")
@@ -152,9 +174,8 @@ func Run(ctx context.Context, p Params) (Result, error) {
 	}
 	// Covered by the step-2 RemoveAll compensator.
 
-	if ctx.Err() != nil {
-		unwind()
-		return Result{}, diag.New(diag.Cancelled, "creation cancelled")
+	if r, err, done := cancelled(); done {
+		return r, err
 	}
 
 	// Step 5 (commit): publish the projection row.

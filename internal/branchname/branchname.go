@@ -33,10 +33,24 @@ const (
 	CollisionWorktree       CollisionKind = "branch checked out in another worktree"
 )
 
-// DetectCollision reports the first namespace in which name already exists.
-// A nil error means the name is free.
+// DetectCollision reports the namespace in which name already exists. A nil
+// error means the name is free. A branch that is checked out in a linked
+// worktree also exists as a local head; it is reported as the worktree case
+// first because that is the more actionable diagnostic.
 func DetectCollision(repo gitx.Repo, name string) error {
-	local, err := repo.ShowRefVerify("refs/heads/" + name)
+	want := "refs/heads/" + name
+
+	worktrees, err := repo.WorktreeList()
+	if err != nil {
+		return fmt.Errorf("checking worktree branch bindings: %w", err)
+	}
+	for _, w := range worktrees {
+		if w.Branch == want {
+			return collision(name, CollisionWorktree)
+		}
+	}
+
+	local, err := repo.ShowRefVerify(want)
 	if err != nil {
 		return fmt.Errorf("checking for a local branch collision: %w", err)
 	}
@@ -52,16 +66,6 @@ func DetectCollision(repo gitx.Repo, name string) error {
 		return collision(name, CollisionRemoteTracking)
 	}
 
-	worktrees, err := repo.WorktreeList()
-	if err != nil {
-		return fmt.Errorf("checking worktree branch bindings: %w", err)
-	}
-	want := "refs/heads/" + name
-	for _, w := range worktrees {
-		if w.Branch == want {
-			return collision(name, CollisionWorktree)
-		}
-	}
 	return nil
 }
 

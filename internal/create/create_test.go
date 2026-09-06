@@ -2,6 +2,7 @@ package create
 
 import (
 	"context"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"slices"
@@ -129,6 +130,53 @@ func TestRunRollsBackAtEveryStep(t *testing.T) {
 					t.Errorf("orphan db rows: %v", rows)
 				}
 			}
+		})
+	}
+}
+
+// assertNoResidue fails if any orphan branch, worktree, Work directory, or
+// projection row survived a failed creation.
+func assertNoResidue(t *testing.T, p Params) {
+	t.Helper()
+	src := gitx.Open(p.SourceRepo)
+	if ok, _ := src.ShowRefVerify("refs/heads/" + p.Branch); ok {
+		t.Error("orphan branch left in source repo")
+	}
+	wts, _ := src.WorktreeList()
+	for _, w := range wts {
+		if strings.Contains(w.Path, p.Branch) {
+			t.Errorf("orphan worktree: %s", w.Path)
+		}
+	}
+	dir := filepath.Join(p.WorkspaceRoot, "in-progress", p.RepoName+"_"+p.Branch)
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("orphan work dir: %v", err)
+	}
+	if _, err := os.Stat(p.Home.DBFile()); err == nil {
+		db, _ := projection.Open(p.Home.DBFile())
+		rows, _ := db.List()
+		db.Close()
+		if len(rows) != 0 {
+			t.Errorf("orphan db rows: %v", rows)
+		}
+	}
+}
+
+// TestRunRollbackFuzz injects a failure at a randomly chosen step many times and
+// asserts every failed attempt leaves zero residue (R10, SC-003).
+func TestRunRollbackFuzz(t *testing.T) {
+	steps := []string{"lock", "dir", "worktree", "snapshot", "projection"}
+	for i := range 20 {
+		step := steps[rand.IntN(len(steps))]
+		t.Run(step, func(t *testing.T) {
+			p := params(t)
+			p.Slug = "fuzz"
+			p.Branch = "fuzz"
+			t.Setenv("WORK_FAIL_AT", step)
+			if _, err := Run(context.Background(), p); diag.ExitCode(err) != 17 {
+				t.Fatalf("iter %d step %s: exit = %d, want 17 (%v)", i, step, diag.ExitCode(err), err)
+			}
+			assertNoResidue(t, p)
 		})
 	}
 }
