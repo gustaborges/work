@@ -6,6 +6,8 @@ package verify
 
 import (
 	"fmt"
+	"path/filepath"
+	"time"
 
 	"github.com/gustaborges/work/internal/gitx"
 	"github.com/gustaborges/work/internal/projection"
@@ -58,6 +60,13 @@ func Check(db *projection.DB, workID string) (Report, error) {
 	checkEq(&r, "branch_convention", w.BranchConvention, row.BranchConvention)
 	checkEq(&r, "created_at", w.CreatedAt, row.CreatedAt)
 	checkEq(&r, "last_accessed_at", w.LastAccessedAt, row.LastAccessedAt)
+	checkEq(&r, "archived_at", w.ArchivedAt, row.ArchivedAt)
+
+	if w.Status == work.StatusArchived {
+		checkArchived(&r, w, row)
+		r.OK = len(r.Problems) == 0
+		return r, nil
+	}
 
 	// Worktree HEAD.
 	wt := gitx.Open(row.WorktreePath)
@@ -83,6 +92,25 @@ func Check(db *projection.DB, workID string) (Report, error) {
 
 	r.OK = len(r.Problems) == 0
 	return r, nil
+}
+
+// checkArchived runs the coherence rules specific to an archived Work: no
+// worktree, the directory sits under <workspace>/archived/, and archived_at is
+// a well-formed RFC 3339 timestamp. No worktree or branch check is run — the
+// worktree is gone and the branch is intentionally left in the source repo and
+// not tracked (data-model.md §3.3).
+func checkArchived(r *Report, w work.WorkSection, row projection.Work) {
+	if row.WorktreePath != "" {
+		r.fail("archived Work has a worktree_path: %q", row.WorktreePath)
+	}
+	if parent := filepath.Base(filepath.Dir(row.DirPath)); parent != "archived" {
+		r.fail("archived Work dir_path is not under archived/: %q", row.DirPath)
+	}
+	if w.ArchivedAt == "" {
+		r.fail("archived Work snapshot has no archived_at")
+	} else if _, err := time.Parse(time.RFC3339, w.ArchivedAt); err != nil {
+		r.fail("archived_at %q is not RFC 3339: %v", w.ArchivedAt, err)
+	}
 }
 
 func checkEq(r *Report, field, snapVal, rowVal string) {
