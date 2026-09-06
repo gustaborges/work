@@ -1,6 +1,6 @@
 # Implementation Plan: First Local Work (F1)
 
-**Branch**: `001-first-local-work` (no Git branch created by the spec flow — work happens on `master`) | **Date**: 2026-09-05 | **Spec**: [spec.md](./spec.md)
+**Branch**: spec/plan/doc work on `master`; F1 implementation uses git-flow — a `develop` integration branch and one `feature/001-first-local-work-p<n>-*` branch per phase (see **Branching Strategy**) | **Date**: 2026-09-05 | **Spec**: [spec.md](./spec.md)
 
 **Input**: Feature specification from `specs/001-first-local-work/spec.md`
 
@@ -173,6 +173,47 @@ tests/
 ```
 
 **Structure Decision**: Single Go project (Option 1). The core binary is `cmd/work`; all logic sits under `internal/` in small role-focused packages that mirror the F1 pipeline stages (source → Starter → Repository Reference → path validation / Locator chain → base/slug/prefix → branch-name validation → worktree → snapshot → projection → shell repositioning), each independently testable. `seed/` is a physically separate concern: two standalone `main` packages built ahead of the core and embedded as opaque platform binaries, so the core depends on them only through `internal/ipc` — never by import. `tests/` holds the cross-package contract and integration suites that the roadmap's cross-cutting gates require.
+
+## Branching Strategy
+
+F1 follows **git-flow**. `master` holds released code only; a long-lived **`develop`** branch is
+the integration line, and each `tasks.md` phase is built on its own short-lived **`feature/`**
+branch cut from `develop` and merged back to `develop` at the phase checkpoint.
+
+The implementing agent (`/speckit-implement`) **MUST** create and switch to the phase's feature
+branch *before* writing any code for that phase, and **MUST NOT** commit F1 implementation work
+directly to `develop` or `master`. Spec/plan/contract/doc edits (e.g. `/speckit-analyze`
+remediations) stay on `master` — the feature-branch rule covers implementation code only.
+
+**One-time setup** (before Phase 1): `git switch -c develop master && git push -u origin develop`.
+
+| Phase (tasks.md) | Feature branch | Cut from | Merges to |
+|---|---|---|---|
+| 1 — Setup | `feature/001-first-local-work-p1-setup` | `develop` | `develop` |
+| 2 — Foundational | `feature/001-first-local-work-p2-foundational` | `develop` (after P1 merges) | `develop` |
+| 3 — US1 First local Work | `feature/001-first-local-work-p3-us1-first-work` | `develop` (after P2 merges) | `develop` |
+| 4 — US2 Guided interface | `feature/001-first-local-work-p4-us2-guided-tui` | `develop` (after P3 merges) | `develop` |
+| 5 — US3 Error recovery | `feature/001-first-local-work-p5-us3-recovery` | `develop` (after P3 merges; rebase onto P4 if it landed first) | `develop` |
+| 6 — Polish | `feature/001-first-local-work-p6-polish` | `develop` (after P5 merges) | `develop` |
+
+Rules:
+
+- **Naming**: `feature/001-first-local-work-p<n>-<short>` — the phase identifier stays in one
+  hyphen-separated segment under `feature/` (no nested `feature/001-first-local-work/...`, which
+  would D/F-conflict with a bare `feature/001-first-local-work`).
+- **First action of each phase**: `git switch develop && git pull && git switch -c <feature-branch>`.
+  If the previous phase is not yet merged, branch from its tip instead.
+- **Merge gate**: a feature branch merges to `develop` (`--no-ff`) only after that phase's
+  **Checkpoint** in `tasks.md` is met and `make lint` + `go test ./...` are green on the CI
+  matrix (roadmap §4 Regression — every prior phase's automated demo stays green on `develop`).
+  Each checkpoint is a coherent state: P1/P2 leave green tests with no behaviour change; P3 is the
+  demoable MVP.
+- **T041 contention**: Phases 4 and 5 both extend `internal/cli/start.go` (T041). A solo run
+  does them in order (4 then 5). If both are in flight, whichever merges second rebases onto the
+  first.
+- **Release**: when Phase 6 is merged, F1 ships via `release/0.1.0` cut from `develop`, merged to
+  `master` and tagged, then merged back to `develop` (standard git-flow release). The release
+  step itself is out of F1's implementation scope — it is the hand-off, not a task.
 
 ## Complexity Tracking
 

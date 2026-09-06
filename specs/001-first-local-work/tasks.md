@@ -20,11 +20,34 @@ description: "Task list for First Local Work (F1) implementation"
 
 Single Go project at repo root: `cmd/work/`, `internal/<pkg>/`, `seed/`, `tests/`. Paths below are literal.
 
+## Branching (git-flow)
+
+`master` = released code only; **`develop`** = integration line; each phase = a short-lived
+**`feature/`** branch off `develop`, merged back to `develop` at the phase checkpoint (see
+`plan.md` → **Branching Strategy**). **Before the first task of a phase**, the implementing agent
+runs `git switch develop && git pull && git switch -c <feature-branch>` and does all of that
+phase's implementation commits there; it merges `--no-ff` to `develop` once the **Checkpoint**
+passes and `make lint` + `go test ./...` are green. Never commit F1 implementation code directly
+to `develop` or `master` (spec/plan/doc edits are exempt).
+
+**One-time, before Phase 1**: `git switch -c develop master && git push -u origin develop`.
+
+| Phase | Feature branch | Cut from |
+|---|---|---|
+| 1 | `feature/001-first-local-work-p1-setup` | `develop` |
+| 2 | `feature/001-first-local-work-p2-foundational` | `develop` (after P1 merges) |
+| 3 | `feature/001-first-local-work-p3-us1-first-work` | `develop` (after P2 merges) |
+| 4 | `feature/001-first-local-work-p4-us2-guided-tui` | `develop` (after P3 merges) |
+| 5 | `feature/001-first-local-work-p5-us3-recovery` | `develop` (after P3 merges) |
+| 6 | `feature/001-first-local-work-p6-polish` | `develop` (after P5 merges) |
+
 ---
 
 ## Phase 1: Setup (Shared Infrastructure)
 
 **Purpose**: Project skeleton, toolchain, CI.
+
+**Branch**: one-time `git switch -c develop master && git push -u origin develop`, then `git switch -c feature/001-first-local-work-p1-setup develop` before T001.
 
 - [ ] T001 Initialize Go module `github.com/gustaborges/work` (`go mod init`, `go 1.26`) and create the directory skeleton from plan.md: `cmd/work/`, `internal/`, `seed/starter/`, `seed/locator/`, `seed/manifest/`, `tests/contract/`, `tests/integration/`, `tests/fixtures/`
 - [ ] T002 Add and pin dependencies in `go.mod`: `github.com/spf13/cobra`, `github.com/charmbracelet/bubbletea`, `github.com/charmbracelet/huh`, `github.com/charmbracelet/lipgloss`, `modernc.org/sqlite`, `golang.org/x/term`, `golang.org/x/sys`, `github.com/rogpeppe/go-internal` (testscript); run `go mod tidy`
@@ -39,6 +62,8 @@ Single Go project at repo root: `cmd/work/`, `internal/<pkg>/`, `seed/`, `tests/
 ## Phase 2: Foundational (Blocking Prerequisites)
 
 **Purpose**: Shared infrastructure every user story depends on. No user-facing behavior yet.
+
+**Branch**: `git switch develop && git pull && git switch -c feature/001-first-local-work-p2-foundational` (after Phase 1 merged to `develop`) before T006.
 
 **⚠️ CRITICAL**: No user-story work starts until this phase is done.
 
@@ -85,6 +110,8 @@ Single Go project at repo root: `cmd/work/`, `internal/<pkg>/`, `seed/`, `tests/
 
 ## Phase 3: User Story 1 - Create the first Work from a local clone (Priority: P1) 🎯 MVP
 
+**Branch**: `git switch develop && git pull && git switch -c feature/001-first-local-work-p3-us1-first-work` (after Phase 2 merged to `develop`) before T025.
+
 **Goal**: `work start <local-git-path>` (with the required choices supplied as flags, or collected interactively) materializes an isolated worktree on its own branch with a canonical `work-state.json` and a coherent `works` row, and — with shell integration active — leaves the session in the new checkout.
 
 **Independent Test**: On a clean install with no network, run `work start <valid clone> --workspace <tmp> --base main --slug demo --prefix '{slug}' --yes`; confirm the worktree/branch/snapshot/db row are mutually coherent (`verify.Check` passes) and the source checkout is untouched. (quickstart S1–S3, S10.)
@@ -119,6 +146,8 @@ Single Go project at repo root: `cmd/work/`, `internal/<pkg>/`, `seed/`, `tests/
 
 ## Phase 4: User Story 2 - Start the same flow through the guided interface (Priority: P2)
 
+**Branch**: `git switch develop && git pull && git switch -c feature/001-first-local-work-p4-us2-guided-tui` (after Phase 3 merged to `develop`) before T043.
+
 **Goal**: `work` with no arguments opens a keyboard-navigable home that reaches the "Start a Work" journey; `work start` with no source prompts for the path; an already-configured workspace root is reused silently; non-interactive input with a missing required value fails with actionable guidance and never opens a TUI or mutates state.
 
 **Independent Test**: In an interactive terminal, `work` → choose "Start a Work" → provide a local path → complete the same journey as US1 using only the keyboard. Separately, `work start --base main --slug x --prefix '{slug}' --yes </dev/null` exits 2 naming the missing `--slug`... (quickstart S9), and re-running with a configured root does not re-ask for it. (US2 scenarios 1–5.)
@@ -142,6 +171,8 @@ Single Go project at repo root: `cmd/work/`, `internal/<pkg>/`, `seed/`, `tests/
 ---
 
 ## Phase 5: User Story 3 - Recover from errors without leaving partial state (Priority: P3)
+
+**Branch**: `git switch develop && git pull && git switch -c feature/001-first-local-work-p5-us3-recovery` (after Phase 3 merged to `develop`; rebase onto Phase 4 if US2 landed first — both touch `internal/cli/start.go`) before T051.
 
 **Goal**: Invalid path, invalid/again-invalid branch name, incompatible branch collision, materialization failure at any boundary, and cancellation before confirmation each produce a clear, category-specific diagnostic and leave zero orphan branch / worktree / Work directory / snapshot / index entry. In interactive mode the user can fix the offending choice in the same flow.
 
@@ -167,6 +198,8 @@ Single Go project at repo root: `cmd/work/`, `internal/<pkg>/`, `seed/`, `tests/
 ---
 
 ## Phase 6: Polish & Cross-Cutting Concerns
+
+**Branch**: `git switch develop && git pull && git switch -c feature/001-first-local-work-p6-polish` (after Phase 5 merged to `develop`) before T060.
 
 - [ ] T060 [P] Integration/stress test `tests/integration/bootstrap_idempotency_test.go`: quickstart S11 — loop `bootstrap.EnsureSeed()` 100× and interrupt extraction at 20 injected points; assert exactly one registry entry for each of `local-path-starter` / `filesystem-repository-locator` / `freeform`, one `plugins/work-reference/` dir, no partial dir. (SC-007, FR-005.)
 - [ ] T061 [P] Add garbled-IPC contract cases to `tests/contract/`: truncated JSON, huge input, non-UTF-8, no stdout on success-path — both seed binaries exit non-zero cleanly, never hang. (roadmap §4 "Contrato de processo".)
@@ -266,3 +299,4 @@ Task: T040 internal/tui/prompts.go
 - Contract/integration/rollback suites are first-class tasks (roadmap §4); unit tests ship inside each implementation task.
 - The compensation-stack commit point is the `projection.Upsert`; nothing before it may be observable after a failure (SC-003).
 - Commit after each task or logical group; keep every prior story's automated demo green (roadmap §4 Regression).
+- git-flow, one `feature/` branch per phase (see **Branching (git-flow)** above / `plan.md`): cut it from `develop` before the phase's first task, commit the phase there, merge `--no-ff` to `develop` at the green checkpoint. Never commit F1 implementation code straight to `develop` or `master`.
