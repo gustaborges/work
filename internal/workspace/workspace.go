@@ -123,10 +123,28 @@ func resolve(raw string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
-		return resolved, nil
+	// Resolve symlinks on the longest existing prefix and re-append the rest,
+	// so a not-yet-created root and an existing repository_root are compared on
+	// the same (resolved) basis — matters where TMPDIR itself is a symlink
+	// (macOS /var -> /private/var).
+	existing := abs
+	var tail []string
+	for {
+		if _, err := os.Lstat(existing); err == nil {
+			break
+		}
+		parent := filepath.Dir(existing)
+		if parent == existing {
+			break
+		}
+		tail = append([]string{filepath.Base(existing)}, tail...)
+		existing = parent
 	}
-	return abs, nil
+	resolved, err := filepath.EvalSymlinks(existing)
+	if err != nil {
+		resolved = existing
+	}
+	return filepath.Join(append([]string{resolved}, tail...)...), nil
 }
 
 func writable(dir string) bool {
