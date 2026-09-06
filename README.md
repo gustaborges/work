@@ -128,8 +128,7 @@ work start ~/src/acme-api
   → Create Work … ?  [y/N]
 ```
 
-`freeform`'s single `{slug}` prefix is applied without asking. Each answered step
-collapses in place to a `✓ <value>` line as you move to the next.
+`freeform`'s single `{slug}` prefix is applied without asking.
 
 ### Flags
 
