@@ -1,0 +1,46 @@
+# S1 — create the first Work from a clean install (happy path).
+# Covers US1 scenarios 1, 3, 4; SC-001, SC-002.
+
+gitrepo src
+env WS=$WORK/ws
+
+work start $WORK/src --workspace $WS --base main --slug add-retry-logic --prefix {slug} --yes
+stdout 'work: created [0-9A-HJKMNP-TV-Z]{26}'
+stdout 'work: branch add-retry-logic  \(from main @ '
+stdout 'work: path .*/ws/in-progress/src_add-retry-logic/worktree'
+
+# The FR-023 notice goes to stderr (no shell integration in the test env).
+stderr 'this shell session was not moved'
+
+# On-disk layout: exactly worktree/ and work-state.json.
+exists $WS/in-progress/src_add-retry-logic/worktree
+exists $WS/in-progress/src_add-retry-logic/work-state.json
+! exists $WS/in-progress/src_add-retry-logic/.git
+
+# Snapshot field values.
+grep '"schema": 1' $WS/in-progress/src_add-retry-logic/work-state.json
+grep '"status": "in-progress"' $WS/in-progress/src_add-retry-logic/work-state.json
+grep '"start_mode": "new"' $WS/in-progress/src_add-retry-logic/work-state.json
+grep '"branch": "add-retry-logic"' $WS/in-progress/src_add-retry-logic/work-state.json
+grep '"base_branch": "main"' $WS/in-progress/src_add-retry-logic/work-state.json
+grep '"branch_convention": "freeform"' $WS/in-progress/src_add-retry-logic/work-state.json
+grep '"starter": "local-path-starter"' $WS/in-progress/src_add-retry-logic/work-state.json
+
+# Worktree HEAD is the new branch.
+exec git -C $WS/in-progress/src_add-retry-logic/worktree rev-parse --abbrev-ref HEAD
+stdout '^add-retry-logic$'
+
+# Source repository checkout is untouched.
+exec git -C $WORK/src rev-parse --abbrev-ref HEAD
+stdout '^main$'
+exec git -C $WORK/src status --porcelain
+! stdout .
+
+# First run performed the offline bootstrap.
+exists $WORK/dothome/plugins/work-reference/plugin.json
+exists $WORK/dothome/plugins/work-reference/source/starter
+exists $WORK/dothome/state/registry.json
+grep 'filesystem-repository-locator' $WORK/dothome/config/work.json
+
+# Projection row and snapshot agree.
+verifycoherent

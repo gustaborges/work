@@ -1,0 +1,30 @@
+# S2 — base-branch selection distinguishes local main from a divergent
+# origin/main, and the new branch starts from exactly the chosen revision.
+# Covers US1 edge cases; FR-009.
+
+gitrepo origin
+exec git clone -q $WORK/origin local
+
+# Make local main diverge from origin/main by one commit.
+exec git -C local commit -q --allow-empty -m 'local only'
+exec git -C local rev-parse main
+cp stdout localmain
+exec git -C local rev-parse origin/main
+cp stdout originmain
+! cmp localmain originmain
+
+env WS=$WORK/ws
+
+# Base on the remote-tracking ref: branch tip must equal origin/main.
+work start $WORK/local --workspace $WS --base origin/main --slug from-remote --prefix {slug} --yes
+exec git -C $WS/in-progress/local_from-remote/worktree rev-parse HEAD
+cmp stdout originmain
+grep '"base_branch": "origin/main"' $WS/in-progress/local_from-remote/work-state.json
+
+# Base on the local head: branch tip must equal local main. The workspace root
+# is already configured, so --workspace is not repeated.
+work start $WORK/local --base main --slug from-local --prefix {slug} --yes
+exec git -C $WS/in-progress/local_from-local/worktree rev-parse HEAD
+cmp stdout localmain
+
+verifycoherent

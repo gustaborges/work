@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"testing"
+
+	"github.com/gustaborges/work/internal/diag"
 )
 
 func TestRootHasF1Subcommands(t *testing.T) {
@@ -39,13 +41,17 @@ func TestStartFlagSurface(t *testing.T) {
 	}
 }
 
-func TestStartNoOpSucceeds(t *testing.T) {
+func TestStartNonInteractiveMissingSourceIsUsage(t *testing.T) {
 	root := newRootCmd()
 	root.SetArgs([]string{"start"})
 	root.SetOut(&bytes.Buffer{})
 	root.SetErr(&bytes.Buffer{})
-	if err := root.Execute(); err != nil {
-		t.Errorf("empty `work start`: %v", err)
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("empty non-interactive `work start`: want a usage error")
+	}
+	if got := diag.ExitCode(err); got != 2 {
+		t.Errorf("exit code = %d, want 2 (%v)", got, err)
 	}
 }
 

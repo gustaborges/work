@@ -1,0 +1,30 @@
+# S10 — shell integration repositions via WORK_CD_FILE; its absence is reported
+# honestly. Covers US1 scenario 1; FR-022, FR-023; SC-006.
+
+gitrepo src
+env WS=$WORK/ws
+
+# With integration: the core writes the absolute worktree path to WORK_CD_FILE
+# and prints no FR-023 notice.
+env WORK_CD_FILE=$WORK/cdfile
+work start $WORK/src --workspace $WS --base main --slug shell-ok --prefix {slug} --yes
+stdout 'work: path .*/ws/in-progress/src_shell-ok/worktree'
+! stderr 'this shell session was not moved'
+grep '/ws/in-progress/src_shell-ok/worktree' $WORK/cdfile
+
+# Without integration: exit 0, stdout summary present, FR-023 notice on stderr
+# with the real worktree path, and no false claim of a directory change.
+env WORK_CD_FILE=
+work start $WORK/src --base main --slug shell-note --prefix {slug} --yes
+stdout 'work: created '
+stderr 'this shell session was not moved into the new worktree'
+stderr 'ws/in-progress/src_shell-note/worktree'
+stderr 'work shell-init'
+
+# shell-init emits a sourceable snippet and rejects unknown shells.
+work shell-init bash
+stdout 'WORK_CD_FILE'
+stdout 'work\(\)'
+
+! work shell-init frobnicate
+stderr 'supported shells'
