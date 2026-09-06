@@ -176,10 +176,10 @@ func writeRawSnap(t *testing.T, ws, area, dirName string, raw []byte) string {
 	return snap
 }
 
-// TestRebuildSkipsEverySkipReason exercises each of the four non-fatal skip
-// classes (FR-024): a file that is not JSON, a schema outside {1,2}, and a
-// document that decodes but fails State.Validate. Every other snapshot still
-// indexes and the rebuild does not error.
+// TestRebuildSkipsEverySkipReason exercises the non-fatal skip classes (FR-024):
+// a file that is not JSON, a schema outside {1,2}, and a document that decodes
+// but fails State.Validate. Every other snapshot still indexes and the rebuild
+// does not error.
 func TestRebuildSkipsEverySkipReason(t *testing.T) {
 	ws := t.TempDir()
 	writeSnap(t, ws, "in-progress", "demo_good", "01GOOD00000000000000000000", "good", "good", "in-progress", "2026-06-01T00:00:00Z")
@@ -222,7 +222,13 @@ func TestReconcileKeepsRowWhenSnapshotBecomesUnreadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	db := openDBAt(t, dbPath)
-	rowBefore, _, _ := db.Get("01ALPHA0000000000000000000")
+	rowBefore, ok, err := db.Get("01ALPHA0000000000000000000")
+	if err != nil {
+		t.Fatalf("Get before reconcile: %v", err)
+	}
+	if !ok {
+		t.Fatal("row for demo_alpha missing after rebuild")
+	}
 
 	// The file stays on disk but turns to garbage.
 	if err := os.WriteFile(snap, []byte("corrupted"), 0o644); err != nil {
@@ -239,7 +245,10 @@ func TestReconcileKeepsRowWhenSnapshotBecomesUnreadable(t *testing.T) {
 	if len(rep.Skipped) != 1 {
 		t.Errorf("skipped = %+v, want the one corrupt snapshot", rep.Skipped)
 	}
-	rowAfter, ok, _ := db.Get("01ALPHA0000000000000000000")
+	rowAfter, ok, err := db.Get("01ALPHA0000000000000000000")
+	if err != nil {
+		t.Fatalf("Get after reconcile: %v", err)
+	}
 	if !ok {
 		t.Fatal("row dropped after its snapshot became unreadable")
 	}

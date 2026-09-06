@@ -14,21 +14,23 @@ workid $WS/in-progress/src_bravo/work-state.json ID_BRAVO
 snapsums before-sums
 
 # Corrupt the index three ways, touching no snapshot:
-#  - alpha's row time is dragged into the past
+#  - bravo's row (the most recent) is dragged into the past, so the index now
+#    sorts alpha ahead of bravo, disagreeing with the snapshots
 #  - a ghost row is added whose snapshot does not exist on disk
-#  - bravo's real row is deleted
-dbstale $ID_ALPHA 2000-01-01T00:00:00Z
+#  - alpha's real row is deleted
+dbstale $ID_BRAVO 2000-01-01T00:00:00Z
+activeorder alpha bravo
 dbghost 01GHOST00000000000000000000
-dbdroprow $ID_BRAVO
+dbdroprow $ID_ALPHA
 
 # Any command triggers the reconcile pass.
 ! work resume
 stderr '^error: usage: '
 
-# alpha's last_accessed_at is restored from its snapshot, so the recency order
-# is bravo, alpha again; bravo's row is back; the ghost row is dropped.
+# bravo's last_accessed_at is restored from its snapshot, so it out-sorts the
+# re-added alpha row again; alpha's row is back; the ghost row is dropped.
 activeorder bravo alpha
-dbhasrow $ID_BRAVO
+dbhasrow $ID_ALPHA
 ! dbhasrow 01GHOST00000000000000000000
 dbcount 2
 
