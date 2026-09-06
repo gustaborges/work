@@ -372,6 +372,9 @@ func TestScripts(t *testing.T) {
 					ts.Fatalf("usage: dbghost <id>")
 				}
 				ws := ts.Getenv("WS")
+				if ws == "" {
+					ts.Fatalf("dbghost: $WS is not set")
+				}
 				db := openProjection(ts)
 				defer db.Close()
 				ghostDir := filepath.Join(ws, "in-progress", "ghost_ghost")
@@ -410,7 +413,14 @@ func sha256Sum(b []byte) []byte {
 // openProjection opens the projection database for the running scenario. The
 // caller closes it.
 func openProjection(ts *testscript.TestScript) *projection.DB {
-	dbPath := filepath.Join(ts.Getenv("WORK_HOME"), "state", "work.db")
+	home := ts.Getenv("WORK_HOME")
+	if home == "" {
+		ts.Fatalf("open projection: $WORK_HOME is not set")
+	}
+	dbPath := filepath.Join(home, "state", "work.db")
+	if _, err := os.Stat(dbPath); err != nil {
+		ts.Fatalf("open projection: %v (did the scenario run a work command first?)", err)
+	}
 	db, err := projection.Open(dbPath)
 	if err != nil {
 		ts.Fatalf("open projection: %v", err)
