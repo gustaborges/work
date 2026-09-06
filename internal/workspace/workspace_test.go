@@ -17,14 +17,9 @@ func TestValidateCreatableDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Validate: %v", err)
 	}
-	// Validate canonicalises the existing prefix (symlinks on macOS, 8.3 short
-	// names on Windows), so compare against the same resolution.
-	want := root
-	if r, err := filepath.EvalSymlinks(filepath.Dir(root)); err == nil {
-		want = filepath.Join(r, filepath.Base(root))
-	}
-	if got != want {
-		t.Errorf("got %q want %q", got, want)
+	// Validate returns the plain absolute form, not a symlink-resolved one.
+	if got != root {
+		t.Errorf("got %q want %q", got, root)
 	}
 }
 

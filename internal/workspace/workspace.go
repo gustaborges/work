@@ -41,7 +41,7 @@ func Validate(raw string, repositoryRoots []string) (string, error) {
 	if trimmed == "" {
 		return "", diag.New(diag.Usage, "the workspace root is empty")
 	}
-	abs, err := resolve(trimmed)
+	abs, err := absPath(trimmed)
 	if err != nil {
 		return "", diag.Newf(diag.Usage, "cannot resolve workspace root %q", raw)
 	}
@@ -69,12 +69,17 @@ func Validate(raw string, repositoryRoots []string) (string, error) {
 		}
 	}
 
+	// Compare containment on a canonical basis so a symlinked prefix (macOS
+	// /var -> /private/var, Windows 8.3 names) cannot hide an overlap. The
+	// returned path stays the plain absolute form the user would recognise.
+	absCanon := canonical(abs)
 	for _, root := range repositoryRoots {
-		rr, err := resolve(root)
+		ra, err := absPath(root)
 		if err != nil {
 			continue
 		}
-		if abs == rr || isSubpath(rr, abs) {
+		rr := canonical(ra)
+		if absCanon == rr || isSubpath(rr, absCanon) {
 			return "", diag.Newf(diag.Usage, "workspace root %s is inside repository root %s", raw, root)
 		}
 	}
@@ -106,7 +111,9 @@ func EnsureLayout(root string) error {
 	return nil
 }
 
-func resolve(raw string) (string, error) {
+// absPath expands a leading ~ and makes the path absolute, without resolving
+// symlinks — the caller gets back something close to what it typed.
+func absPath(raw string) (string, error) {
 	p := raw
 	if p == "~" || strings.HasPrefix(p, "~/") || strings.HasPrefix(p, `~\`) {
 		home, err := os.UserHomeDir()
@@ -119,14 +126,14 @@ func resolve(raw string) (string, error) {
 			p = filepath.Join(home, p[2:])
 		}
 	}
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return "", err
-	}
-	// Resolve symlinks on the longest existing prefix and re-append the rest,
-	// so a not-yet-created root and an existing repository_root are compared on
-	// the same (resolved) basis — matters where TMPDIR itself is a symlink
-	// (macOS /var -> /private/var).
+	return filepath.Abs(p)
+}
+
+// canonical resolves symlinks on the longest existing prefix of abs and
+// re-appends the remainder, so two paths can be compared for containment even
+// when a not-yet-created path and an existing one differ only by a symlinked
+// ancestor (macOS /var -> /private/var, Windows 8.3 short names).
+func canonical(abs string) string {
 	existing := abs
 	var tail []string
 	for {
@@ -135,16 +142,16 @@ func resolve(raw string) (string, error) {
 		}
 		parent := filepath.Dir(existing)
 		if parent == existing {
-			break
+			return abs
 		}
 		tail = append([]string{filepath.Base(existing)}, tail...)
 		existing = parent
 	}
 	resolved, err := filepath.EvalSymlinks(existing)
 	if err != nil {
-		resolved = existing
+		return abs
 	}
-	return filepath.Join(append([]string{resolved}, tail...)...), nil
+	return filepath.Join(append([]string{resolved}, tail...)...)
 }
 
 func writable(dir string) bool {

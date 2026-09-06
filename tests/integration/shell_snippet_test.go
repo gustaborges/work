@@ -69,12 +69,36 @@ func TestBashSnippetRepositionsSession(t *testing.T) {
 	}
 
 	wantPWD := filepath.Join(ws, "in-progress", "src_moved", "worktree")
-	if !strings.Contains(string(out), "FAKESHELL_PWD="+wantPWD) {
+	if !containsPathLine(string(out), "FAKESHELL_PWD=", wantPWD) {
 		t.Errorf("shell did not move into the worktree\nwant FAKESHELL_PWD=%s\ngot:\n%s", wantPWD, out)
 	}
 	if strings.Contains(string(out), "this shell session was not moved") {
 		t.Errorf("FR-023 notice printed even though integration was active:\n%s", out)
 	}
+}
+
+// containsPathLine reports whether out has a line "<prefix><path>" where path
+// matches want, comparing symlink-resolved forms so a symlinked TMPDIR (macOS
+// /var -> /private/var) does not cause a spurious mismatch.
+func containsPathLine(out, prefix, want string) bool {
+	wantResolved := want
+	if r, err := filepath.EvalSymlinks(want); err == nil {
+		wantResolved = r
+	}
+	for line := range strings.SplitSeq(out, "\n") {
+		line = strings.TrimRight(line, "\r")
+		got, ok := strings.CutPrefix(line, prefix)
+		if !ok {
+			continue
+		}
+		if got == want || got == wantResolved {
+			return true
+		}
+		if r, err := filepath.EvalSymlinks(got); err == nil && r == wantResolved {
+			return true
+		}
+	}
+	return false
 }
 
 func repoRootDir(t *testing.T) string {
