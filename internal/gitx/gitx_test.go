@@ -1,6 +1,7 @@
 package gitx
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -200,6 +201,89 @@ func TestWorktreeLifecycle(t *testing.T) {
 	}
 	if ok, _ := r.ShowRefVerify("refs/heads/feature/wt"); ok {
 		t.Errorf("branch still present after delete")
+	}
+}
+
+func TestIsDirty(t *testing.T) {
+	repo := newRepo(t)
+	r := Open(repo)
+	wt := filepath.Join(t.TempDir(), "worktree")
+	if err := r.WorktreeAdd(wt, "feature/dirty", "main"); err != nil {
+		t.Fatalf("WorktreeAdd: %v", err)
+	}
+	w := Open(wt)
+
+	if dirty, err := w.IsDirty(); err != nil || dirty {
+		t.Errorf("clean worktree: IsDirty = %v, %v; want false, nil", dirty, err)
+	}
+
+	// Untracked-only is dirty.
+	if err := os.WriteFile(filepath.Join(wt, "scratch.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if dirty, err := w.IsDirty(); err != nil || !dirty {
+		t.Errorf("untracked-only: IsDirty = %v, %v; want true, nil", dirty, err)
+	}
+
+	// Tracked-modified is dirty.
+	git(t, wt, "add", "scratch.txt")
+	git(t, wt, "commit", "-q", "-m", "add scratch")
+	if err := os.WriteFile(filepath.Join(wt, "scratch.txt"), []byte("changed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if dirty, err := w.IsDirty(); err != nil || !dirty {
+		t.Errorf("tracked-modified: IsDirty = %v, %v; want true, nil", dirty, err)
+	}
+}
+
+func TestWorktreeRemoveForceOnDirty(t *testing.T) {
+	repo := newRepo(t)
+	r := Open(repo)
+
+	clean := filepath.Join(t.TempDir(), "clean")
+	if err := r.WorktreeAdd(clean, "feature/clean", "main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.WorktreeRemove(clean); err != nil {
+		t.Errorf("WorktreeRemove(clean): %v", err)
+	}
+
+	dirty := filepath.Join(t.TempDir(), "dirty")
+	if err := r.WorktreeAdd(dirty, "feature/dirtywt", "main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dirty, "u.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.WorktreeRemove(dirty); err != nil {
+		t.Errorf("WorktreeRemove(dirty): %v", err)
+	}
+	if _, err := os.Stat(dirty); !os.IsNotExist(err) {
+		t.Errorf("dirty worktree dir still present: %v", err)
+	}
+}
+
+func TestWorktreePruneAfterManualDelete(t *testing.T) {
+	repo := newRepo(t)
+	r := Open(repo)
+	wt := filepath.Join(t.TempDir(), "gone")
+	if err := r.WorktreeAdd(wt, "feature/gone", "main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(wt); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.WorktreePrune(); err != nil {
+		t.Fatalf("WorktreePrune: %v", err)
+	}
+	list, err := r.WorktreeList()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range list {
+		if w.Path == wt {
+			t.Errorf("pruned worktree still listed: %+v", list)
+		}
 	}
 }
 

@@ -18,8 +18,9 @@ exists $WS/in-progress/src_add-retry-logic/worktree
 exists $WS/in-progress/src_add-retry-logic/work-state.json
 ! exists $WS/in-progress/src_add-retry-logic/.git
 
-# Snapshot field values.
-grep '"schema": 1' $WS/in-progress/src_add-retry-logic/work-state.json
+# Snapshot field values. work.Write always emits schema 2 from F2 on (an additive
+# superset of schema 1); readers still accept schema 1.
+grep '"schema": 2' $WS/in-progress/src_add-retry-logic/work-state.json
 grep '"status": "in-progress"' $WS/in-progress/src_add-retry-logic/work-state.json
 grep '"start_mode": "new"' $WS/in-progress/src_add-retry-logic/work-state.json
 grep '"branch": "add-retry-logic"' $WS/in-progress/src_add-retry-logic/work-state.json

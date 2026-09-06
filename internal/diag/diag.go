@@ -34,6 +34,13 @@ var (
 	BootstrapFailed        = Category{Token: "bootstrap-failed", Code: 16}
 	MaterializationFailed  = Category{Token: "materialization-failed", Code: 17}
 	Cancelled              = Category{Token: "cancelled", Code: 20}
+
+	// F2 (daily cycle) categories.
+	TargetNotFound     = Category{Token: "target-not-found", Code: 21}
+	TargetArchived     = Category{Token: "target-archived", Code: 22}
+	DirtyWorktree      = Category{Token: "dirty-worktree", Code: 23}
+	ArchiveFailed      = Category{Token: "archive-failed", Code: 24}
+	SnapshotUnreadable = Category{Token: "snapshot-unreadable", Code: 25}
 )
 
 // All lists every category including OK, ordered by exit code. Tests assert the
@@ -41,7 +48,8 @@ var (
 var All = []Category{
 	OK, Usage, InvalidPath, UnusableRepo, NoBaseBranch, InvalidBranchName,
 	BranchCollision, DestinationUnavailable, BootstrapFailed, MaterializationFailed,
-	Cancelled,
+	Cancelled, TargetNotFound, TargetArchived, DirtyWorktree, ArchiveFailed,
+	SnapshotUnreadable,
 }
 
 // Error is a failure tagged with a Category. Msg is shown to the user; Err, when

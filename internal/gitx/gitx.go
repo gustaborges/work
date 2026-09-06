@@ -299,6 +299,34 @@ func (r Repo) WorktreeRemove(dir string) error {
 	return err
 }
 
+// WorktreePrune runs `git worktree prune`, clearing administrative entries for
+// worktrees whose directory has been deleted from disk.
+func (r Repo) WorktreePrune() error {
+	_, err := r.run("worktree", "prune")
+	return err
+}
+
+// StatusPorcelain returns the output of `git -C <Dir> status --porcelain`. Dir
+// is a working tree (a Work's worktree/). Empty output means the tree is clean.
+func (r Repo) StatusPorcelain() (string, error) {
+	out, err := r.run("status", "--porcelain")
+	if err != nil {
+		return "", err
+	}
+	return out, nil
+}
+
+// IsDirty reports whether the working tree at Dir has any uncommitted tracked
+// change or any untracked file — i.e. `git status --porcelain` produces any
+// output (research R7). An untracked-only tree is dirty.
+func (r Repo) IsDirty() (bool, error) {
+	out, err := r.StatusPorcelain()
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) != "", nil
+}
+
 // BranchDelete force-deletes a local branch.
 func (r Repo) BranchDelete(name string) error {
 	_, err := r.run("branch", "-D", name)
