@@ -65,10 +65,10 @@ func TestConcurrentMutationsOnOneWorkFailClean(t *testing.T) {
 	for _, tc := range []struct{ loser op }{{resumeOp}, {archiveOp}} {
 		t.Run("winner holds lock, "+tc.loser.name+" loses", func(t *testing.T) {
 			home, db, id, snap, wt := fixture(t, work.StatusInProgress)
-before, err := work.Read(snap)
-if err != nil {
-	t.Fatal(err)
-}
+			before, err := work.Read(snap)
+			if err != nil {
+				t.Fatal(err)
+			}
 
 			// Stand in for the winning operation holding the Work's lock while it
 			// works, longer than the loser will wait.
