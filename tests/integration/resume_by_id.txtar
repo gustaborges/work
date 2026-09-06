@@ -1,0 +1,34 @@
+# S2 — `work resume <id>` resumes by opaque id with no picker, applying the same
+# recent-access bump as the interactive path. Covers US1 #3; FR-005, FR-003,
+# FR-021, SC-002, SC-008.
+
+gitrepo src
+env WS=$WORK/ws
+
+seedworks src alpha bravo charlie
+# access order now (most recent first): charlie, bravo, alpha
+activeorder charlie bravo alpha
+
+workid $WS/in-progress/src_alpha/work-state.json ID_ALPHA
+
+# A human resuming is at least a second after the last create; the ordering is
+# keyed on second-precision timestamps.
+sleep 1
+
+# Resume alpha by its id: no TUI, two stable stdout lines.
+work resume $ID_ALPHA
+stdout '^work: resumed [0-9A-HJKMNP-TV-Z]{26}$'
+stdout 'work: path .*ws.in-progress.src_alpha.worktree'
+! stdout 'Resume a Work'
+
+# The snapshot is schema 2 and alpha is now the most recently accessed.
+grep '"schema": 2' $WS/in-progress/src_alpha/work-state.json
+activeorder alpha charlie bravo
+
+# Snapshot and projection agree on the new time (verify compares them).
+verifycoherent
+
+# Resuming again by id keeps alpha on top and stays coherent.
+work resume $ID_ALPHA
+activeorder alpha charlie bravo
+verifycoherent

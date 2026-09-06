@@ -8,9 +8,9 @@ import (
 	"github.com/gustaborges/work/internal/diag"
 )
 
-func TestRootHasF1Subcommands(t *testing.T) {
+func TestRootHasSubcommands(t *testing.T) {
 	root := newRootCmd()
-	want := map[string]bool{"start": false, "shell-init": false}
+	want := map[string]bool{"start": false, "resume": false, "shell-init": false}
 	for _, c := range root.Commands() {
 		if _, ok := want[c.Name()]; ok {
 			want[c.Name()] = true
@@ -43,6 +43,27 @@ func TestBareWorkNonInteractiveIsUsage(t *testing.T) {
 	}
 	if !strings.Contains(errb, "work start") {
 		t.Errorf("stderr does not point at `work start`: %s", errb)
+	}
+	if !strings.Contains(errb, "work resume") {
+		t.Errorf("stderr does not point at `work resume`: %s", errb)
+	}
+}
+
+func TestResumeRejectsJSON(t *testing.T) {
+	_, _, code := runWork(t, "resume", "--json")
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2", code)
+	}
+}
+
+func TestResumeNonInteractiveNoTargetIsUsage(t *testing.T) {
+	// No workspace configured, no target, not a TTY: exit 2, no TUI.
+	out, errb, code := runWork(t, "resume")
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2\nstderr: %s", code, errb)
+	}
+	if out != "" {
+		t.Errorf("stdout should be empty, got %q", out)
 	}
 }
 

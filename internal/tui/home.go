@@ -21,6 +21,9 @@ const (
 	// HomeStartWork is the "Start a Work" journey — equivalent to `work start`
 	// with no SOURCE.
 	HomeStartWork
+	// HomeResumeWork is the "Resume a Work" journey — equivalent to `work
+	// resume` with no target (the recency picker).
+	HomeResumeWork
 )
 
 // homeItem is one selectable row in the home menu.
@@ -29,10 +32,10 @@ type homeItem struct {
 	choice HomeChoice
 }
 
-// homeModel is the Bubble Tea model for `work` with no arguments. F1 exposes a
-// single journey; actions reserved for later slices (resume, archive, status,
-// import, link, plugin, repository, convention) are intentionally absent
-// (contracts/cli-work-home.md, FR-029).
+// homeModel is the Bubble Tea model for `work` with no arguments. It lists the
+// daily journeys shipped so far; actions reserved for later slices (archive,
+// status, import, link, plugin, repository, convention) are intentionally absent
+// (contracts/cli-work-home.md, FR-029, FR-030).
 type homeModel struct {
 	items  []homeItem
 	cursor int
@@ -43,6 +46,7 @@ func newHomeModel() homeModel {
 	return homeModel{
 		items: []homeItem{
 			{label: "Start a Work", choice: HomeStartWork},
+			{label: "Resume a Work", choice: HomeResumeWork},
 		},
 	}
 }
