@@ -29,6 +29,7 @@ var f1ScenarioFiles = []string{
 	"rollback.txtar",                // S7
 	"non_interactive_missing.txtar", // S9
 	"shell_integration.txtar",       // S10
+	"workspace_root_reuse.txtar",    // FR-007
 }
 
 func TestF1QuickstartScenariosStillPresent(t *testing.T) {
