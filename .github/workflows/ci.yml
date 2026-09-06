@@ -34,6 +34,11 @@ jobs:
       # seed/dist back to the host platform.
       - run: make seed-all
       - run: make lint
+      # `go test ./...` is the cross-cutting exit gate (roadmap §4): it runs the
+      # F1 quickstart regression suite S1–S12 (the create_*/invalid_*/rollback/
+      # shell_integration/non_interactive_missing scenarios, unchanged since
+      # release 0.1 — SC-007) alongside every F2 unit, integration, and
+      # fault-injection suite, on all three OSes.
       - run: go test ./...
       - name: Host build smoke test
         run: make build

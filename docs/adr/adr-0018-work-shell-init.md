@@ -71,7 +71,7 @@ ser carregado mais de uma vez.
   absoluto do worktree** (`<dir>/worktree`) nesse arquivo. É a única coisa que o
   núcleo escreve ali.
 * O núcleo **nunca** escreve em `WORK_CD_FILE` em falha, em cancelamento, ou para
-  qualquer comando que não seja `start` (e, adiante, `resume`).
+  qualquer comando que não seja `start`, `resume` ou `archive` (ver Emenda F2).
 * Se `WORK_CD_FILE` está ausente/vazio numa criação bem-sucedida, o núcleo toma o
   **caminho FR-023**: sai 0, mantém o resumo de sucesso em stdout e imprime em
   **stderr** o aviso de que a sessão não foi movida, o caminho real do worktree em
@@ -110,6 +110,21 @@ mesmo em POSIX e PowerShell.
 **Negativas / trade-offs:** `work shell-init` é um nome que foge à gramática de
 ADR-0017 e precisa ser sempre documentado como exceção; o usuário tem um passo
 manual de instalação; shells fora da matriz suportada nunca reposicionam.
+
+## Emenda (F2 — Daily Cycle, 2026-09-06)
+
+`work resume` bem-sucedido passa a escrever `WORK_CD_FILE` com o caminho absoluto
+do worktree retomado, exatamente pelo mesmo protocolo do §3 (após o commit
+canônico, nunca em falha/cancelamento) — já antecipado pelo "e, adiante,
+`resume`" acima. `work archive` acrescenta um **terceiro** caso, restrito: quando
+o worktree destruído **é (ou contém) o diretório de trabalho atual do chamador**,
+o núcleo escreve em `WORK_CD_FILE` o **caminho do workspace root** (não um
+worktree), para tirar a sessão de um diretório que deixou de existir; em qualquer
+outra situação `archive` não toca em `WORK_CD_FILE`. Sem o hook instalado,
+`archive` toma o caminho FR-023 equivalente: sai 0, avisa em stderr que a sessão
+está num diretório removido e nomeia o workspace root para `cd`, sem jamais
+afirmar que um `cd` ocorreu. Mecanismo, canal (arquivo temporário privado) e
+snippets por shell permanecem inalterados.
 
 ## Acompanhamento
 

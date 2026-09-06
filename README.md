@@ -6,8 +6,13 @@ a canonical `work-state.json` snapshot, and a lookup record in a local SQLite
 projection. One command takes you from a local clone to a ready checkout — offline,
 with no network and no AI on the path.
 
-This repository is the **F1 — First Local Work** slice. The only commands are
-`work start`, the guided `work` home, and `work shell-init`.
+This repository now carries the **F1 — First Local Work** slice and the
+**F2 — Daily Cycle** slice on top of it. The commands are `work start`,
+`work resume`, `work archive`, the guided `work` home, and `work shell-init`.
+
+`work resume` returns you to an existing Work (most recently accessed first);
+`work archive` closes one or more Works, preserving each snapshot under
+`<workspace>/archived/` while destroying the worktree and **keeping the branch**.
 
 ## Requirements
 
@@ -54,7 +59,7 @@ State lives under `~/.work` (override with `WORK_HOME`):
 | Path | Contents |
 |---|---|
 | `~/.work/config/work.json` | workspace root, repository roots, resolution policy (human-editable) |
-| `~/.work/state/work.db` | SQLite projection — rebuildable from snapshots |
+| `~/.work/state/work.db` | SQLite projection — **disposable**: deleted or corrupt, it is rebuilt from the snapshots on the next `work` command |
 | `~/.work/state/registry.json` | component registry (generated) |
 | `~/.work/plugins/work-reference/` | the embedded seed package, installed on first run |
 
@@ -82,6 +87,11 @@ Invoke-Expression (& work shell-init powershell | Out-String)
 snippet defines a `work` function that runs the real binary, then `cd`s into the
 worktree path the binary drops in a private temp file (`$WORK_CD_FILE`). It never
 edits your rc files and is safe to source more than once.
+
+`work resume` uses the same mechanism to move you into the resumed worktree, and
+`work archive` uses it to move you **out** to the workspace root when it destroys
+the worktree you are currently sitting in. Without the hook, each prints the path
+and tells you honestly that the shell was not moved.
 
 ## Walkthrough — `work start`
 
@@ -143,6 +153,99 @@ work start ~/src/acme-api
 
 `--json` is rejected on `work start` — it is a mutation.
 
+## Walkthrough — `work resume`
+
+Return to an existing in-progress Work. The list is ordered by last access, most
+recent first; picking one bumps its access time (in the snapshot **and** the
+projection) and repositions your shell into its worktree.
+
+### Interactive
+
+```sh
+work resume
+  → demo  add-retry-logic
+      just now • add-retry-logic
+    demo  flaky-test
+      2 hours ago • flaky-test
+  ↑/↓ or j/k to move · / to filter · Enter to pick · q/Esc to cancel
+```
+
+On success (stdout):
+
+```
+work: resumed 01K4RA6M9QF3B7YV2ZP8XW1E0T
+work: path /home/you/work/in-progress/acme-api_add-retry-logic/worktree
+```
+
+### Non-interactive
+
+Pass the Work's opaque `id` (the `01…` ULID — never the slug); no list is shown:
+
+```sh
+work resume 01K4RA6M9QF3B7YV2ZP8XW1E0T
+```
+
+Outside a terminal with no `id`, `work resume` exits `2` rather than guessing.
+An unknown `id` exits `21`; an archived `id` exits `22`. `--json` is rejected.
+
+## Walkthrough — `work archive`
+
+Close one or more Works. For each: the snapshot flips to `archived` (the canonical
+commit), the Git **worktree is destroyed**, the directory moves to
+`<workspace>/archived/<yyyymmdd>-<repo>_<branch>[-<n>]/`, and the projection row is
+updated. The **branch ref in the source repository is left intact.** Each per-Work
+move is transactional — fully archived or fully active, never half-moved — and one
+Work failing never rolls back a Work already archived in the same run.
+
+### Interactive
+
+```sh
+work archive
+  → [x] demo  add-retry-logic
+    [ ] demo  flaky-test
+    [x] demo  spike
+  Space to toggle · Enter to review → confirmation screen → Enter to apply
+```
+
+The confirmation screen names every checked Work and states how many worktrees
+will be destroyed. `Esc` goes back to the list; `Ctrl-C` cancels everything.
+
+### Non-interactive
+
+Requires both explicit `id`s and `--yes`:
+
+```sh
+work archive 01K4RA6M9QF3B7YV2ZP8XW1E0T 01K4RB… --yes
+```
+
+Output (stdout), one line per archived Work plus a tally:
+
+```
+work: archived 01K4RA6M9QF3B7YV2ZP8XW1E0T  (/home/you/work/archived/20260906-acme-api_add-retry-logic)
+work: archived 2 of 2
+```
+
+### Flags
+
+| Flag | Meaning |
+|---|---|
+| `WORK…` | one or more Work `id`s (opaque ULIDs); omit to pick interactively |
+| `--yes` | confirm non-interactively (still required even with explicit `id`s) |
+| `--force-dirty` | archive a Work whose worktree has uncommitted or untracked changes |
+
+A dirty worktree is **not** destroyed without `--force-dirty` (non-interactive) or
+an extra per-Work acknowledgement (interactive); it is left active and reported.
+Unknown or already-archived `id`s in a batch are reported and skipped, not fatal.
+`--json` is rejected.
+
+## Canonical snapshot — schema 2
+
+F2 moves `work-state.json` to **schema 2**, an additive superset of schema 1:
+`status` gains `archived`, a new `archived_at` appears (present only when the Work
+is archived), and `last_accessed_at` is now mutable. Readers still accept schema-1
+files; the first write upgrades a file in place. Plugins never read or write the
+`work` object (ADR-0013).
+
 ## Transactional guarantee
 
 Creation is atomic up to the moment the projection row is committed. Any failure or
@@ -169,6 +272,11 @@ survive a failed creation.
 | 16 | `bootstrap-failed` | `git` missing/too old, or the seed package could not be installed |
 | 17 | `materialization-failed` | a step failed during creation; all effects were rolled back |
 | 20 | `cancelled` | declined at the confirmation prompt, or interrupted before commit |
+| 21 | `target-not-found` | no Work has the `id` given to `work resume` / `work archive` |
+| 22 | `target-archived` | the `id` names an archived Work (cannot be resumed / already archived) |
+| 23 | `dirty-worktree` | the sole `work archive` target has uncommitted changes and no `--force-dirty` |
+| 24 | `archive-failed` | a post-commit archive step failed; the Work is archived on disk, the index self-heals next run |
+| 25 | `snapshot-unreadable` | a canonical snapshot could not be read during an index rebuild (surfaced as a `note:` and skipped) |
 
 ## Project layout
 
@@ -178,7 +286,9 @@ internal/            role-focused packages mirroring the start pipeline
 seed/                two standalone binaries (starter + locator), embedded via //go:embed
 tests/contract/      golden stdin/stdout JSON against the built seed binaries
 tests/integration/   testscript scenarios driving the built work binary
-specs/001-first-local-work/   spec, plan, research, data model, contracts, quickstart
+specs/001-first-local-work/   F1 spec, plan, research, data model, contracts, quickstart
+specs/002-daily-cycle/        F2 spec, plan, research, data model, contracts, quickstart
 ```
 
-See `specs/001-first-local-work/quickstart.md` for the full validation scenarios.
+See `specs/001-first-local-work/quickstart.md` and
+`specs/002-daily-cycle/quickstart.md` for the full validation scenarios.
