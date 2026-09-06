@@ -1,0 +1,21 @@
+# S3 — first use works fully offline. Covers US1 scenario 2; SC-005; FR-026.
+#
+# Poison every network path: any attempt to dial out fails immediately. The
+# create must still succeed because bootstrap uses only embedded assets and the
+# journey never touches the network.
+
+env http_proxy=http://127.0.0.1:1
+env https_proxy=http://127.0.0.1:1
+env HTTP_PROXY=http://127.0.0.1:1
+env HTTPS_PROXY=http://127.0.0.1:1
+env GIT_ALLOW_PROTOCOL=file
+
+gitrepo src
+env WS=$WORK/ws
+
+work start $WORK/src --workspace $WS --base main --slug offline-ok --prefix {slug} --yes
+stdout 'work: created '
+exists $WS/in-progress/src_offline-ok/worktree
+[!windows] exists $WORK/dothome/plugins/work-reference/source/starter
+[windows] exists $WORK/dothome/plugins/work-reference/source/starter.exe
+verifycoherent

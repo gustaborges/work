@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 
 	"github.com/gustaborges/work/internal/atomicfile"
@@ -27,6 +28,17 @@ type Component struct {
 	Accepts      []string `json:"accepts,omitempty"`
 	DisplayName  string   `json:"display_name,omitempty"`
 	Description  string   `json:"description,omitempty"`
+}
+
+// EntrypointPath resolves the component's executable inside a plugins
+// directory: <pluginsDir>/<alias>/source/<entrypoint>, with a ".exe" suffix on
+// Windows. It mirrors the layout bootstrap writes.
+func (c Component) EntrypointPath(pluginsDir string) string {
+	p := filepath.Join(pluginsDir, c.Alias, "source", c.Entrypoint)
+	if runtime.GOOS == "windows" {
+		p += ".exe"
+	}
+	return p
 }
 
 // Convention is one registered branch convention. Identity is Name.

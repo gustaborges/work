@@ -1,0 +1,130 @@
+// Package integration drives the built `work` binary end to end with
+// testscript. Each .txtar file is one scenario from quickstart.md.
+package integration
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/rogpeppe/go-internal/testscript"
+
+	"github.com/gustaborges/work/internal/cli"
+	"github.com/gustaborges/work/internal/projection"
+	"github.com/gustaborges/work/internal/work/verify"
+	"github.com/gustaborges/work/seed"
+)
+
+func TestMain(m *testing.M) {
+	testscript.Main(m, map[string]func(){
+		"work": cli.Execute,
+	})
+}
+
+func TestScripts(t *testing.T) {
+	if _, _, err := seed.HostAssets(); err != nil {
+		t.Skipf("no embedded seed; run `make seed` (%v)", err)
+	}
+
+	hostPath := os.Getenv("PATH")
+
+	testscript.Run(t, testscript.Params{
+		Dir: ".",
+		Setup: func(env *testscript.Env) error {
+			home := filepath.Join(env.WorkDir, "home")
+			if err := os.MkdirAll(home, 0o755); err != nil {
+				return err
+			}
+			env.Setenv("HOME", home)
+			env.Setenv("USERPROFILE", home)
+			env.Setenv("PATH", hostPath)
+			env.Setenv("WORK_HOME", filepath.Join(env.WorkDir, "dothome"))
+			env.Setenv("GIT_AUTHOR_NAME", "t")
+			env.Setenv("GIT_AUTHOR_EMAIL", "t@t")
+			env.Setenv("GIT_COMMITTER_NAME", "t")
+			env.Setenv("GIT_COMMITTER_EMAIL", "t@t")
+			env.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(env.WorkDir, "gitconfig"))
+			env.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+			return nil
+		},
+		Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
+			// verifycoherent asserts internal/work/verify.Check passes for
+			// every row in the projection database.
+			"verifycoherent": func(ts *testscript.TestScript, neg bool, args []string) {
+				dbPath := filepath.Join(ts.Getenv("WORK_HOME"), "state", "work.db")
+				err := checkAll(dbPath)
+				if neg && err == nil {
+					ts.Fatalf("verifycoherent: expected a coherence failure")
+				}
+				if !neg && err != nil {
+					ts.Fatalf("verifycoherent: %v", err)
+				}
+			},
+			// gitrepo <dir> initialises a repo with one commit on main.
+			"gitrepo": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 1 {
+					ts.Fatalf("usage: gitrepo <dir>")
+				}
+				dir := ts.MkAbs(args[0])
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					ts.Fatalf("%v", err)
+				}
+				for _, c := range [][]string{
+					{"init", "-q", "-b", "main"},
+					{"commit", "-q", "--allow-empty", "-m", "init"},
+				} {
+					cmd := exec.Command("git", append([]string{"-C", dir}, c...)...)
+					cmd.Env = environ(ts)
+					if out, err := cmd.CombinedOutput(); err != nil {
+						ts.Fatalf("git %s: %v\n%s", strings.Join(c, " "), err, out)
+					}
+				}
+			},
+		},
+	})
+}
+
+func environ(ts *testscript.TestScript) []string {
+	keys := []string{
+		"PATH", "HOME", "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL",
+		"GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL",
+		"GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM",
+	}
+	env := make([]string, 0, len(keys))
+	for _, k := range keys {
+		env = append(env, k+"="+ts.Getenv(k))
+	}
+	return env
+}
+
+func checkAll(dbPath string) error {
+	if _, err := os.Stat(dbPath); err != nil {
+		return fmt.Errorf("no projection database at %s", dbPath)
+	}
+	db, err := projection.Open(dbPath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	rows, err := db.List()
+	if err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		return errors.New("projection database has no rows")
+	}
+	for _, r := range rows {
+		rep, err := verify.Check(db, r.ID)
+		if err != nil {
+			return err
+		}
+		if !rep.OK {
+			return fmt.Errorf("work %s incoherent: %s", r.ID, strings.Join(rep.Problems, "; "))
+		}
+	}
+	return nil
+}
