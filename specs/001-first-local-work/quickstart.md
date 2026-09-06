@@ -79,8 +79,12 @@ work start "$src" \
 
 **Interactive variant:** run `work` with no args → home → "Start a Work"; or `work start`
 with no source. Provide the path when prompted, accept the suggested `~/work` (or edit it),
-pick `main`, pick the `{slug}` prefix, type the slug, confirm. Same end state, reachable with
-the keyboard only (FR-029, RF-50).
+pick `main` from the base-branch picker's `Local` tab, pick the `{slug}` prefix, type the
+slug, confirm. Same end state, reachable with the keyboard only (FR-029, RF-50).
+
+**Enclosing git repo:** the workspace root (and therefore every Work under it) may sit
+inside an unrelated Git repository — `work start` does not reject that. Only a root that
+overlaps a configured `repository_roots` entry is refused.
 
 ---
 
@@ -94,10 +98,11 @@ the keyboard only (FR-029, RF-50).
 work start "$src2"   # interactive
 ```
 
-**Expect:** the base-branch picker shows a **Local** group and a **Remote-tracking** group;
-`main` and `origin/main` each show their (different) short SHA; choosing `origin/main` starts
-the new branch from exactly that revision (`work.base_branch == "origin/main"`, branch tip ==
-`origin/main`'s object).
+**Expect:** the base-branch picker opens on the **Remote** tab with `origin/main` (showing
+its short SHA); switching to the **Local** tab shows `main` with its own, different short
+SHA. Choosing `origin/main` starts the new branch from exactly that revision
+(`work.base_branch == "origin/main"`, branch tip == `origin/main`'s object), distinct from
+local `main`.
 
 ---
 

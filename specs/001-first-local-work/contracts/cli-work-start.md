@@ -47,8 +47,11 @@ Ordered; each explicit flag skips **only** its own step, never validation:
 3. **Workspace root** — if none configured and `--workspace` absent: suggest `~/work`
    (`%USERPROFILE%\work` on Windows), allow editing, validate (R8), persist. If already
    configured: reuse silently.
-4. **Base branch** — if `--base` absent: show Local and Remote-tracking groups, each row
-   `<short>  <short-sha>`; select one (FR-009).
+4. **Base branch** — if `--base` absent: a picker with a `Remote` / `Local` tab bar over
+   the branch list (`←/→`/`Tab` to switch, `↑/↓` to move, `/` to filter the active tab,
+   `Enter` to select); each row `<short>  <short-sha>`; select one (FR-009). A tab with no
+   refs is hidden, and the tab bar is omitted when only one kind exists. `Other work` is a
+   reserved source for a later slice and is not shown.
 5. **Prefix** — if `--prefix` absent: show the `freeform` prefixes (one: `{slug}`); select.
 6. **Slug** — if `--slug` absent: text prompt with inline validation.
 7. **Derive + validate branch name** (R16): `interpolate(prefix, slug)`; `git check-ref-format`;

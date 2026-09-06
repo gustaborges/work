@@ -149,7 +149,7 @@ internal/
 │                              #   single/multi/none/error outcomes (ADR-0015)
 ├── convention/               # branch-convention catalog, prefix interpolation, name derivation
 ├── branchname/                # validate (via gitx.refFormat) + collision detection (FR-012)
-├── basebranch/                # list local + remote-tracking refs with short SHA, select (FR-009)
+├── basebranch/                # list local + remote-tracking refs with short SHA; staged Remote/Local tab select (FR-009)
 ├── work/                      # Work domain model, work-state.json (read/write via atomicfile),
 │   └── verify/                #   coherence check: snapshot ↔ worktree ↔ git branch ↔ db (FR-028)
 ├── projection/                # sqlite work.db: open, migrate (user_version), upsert, query

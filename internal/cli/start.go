@@ -171,7 +171,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	if f.baseSet {
 		base, err = basebranch.Resolve(choices, f.base)
 	} else if interactive {
-		base, err = selectBase(choices)
+		base, err = selectBase(ctx, choices)
 	} else {
 		return diag.New(diag.Usage, "missing --base: name a base branch")
 	}
@@ -368,16 +368,15 @@ func retryable(err error, cats ...diag.Category) bool {
 	return slices.Contains(cats, d.Category)
 }
 
-func selectBase(choices []basebranch.Choice) (basebranch.Choice, error) {
-	labels := make([]string, len(choices))
+func selectBase(ctx context.Context, choices []basebranch.Choice) (basebranch.Choice, error) {
+	items := make([]tui.BaseBranchItem, len(choices))
 	for i, c := range choices {
-		scope := "local"
-		if c.Scope == basebranch.ScopeRemoteTracking {
-			scope = "remote"
+		items[i] = tui.BaseBranchItem{
+			Label:  fmt.Sprintf("%-24s %s", c.Short, c.ObjectShort),
+			Remote: c.Scope == basebranch.ScopeRemoteTracking,
 		}
-		labels[i] = fmt.Sprintf("%-24s %s  [%s]", c.Short, c.ObjectShort, scope)
 	}
-	idx, err := tui.SelectBaseBranch(labels)
+	idx, err := tui.SelectBaseBranch(ctx, items)
 	if err != nil {
 		return basebranch.Choice{}, err
 	}
