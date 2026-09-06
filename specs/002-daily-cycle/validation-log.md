@@ -7,7 +7,7 @@ End-to-end run of `quickstart.md` S1–S13 (task T043).
 | Date | 2026-09-06 |
 | Commit | Phase 6 (`feature/002-daily-cycle-p6-polish`), tip `ea7ffb4` |
 | Linux | Ubuntu (Linux 7.0.0-31-generic), Go 1.26.4, git 2.43.0 |
-| Windows / macOS | **not run manually** — covered by the CI matrix (`macos-latest`, `windows-latest`) running `make seed-all && make lint && go test ./...`, which executes every scenario below as an automated suite |
+| Windows / macOS | **not run manually** — covered by the CI matrix (`macos-latest`, `windows-latest`) running `make seed-all && make lint && go test ./...` (note: unix-only pty tests are skipped on Windows) |
 
 Each F2 quickstart scenario has a dedicated automated counterpart that drives the
 built `work` binary (a `.txtar` scenario, or a pty test where the scenario is
