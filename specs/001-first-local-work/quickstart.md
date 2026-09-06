@@ -15,13 +15,14 @@ Success Criteria. Details of shapes and codes live in [`contracts/`](./contracts
 ## Build
 
 ```bash
-make seed      # cross-compiles seed/starter and seed/locator into seed/dist/<goos>_<goarch>/
-make build     # go build -o bin/work ./cmd/work   (embeds seed/dist for the host platform)
+make build     # runs `make seed` (host platform) then go build -o bin/work ./cmd/work
+make install   # copy bin/work to $(DESTDIR)$(PREFIX)/bin  (default ~/.local/bin)
 make test      # unit + contract + integration (testscript)
 ```
 
-`make build` fails if `seed/dist` for the host platform is missing — run `make seed` first
-(the Makefile wires this as a dependency).
+`make build` embeds only the host platform's seed components. `make seed-all` stages
+every release platform (used by `go test ./seed` and `make build-all`); `make release`
+cross-compiles `bin/release/<goos>_<goarch>/work` for every target.
 
 ## Test isolation
 

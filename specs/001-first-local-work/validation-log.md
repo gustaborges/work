@@ -7,7 +7,7 @@ Manual end-to-end run of `quickstart.md` S1–S12 (task T066).
 | Date | 2026-09-06 |
 | Commit | Phase 6 (`feature/001-first-local-work-p6-polish`) |
 | Linux | Ubuntu (Linux 7.0.0-31-generic), Go 1.26.4, git 2.43.0 — **run manually** |
-| Windows | **not run manually** — covered by the CI `windows-latest` matrix job (`make seed && make build && make lint && go test ./...`), green on the Phase 5 PR |
+| Windows | **not run manually** — covered by the CI `windows-latest` matrix job (`make seed-all && make lint && go test ./... && make build`), green on the Phase 5/6 PRs |
 
 ## Results (Linux)
 

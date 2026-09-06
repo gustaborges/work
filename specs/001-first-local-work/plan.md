@@ -120,7 +120,8 @@ specs/001-first-local-work/
 
 ```text
 go.mod                         # module github.com/gustaborges/work
-Makefile                       # `make seed` then `make build`; `make test`
+Makefile                       # `make build` (host-only seed) / `make install` /
+                               #   `make seed-all` / `make release`; `make test`
 cmd/
 └── work/
     └── main.go                # wires cobra root, delegates to internal/cli
@@ -162,8 +163,8 @@ seed/
 ├── locator/                   # main: filesystem Repository Locator (own tiny binary)
 │   └── main.go
 ├── manifest/plugin.json       # seed plugin.json (starter + repository-locator + freeform)
-├── dist/                      # populated by `make seed`: <goos>_<goarch>/{starter,locator}[.exe]
-└── embed.go                   # //go:embed dist/** ; exposes per-GOOS/GOARCH asset lookup
+├── dist/                      # populated by `make seed` (host) / `make seed-all`: <goos>_<goarch>/{starter,locator}[.exe]
+└── embed.go                   # //go:embed dist ; exposes per-GOOS/GOARCH asset lookup
 
 tests/
 ├── integration/               # *.txtar testscript files (create, cancel, rollback, offline,

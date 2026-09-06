@@ -59,9 +59,9 @@ ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017.
 **Decision.** The seed package's two executable components are **Go programs, cross-compiled per platform, embedded in the release binary** and extracted at bootstrap.
 
 - `seed/starter/` and `seed/locator/` are independent `main` packages.
-- `make seed` cross-compiles them for every target in R1 into `seed/dist/<goos>_<goarch>/{starter,locator}` (`.exe` on Windows).
-- `seed/embed.go` embeds `seed/dist/**` via `//go:embed`; a lookup returns the pair matching the running `runtime.GOOS`/`GOARCH`.
-- Release builds are **per-platform** (GoReleaser): each `work` artifact embeds only its own OS/arch seed pair, so size overhead is ~2 small static binaries (~1–2 MB compressed each).
+- `make seed` compiles them for the **host** platform into `seed/dist/<goos>_<goarch>/{starter,locator}` (`.exe` on Windows); `make seed-all` does every target in R1.
+- `seed/embed.go` embeds `seed/dist` via `//go:embed`; a lookup returns the pair matching the running `runtime.GOOS`/`GOARCH`. A default `make build` therefore carries only the host pair.
+- Release builds are **per-platform** (`make release`, later GoReleaser): each `work` artifact embeds only its own OS/arch seed pair, so size overhead is ~2 small static binaries.
 - At bootstrap (R11) the core writes, through the normal install pipeline: `~/.work/plugins/<alias>/source/{starter,locator}`, `~/.work/plugins/<alias>/plugin.json` (**no `runtime` field** → executed directly per ADR-0006), `.install-meta.json` (origin = `embedded-seed`, content digest), and the generated registry entries.
 - `plugin.json` also carries the `freeform` convention (`prefixes: ["{slug}"]`) — pure manifest data, no executable.
 
