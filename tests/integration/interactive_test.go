@@ -201,7 +201,7 @@ func needSeed(t *testing.T) {
 }
 
 // gitIn runs `git -C dir args...` with the test git identity.
-func gitIn(t *testing.T, dir string, args ...string) {
+func gitIn(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
 	cmd.Env = append(os.Environ(),
@@ -210,9 +210,11 @@ func gitIn(t *testing.T, dir string, args ...string) {
 		"GIT_CONFIG_GLOBAL="+filepath.Join(t.TempDir(), "gc"),
 		"GIT_CONFIG_SYSTEM="+os.DevNull,
 	)
-	if out, err := cmd.CombinedOutput(); err != nil {
+	out, err := cmd.CombinedOutput()
+	if err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
+	return strings.TrimSpace(string(out))
 }
 
 // T043 — `work` no-args opens the home listing only "Start a Work"; q exits 0
@@ -372,5 +374,58 @@ func TestInteractiveCancelAtConfirm(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(ws, "in-progress", "src_intr")); !os.IsNotExist(err) {
 		t.Fatalf("interrupted create left a Work directory: %v", err)
+	}
+}
+
+// Two-phase base-branch picker: the guided flow presents Remote / Local tabs and
+// the new branch starts from exactly the ref chosen there. Covers FR-009 (the
+// selection staged as source-then-branch); mirrors create_base_branch.txtar.
+func TestInteractiveBaseBranchTabs(t *testing.T) {
+	needSeed(t)
+	bin := buildWorkBin(t)
+	env, homeDir, _ := ptyEnv(t)
+
+	origin := filepath.Join(homeDir, "origin")
+	makeRepo(t, origin)
+	clone := filepath.Join(homeDir, "clone")
+	gitIn(t, homeDir, "clone", "-q", origin, clone)
+	// Diverge local main from origin/main so "exactly the chosen revision" bites.
+	gitIn(t, clone, "commit", "-q", "--allow-empty", "-m", "local only")
+	originMain := gitIn(t, clone, "rev-parse", "origin/main")
+	localMain := gitIn(t, clone, "rev-parse", "main")
+	if originMain == localMain {
+		t.Fatal("fixture did not diverge local main from origin/main")
+	}
+	ws := filepath.Join(homeDir, "ws")
+
+	// Only the base branch is prompted; the picker opens on the Remote tab whose
+	// only row is origin/main. Filter to it, then select.
+	c := newConsole(t, bin, env, "start", clone,
+		"--workspace", ws, "--slug", "picked", "--prefix", "{slug}", "--yes")
+	c.expect("Base branch")
+	c.expect("Remote")
+	c.expect("Local")
+	// The picker carries huh's styled left rule, so coloring/theme is applied.
+	if s := c.snapshot(); !strings.Contains(s, "┃") {
+		t.Errorf("picker is unstyled (no left rule):\n%s", s)
+	}
+	c.send("/origin/main")
+	c.expect("origin/main")
+	c.send("\r")
+	c.expect("work: created ")
+	if code := c.wait(); code != 0 {
+		t.Fatalf("start exited %d, want 0", code)
+	}
+
+	dir := filepath.Join(ws, "in-progress", "clone_picked")
+	b, err := os.ReadFile(filepath.Join(dir, "work-state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"base_branch": "origin/main"`) {
+		t.Errorf("snapshot base_branch is not origin/main:\n%s", b)
+	}
+	if tip := gitIn(t, filepath.Join(dir, "worktree"), "rev-parse", "HEAD"); tip != originMain {
+		t.Errorf("branch tip = %s, want origin/main %s", tip, originMain)
 	}
 }

@@ -13,7 +13,6 @@ import (
 
 	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/diag"
-	"github.com/gustaborges/work/internal/gitx"
 	"github.com/gustaborges/work/internal/workhome"
 )
 
@@ -34,8 +33,10 @@ func SuggestDefault() (string, error) {
 }
 
 // Validate resolves raw and checks it can serve as a workspace root: it is (or
-// can become) a writable directory, it is not inside a git work tree, and it is
-// not inside any configured repository root. It returns the absolute path.
+// can become) a writable directory and it is not inside any configured
+// repository root. It returns the absolute path. An unrelated git repository
+// enclosing the root is allowed — only overlap with a configured repository
+// root is rejected.
 func Validate(raw string, repositoryRoots []string) (string, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -61,12 +62,6 @@ func Validate(raw string, repositoryRoots []string) (string, error) {
 		}
 	default:
 		return "", diag.Newf(diag.Usage, "cannot inspect workspace root %s", raw)
-	}
-
-	if inside := firstExistingAncestor(abs); inside != "" {
-		if wt, _ := gitx.Open(inside).IsWorkTree(); wt {
-			return "", diag.Newf(diag.Usage, "workspace root %s is inside a git repository", raw)
-		}
 	}
 
 	// Compare containment on a canonical basis so a symlinked prefix (macOS

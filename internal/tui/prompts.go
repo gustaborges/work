@@ -24,25 +24,6 @@ func run(field huh.Field) error {
 	return abort(huh.NewForm(huh.NewGroup(field)).Run())
 }
 
-// SelectBaseBranch shows grouped base-branch options and returns the chosen
-// label's index into options. groupTags parallels options ("local" /
-// "remote-tracking") only for display.
-func SelectBaseBranch(options []string) (int, error) {
-	if len(options) == 0 {
-		return 0, diag.New(diag.NoBaseBranch, "the repository has no selectable base branch")
-	}
-	var choice int
-	opts := make([]huh.Option[int], len(options))
-	for i, label := range options {
-		opts[i] = huh.NewOption(label, i)
-	}
-	err := run(huh.NewSelect[int]().
-		Title("Base branch").
-		Options(opts...).
-		Value(&choice))
-	return choice, err
-}
-
 // SelectPrefix shows the convention's prefixes and returns the chosen one.
 func SelectPrefix(prefixes []string) (string, error) {
 	if len(prefixes) == 1 {

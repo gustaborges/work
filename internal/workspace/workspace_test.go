@@ -38,11 +38,15 @@ func TestValidateRejectsFile(t *testing.T) {
 	}
 }
 
-func TestValidateRejectsInsideGitRepo(t *testing.T) {
+func TestValidateAllowsInsideGitRepo(t *testing.T) {
 	repo := gittest.Repo(t)
 	inside := filepath.Join(repo, "nested", "ws")
-	if _, err := Validate(inside, nil); diag.Token(err) != diag.Usage.Token {
-		t.Fatalf("err = %v", err)
+	got, err := Validate(inside, nil)
+	if err != nil {
+		t.Fatalf("Validate rejected a git-enclosed root: %v", err)
+	}
+	if got != inside {
+		t.Errorf("got %q want %q", got, inside)
 	}
 }
 
