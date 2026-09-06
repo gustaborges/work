@@ -80,8 +80,8 @@ work start "$src" \
 **Interactive variant:** run `work` with no args → home → "Start a Work"; or `work start`
 with no source. Provide the path when prompted, type the slug (`freeform`'s single `{slug}`
 prefix is applied without asking), pick `main` from the base-branch picker's `Local` tab,
-accept the suggested `~/work` (or edit it), confirm. Each answered step collapses to a
-`✓ <value>` line as you go. Same end state, reachable with the keyboard only (FR-029, RF-50).
+accept the suggested `~/work` (or edit it), confirm. Same end state, reachable with the
+keyboard only (FR-029, RF-50).
 
 **Enclosing git repo:** the workspace root (and therefore every Work under it) may sit
 inside an unrelated Git repository — `work start` does not reject that. Only a root that

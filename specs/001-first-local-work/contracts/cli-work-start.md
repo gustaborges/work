@@ -37,10 +37,7 @@ work start [SOURCE] [--workspace PATH] [--base REF] [--slug SLUG] [--prefix PREF
 
 ## Interactive flow (stdin AND stdout are TTYs)
 
-Ordered; each explicit flag skips **only** its own step, never validation. As each step
-resolves, its prompt is replaced in place by a one-line completed summary (the step title,
-then `✓ <chosen value>`), separated from the next prompt by exactly one blank line; a value
-supplied by flag renders no summary.
+Ordered; each explicit flag skips **only** its own step, never validation:
 
 1. **Source** — if `SOURCE` omitted: prompt for a path.
 2. **Resolve + validate repository** (R14): abs+symlink resolve; must be a readable dir, a
@@ -49,7 +46,7 @@ supplied by flag renders no summary.
    exits 12 (not correctable by a different path to the same repo).
 3. **Prefix** — if `--prefix` absent: show the branch convention's prefixes and select. A
    convention that offers a single prefix (`freeform` → `{slug}`) is not a choice: no prompt
-   and no completed summary are shown.
+   is shown.
 4. **Slug** — if `--slug` absent: text prompt with inline validation. Asked before the base
    branch: a rejected slug is the cheapest failure to recover from (no repo scan), so it
    comes first.
@@ -60,12 +57,11 @@ supplied by flag renders no summary.
    the branch list (`←/→`/`Tab` to switch, `↑/↓` to move, `/` to filter the active tab,
    `Enter` to select); each row `<short>  <short-sha>`; select one (FR-009). A tab with no
    refs is hidden, and the tab bar is omitted when only one kind exists. `Other work` is a
-   reserved source for a later slice and is not shown. On selection the list collapses to the
-   completed summary `✓ <short>  <short-sha> [remote|local]`.
+   reserved source for a later slice and is not shown.
 7. **Workspace root** — if none configured and `--workspace` absent: suggest `~/work`
    (`%USERPROFILE%\work` on Windows), allow editing, validate (R8), persist. If already
-   configured: reuse silently (no prompt, no summary). Deferred to here so a run rejected at
-   an earlier step never persists a root or creates its directories (SC-004).
+   configured: reuse silently. Deferred to here so a run rejected at an earlier step never
+   persists a root or creates its directories (SC-004).
 8. **Confirm** — show repo, base branch (+ short SHA), derived branch name, workspace root,
    and target directory. Proceed on confirm (or `--yes`). Decline → exit 20.
 9. **Materialize** (transactional, R10): lock → `git worktree add -b <branch> <dir>/worktree
