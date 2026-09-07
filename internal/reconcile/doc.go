@@ -10,4 +10,9 @@
 // status) and drops any row whose Work is no longer on disk. An unreadable,
 // unparseable or schema-invalid snapshot is skipped and collected in the Report
 // rather than aborting the operation.
+//
+// Open is the shared entry point for the daily commands: it rebuilds the
+// database when the file is absent, unopenable, or below the current schema
+// version, and otherwise runs a lightweight reconcile, returning the Report so
+// callers can surface any skipped-snapshot diagnostics.
 package reconcile

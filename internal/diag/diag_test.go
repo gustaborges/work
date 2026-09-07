@@ -24,6 +24,11 @@ func TestCategoryTable(t *testing.T) {
 		{BootstrapFailed, "bootstrap-failed", 16},
 		{MaterializationFailed, "materialization-failed", 17},
 		{Cancelled, "cancelled", 20},
+		{TargetNotFound, "target-not-found", 21},
+		{TargetArchived, "target-archived", 22},
+		{DirtyWorktree, "dirty-worktree", 23},
+		{ArchiveFailed, "archive-failed", 24},
+		{SnapshotUnreadable, "snapshot-unreadable", 25},
 	}
 
 	if len(want) != len(All) {
