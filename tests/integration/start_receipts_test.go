@@ -78,7 +78,7 @@ func TestStartReceiptsLeaveNoDebris(t *testing.T) {
 		"Base branch\n  \u2714 main",
 		"\u2714 Create Work confirmed",
 	} {
-		if !strings.Contains(screen, want) {
+		if !containsTerminalText(screen, want) {
 			t.Errorf("reconstructed screen missing receipt %q:\n%s", want, screen)
 		}
 	}
@@ -100,4 +100,13 @@ func TestStartReceiptsLeaveNoDebris(t *testing.T) {
 			t.Errorf("screen missing stable stdout line %q:\n%s", want, screen)
 		}
 	}
+}
+
+// containsTerminalText compares terminal content after folding whitespace.
+// A receipt may wrap across rows when a canonical macOS temporary path is
+// longer than the PTY width; wrapping must not make an otherwise complete
+// receipt appear missing.
+func containsTerminalText(screen, want string) bool {
+	compact := func(s string) string { return strings.Join(strings.Fields(s), "") }
+	return strings.Contains(compact(screen), compact(want))
 }
