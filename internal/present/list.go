@@ -2,7 +2,25 @@ package present
 
 import (
 	"strings"
+
+	"github.com/gustaborges/work/internal/present/theme"
 )
+
+// writeRow renders one option row (one or two lines from Row) into b: the
+// primary line takes the Primary token when focused (bold, plus accent when
+// colour is on) and is otherwise plain; the secondary line is always Muted, so
+// metadata never competes with identity (contracts/interaction.md §5).
+func writeRow(b *strings.Builder, th theme.Theme, lines []string, focused bool) {
+	for i, line := range lines {
+		switch {
+		case i == 0 && focused:
+			line = th.Primary.Render(line)
+		case i > 0:
+			line = th.Muted.Render(line)
+		}
+		b.WriteString(line + "\n")
+	}
+}
 
 // Option is one selectable value. present sees only the presentation strings and
 // an opaque Value; the CLI maps Value back to its domain object (data-model §2).

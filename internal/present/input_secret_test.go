@@ -13,12 +13,12 @@ func TestInputSecretCompletedViewHasNoPlaintext(t *testing.T) {
 	m := typeText(newTestInput(InputSpec{Title: "Token", Secret: true}), secret).(inputModel)
 
 	// Editing frame: masked, never the plaintext.
-	if strings.Contains(m.View().Content, secret) {
-		t.Fatalf("plaintext visible while editing:\n%s", m.View().Content)
+	if strings.Contains(stepBody(m), secret) {
+		t.Fatalf("plaintext visible while editing:\n%s", stepBody(m))
 	}
 
 	m = submitInput(t, m)
-	got := m.finalFrame()
+	got := m.status().receipt
 	if got != "Token\n  ✔ ••••\n\n" {
 		t.Errorf("completed secret View = %q, want the redacted receipt", got)
 	}

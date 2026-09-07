@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -60,36 +59,16 @@ func IsFatal(err error) (error, bool) {
 	return err, false
 }
 
-// outcome is how an interaction session ended, read by run once the program has
-// returned.
-type outcome struct {
-	cancelled bool
-	fatal     error
-}
-
-// sessionModel is the contract every primitive model satisfies so run can drive
-// them uniformly. On reaching a terminal state the model renders an empty View
-// (so Bubble Tea's inline renderer clears the whole active frame, however tall)
-// and exposes the compact receipt or notice through finalFrame; run writes that
-// into the freshly cleared area once the program has exited. Committing the
-// final frame through Bubble Tea's shrink path instead is unreliable for a
-// frame that was many rows tall, e.g. a long selector (research R4).
-type sessionModel interface {
-	tea.Model
-	outcome() outcome
-	// finalFrame is the compact string to print after the program exits, or ""
-	// when the step left nothing to show (a Fatal abort, or a context-driven
-	// interrupt caught outside the model).
-	finalFrame() string
-}
-
-// run executes one primitive model as a bounded inline Bubble Tea program bound
-// to io, and maps the terminal outcome to the shared diagnostic vocabulary:
-// context cancellation and the model's own cancelled state both become
-// diag.Cancelled (exit 20 preserved); a Fatal validation error is returned
+// runWizard executes one wizard as a full-screen alternate-buffer Bubble Tea
+// program bound to io, then — once the alternate buffer is torn down and the
+// primary buffer restored — reprints the compact accepted-step receipts to the
+// UI channel, ahead of any stable stdout the CLI writes (FR-007, ADR-0021).
+// It maps the terminal outcome to the shared diagnostic vocabulary: context
+// cancellation and any step's own cancelled state both become diag.Cancelled
+// (exit 20 preserved); a Fatal validation error or a build error is returned
 // unwrapped for the CLI border. This is present's only dependency on
 // internal/diag.
-func run(ctx context.Context, pio IO, m sessionModel) (sessionModel, error) {
+func runWizard(ctx context.Context, pio IO, m wizard) (wizard, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -98,42 +77,34 @@ func run(ctx context.Context, pio IO, m sessionModel) (sessionModel, error) {
 		tea.WithInput(pio.in()),
 		tea.WithOutput(pio.ui()),
 	).Run()
-	sm, cerr := classify(final, err)
-	// The program has cleared its active frame; drop the compact receipt or
-	// notice into the now-empty area, ahead of any stable stdout the CLI adds.
-	if sm != nil {
-		if frame := sm.finalFrame(); frame != "" {
-			if !strings.HasSuffix(frame, "\n") {
-				frame += "\n"
-			}
-			_, _ = io.WriteString(pio.ui(), frame)
-		}
+	w, cerr := classifyWizard(final, err)
+	if trail := w.finalReceipts(); trail != "" {
+		_, _ = io.WriteString(pio.ui(), trail)
 	}
-	return sm, cerr
+	return w, cerr
 }
 
-// classify turns a finished Bubble Tea program into the (model, error) pair the
-// primitives return. It is separated from run so the mapping is unit-testable
-// without a terminal.
-func classify(final tea.Model, err error) (sessionModel, error) {
+// classifyWizard turns a finished Bubble Tea program into the (wizard, error)
+// pair Wizard returns. It is separated from runWizard so the mapping is
+// unit-testable without a terminal.
+func classifyWizard(final tea.Model, err error) (wizard, error) {
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			fm, _ := final.(sessionModel)
-			return fm, diag.New(diag.Cancelled, "cancelled")
+			w, _ := final.(wizard)
+			return w, diag.New(diag.Cancelled, "cancelled")
 		}
-		return nil, diag.Wrap(diag.Usage, err, "the interactive prompt could not be shown")
+		return wizard{}, diag.Wrap(diag.Usage, err, "the interactive prompt could not be shown")
 	}
-	fm, ok := final.(sessionModel)
+	w, ok := final.(wizard)
 	if !ok {
-		return nil, diag.New(diag.Usage, "the interactive prompt ended in an unexpected state")
+		return wizard{}, diag.New(diag.Usage, "the interactive prompt ended in an unexpected state")
 	}
-	oc := fm.outcome()
 	switch {
-	case oc.fatal != nil:
-		return fm, oc.fatal
-	case oc.cancelled:
-		return fm, diag.New(diag.Cancelled, "cancelled")
+	case w.fatal != nil:
+		return w, w.fatal
+	case w.cancelled:
+		return w, diag.New(diag.Cancelled, "cancelled")
 	default:
-		return fm, nil
+		return w, nil
 	}
 }

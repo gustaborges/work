@@ -98,7 +98,7 @@ func (m selectModel[T]) rows() int {
 
 func (m selectModel[T]) Init() tea.Cmd { return tea.RequestBackgroundColor }
 
-func (m selectModel[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m selectModel[T]) Update(msg tea.Msg) (stepModel, tea.Cmd) {
 	if m.absorb(msg) {
 		m.refilter()
 		return m, nil
@@ -110,11 +110,11 @@ func (m selectModel[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m.handleKey(key)
 }
 
-func (m selectModel[T]) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m selectModel[T]) handleKey(key tea.KeyPressMsg) (stepModel, tea.Cmd) {
 	s := key.String()
 	if s == "ctrl+c" {
 		m.state = listCancelled
-		return m, leave()
+		return m, nil
 	}
 
 	if m.filtering {
@@ -149,7 +149,7 @@ func (m selectModel[T]) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch s {
 	case "q", "esc":
 		m.state = listCancelled
-		return m, leave()
+		return m, nil
 	case "/":
 		if m.spec.Filterable {
 			m.filtering = true
@@ -185,7 +185,7 @@ func (m *selectModel[T]) switchTab(key string) {
 	m.refilter()
 }
 
-func (m selectModel[T]) choose() (tea.Model, tea.Cmd) {
+func (m selectModel[T]) choose() (stepModel, tea.Cmd) {
 	if m.cursor >= len(m.visible) {
 		return m, nil // empty filter result
 	}
@@ -197,26 +197,28 @@ func (m selectModel[T]) choose() (tea.Model, tea.Cmd) {
 	}
 	m.receipt = Receipt(m.th, m.spec.Title, MarkSuccess, value)
 	m.state = listCompleted
-	return m, leave()
+	return m, nil
 }
 
-func (m selectModel[T]) outcome() outcome {
-	return outcome{cancelled: m.state == listCancelled}
-}
-
-func (m selectModel[T]) finalFrame() string {
-	if m.state == listCompleted {
-		return m.receipt
+func (m selectModel[T]) status() stepStatus {
+	st := stepStatus{
+		done:      m.state == listCompleted,
+		cancelled: m.state == listCancelled,
+		receipt:   m.receipt,
 	}
-	// A cancelled selector leaves nothing in history; the "✘ Operation
-	// cancelled" line is the CLI diagnostic border's (contracts/diagnostics.md).
-	return ""
+	if m.chosen >= 0 {
+		st.answer = m.spec.Options[m.chosen].Value
+	}
+	return st
 }
 
-func (m selectModel[T]) View() tea.View {
+func (m selectModel[T]) cursorPos() (tea.Position, bool) { return tea.Position{}, false }
+
+func (m selectModel[T]) body(width, height int) string {
+	m.w, m.h = width, height
 	switch m.state {
 	case listCompleted, listCancelled:
-		return tea.NewView("")
+		return ""
 	}
 
 	var b strings.Builder
@@ -236,12 +238,7 @@ func (m selectModel[T]) View() tea.View {
 	for i := m.offset; i < end; i++ {
 		opt := m.spec.Options[m.visible[i]]
 		spec := RowSpec{Width: m.w, Focused: i == m.cursor, Primary: opt.Primary, Secondary: opt.Secondary}
-		for _, line := range Row(spec) {
-			if i == m.cursor {
-				line = m.th.Primary.Render(line)
-			}
-			b.WriteString(line + "\n")
-		}
+		writeRow(&b, m.th, Row(spec), i == m.cursor)
 	}
 
 	if len(m.visible) > rows {
@@ -255,7 +252,7 @@ func (m selectModel[T]) View() tea.View {
 	} else {
 		b.WriteString(m.th.Muted.Render(m.helpLine()))
 	}
-	return m.clamp(b.String())
+	return b.String()
 }
 
 func (m selectModel[T]) tabBar() string {
@@ -286,10 +283,12 @@ func (m selectModel[T]) helpLine() string {
 // on an interactive terminal first.
 func Select[T any](ctx context.Context, io IO, spec SelectSpec[T]) (T, error) {
 	var zero T
-	final, err := run(ctx, io, newSelectModel(io, spec))
+	ans, err := Wizard(ctx, io, WizardSpec{Steps: []Step{
+		SelectStep("value", func(Answers) (SelectSpec[T], error) { return spec, nil }),
+	}})
 	if err != nil {
 		return zero, err
 	}
-	m := final.(selectModel[T])
-	return m.spec.Options[m.chosen].Value, nil
+	v, _ := ans.Value("value").(T)
+	return v, nil
 }
