@@ -1,27 +1,27 @@
-# ADR-0008: Assinatura/Verificação de Pacotes de Terceiros — Adiada, com Justificativa Registrada
+# ADR-0008: Third-Party Package Signing/Verification — Deferred, with Rationale Recorded
 
-**Status:** Aceito (decisão de adiar, com justificativa registrada)
-**Data:** 2026-08-23
-**Contexto de produto:** `docs/prd.md` — Seção 12 (risco nomeado), RNF-7
-**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seção 12
+**Status:** Accepted (decision to defer, with rationale recorded)
+**Date:** 2026-08-23
+**Product context:** `docs/prd.md` — Section 12 (named risk), RNF-7
+**Governs:** `docs/add/add-0001-work-system-architecture.md`, Section 12
 
-## Contexto
+## Context
 
-O PRD nomeia "plugin externo malicioso ou mal escrito compromete dados do usuário" como risco, e RNF-7 trata minimização de confiança como valor central. A pergunta era se uma política de assinatura/verificação de pacotes precisa ser decidida já na v1.
+The PRD names "a malicious or poorly written external plugin compromises user data" as a risk, and RNF-7 treats minimizing trust as a core value. The question was whether a package signing/verification policy needs to be decided already in v1.
 
-## Decisão
+## Decision
 
-Explicitamente fora do escopo da v1 — por um motivo específico, não apenas "fica para depois": no modelo de instalação da v1 (ADR-0002), a origem de um plugin é sempre uma URL ou um caminho local escolhido explicitamente pelo próprio usuário, e a referência de conteúdo é fixada no momento da instalação. Isso já dá integridade e reprodutibilidade suficientes para essa origem especificamente escolhida pelo usuário — não há, hoje, nenhum mecanismo no produto que instale um plugin sem que o usuário tenha fornecido a origem diretamente. Sem um mecanismo assim, não existe gap adicional relevante que uma assinatura fecharia: o próprio usuário já é quem decide em que origem confiar.
+Explicitly out of scope for v1 — for a specific reason, not merely "defer it": under the v1 installation model (ADR-0002), a plugin's source is always a URL or local path explicitly chosen by the user, and the content reference is pinned at installation time. This already provides sufficient integrity and reproducibility for that specifically user-chosen source — there is currently no mechanism in the product that installs a plugin without the user having directly provided the source. Without such a mechanism, there is no additional relevant gap that a signature would close: the user is already the one deciding which source to trust.
 
-Essa decisão deve ser revisitada se, no futuro, o Work vier a introduzir qualquer mecanismo que instale ou sugira um plugin sem que o usuário tenha fornecido a origem diretamente — nesse momento a decisão de confiança do usuário deixaria de ser "eu escolhi essa origem" e passaria a depender de quanto ele confia nesse mecanismo intermediário, o que abriria uma classe de risco que o simples fixar de referência de conteúdo não endereça.
+This decision should be revisited if, in the future, Work introduces any mechanism that installs or suggests a plugin without the user having directly provided the source — at that point, the user's trust decision would no longer be "I chose this source" and would instead depend on how much they trust that intermediary mechanism, opening a class of risk that merely pinning the content reference does not address.
 
-## Alternativas consideradas
+## Alternatives considered
 
-* **Decidir e implementar assinatura já na v1.** Rejeitada: absorveria complexidade sem fechar nenhum gap de risco real hoje, já que o modelo de instalação atual já depende inteiramente de uma origem escolhida explicitamente pelo usuário.
-* **Ignorar o tema indefinidamente, sem registrar a justificativa.** Rejeitada: perderia o raciocínio já feito, forçando reavaliação do zero no futuro sem contexto do porquê a decisão foi tomada.
+* **Decide and implement signing already in v1.** Rejected: it would absorb complexity without closing any real risk gap today, since the current installation model already depends entirely on a source explicitly chosen by the user.
+* **Ignore the topic indefinitely without recording the rationale.** Rejected: it would lose the reasoning already established, forcing a fresh reassessment in the future without context for why the decision was made.
 
-## Consequências
+## Consequences
 
-**Positivas:** a v1 não absorve complexidade que não fecha nenhum gap de risco real no modelo de instalação atual; a justificativa fica registrada para não precisar ser rederivada do zero se as premissas mudarem.
+**Positive:** v1 does not absorb complexity that closes no real risk gap in the current installation model; the rationale is recorded so it does not need to be derived again from scratch if the assumptions change.
 
-**Negativas / trade-offs:** nenhuma para a v1 — o risco que motivaria assinatura (uma origem de plugin não escolhida diretamente pelo usuário) simplesmente não existe no produto hoje.
+**Negative / trade-offs:** none for v1 — the risk that would motivate signing (a plugin source not directly chosen by the user) simply does not exist in the product today.
