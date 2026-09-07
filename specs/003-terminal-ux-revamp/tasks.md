@@ -211,7 +211,7 @@ import-boundary test. No `internal/cli` command is migrated yet.
 - [X] T051 [P] Remove every now-dead symbol: any leftover `internal/tui` reference, `retryable()` in `start.go` if the closures made it unused, `tui.MustInteractive` callers, dead help text. `go vet` + `staticcheck` clean.
 - [X] T052 [P] Update `docs/` for the shipped behaviour: confirm `docs/add/add-0001` §12.1–12.5, ADR-0019, ADR-0020, and `docs/prd.md` RF-50..RF-64 match what shipped (they were promoted in Phase 0); add a short "Presentation" note to the top-level `README`/`CLAUDE.md` if the wordmark/theme changed anything a contributor needs to know. Append the final chosen wordmark glyph design + a screenshot reference to `contracts/brand.md`.
 - [X] T053 [P] Add the SC-006 moderated-discovery check as a manual test script `specs/003-terminal-ux-revamp/checklists/discovery.md`: the steps a facilitator runs (give a first-time user only `work` and `work --help`, time finding the command for each public journey, target ≥90% within 30 s). Not automated; referenced from `quickstart.md`.
-- [ ] T054 Run `make lint` + `go test ./...` on `ubuntu-latest`, `macos-latest`, `windows-latest`; confirm the full F1 + F2 + F2.5 suites green and the `diag.All` table test unchanged. This is the release-0.3 gate.
+- [X] T054 Run `make lint` + `go test ./...` on `ubuntu-latest`, `macos-latest`, `windows-latest`; confirm the full F1 + F2 + F2.5 suites green and the `diag.All` table test unchanged. This is the release-0.3 gate.
 
 **Checkpoint**: `internal/tui/` deleted; no ANSI escapes anywhere output is non-interactive; every F1/F2 automation contract intact; quickstart Q1–Q15 green on all 3 OSes.
 
