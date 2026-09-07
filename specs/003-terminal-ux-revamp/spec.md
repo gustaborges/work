@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-07
 
-**Status**: Draft
+**Status**: Complete
 
 **Input**: User description: `temp/tui-revamp.md`, with the explicit requirement that the `WORK` wordmark be terminal art using a gradient of the settled primary and secondary colors.
 

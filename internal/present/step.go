@@ -40,3 +40,10 @@ type stepModel interface {
 	// visible cursor.
 	cursorPos() (pos tea.Position, ok bool)
 }
+
+// frameAwareStep accepts the wizard's already-resolved terminal frame when it
+// becomes current. Keeping this private lets Wizard retain ownership of the
+// one background-colour probe while primitives remain independently testable.
+type frameAwareStep interface {
+	withFrame(baseFrame) stepModel
+}

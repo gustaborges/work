@@ -116,7 +116,7 @@ func TestMultiConfirmFlow(t *testing.T) {
 	if !done.status().done || done.state != listCompleted {
 		t.Fatalf("confirm accept did not complete: done=%v state=%d", done.status().done, done.state)
 	}
-	if done.status().receipt != "✔ Archive Works confirmed\n" {
+	if done.status().receipt != "✔ Archive Works confirmed\n\n" {
 		t.Errorf("completed receipt = %q", done.status().receipt)
 	}
 	if got := done.picked(); strings.Join(got, ",") != "id-a,id-c" {

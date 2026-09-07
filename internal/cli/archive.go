@@ -151,55 +151,62 @@ func runArchive(cmd *cobra.Command, args []string, f archiveFlags) error {
 			fmt.Fprintln(errOut, "note: no active Works to archive")
 			return nil
 		}
-		opts := make([]present.Option[worklist.WorkRow], len(active))
-		for i, r := range active {
-			opts[i] = present.Option[worklist.WorkRow]{
-				Value:     r,
-				Primary:   r.DisplayName,
-				Secondary: r.RelativeTime + " • " + r.Branch,
-			}
+		if !interactive {
+			return diag.New(diag.Usage, "pass one or more Work ids to archive; run `work archive` in a terminal to pick from the list")
 		}
-		picked, err := present.MultiSelect(ctx, pio, present.MultiSelectSpec[worklist.WorkRow]{
-			Title:      "Archive Works",
-			Filterable: true,
-			Options:    opts,
-			Confirm: &present.ConfirmSpec{
-				Title:  "Archive Works",
-				Accept: "Archive",
-				Reject: "Cancel",
-			},
-			ConfirmImpact: func(p []present.Option[worklist.WorkRow]) string {
-				return archiveConsequences(len(p), workspaceRoot)
-			},
-		})
+	}
+
+	var declinedDirty []worklist.WorkRow
+	requestedCount := len(rows)
+	if interactive {
+		initial := present.Answers{}
+		var steps []present.Step
+		if explicit {
+			initial["rows"] = rows
+		} else {
+			active, err := worklist.List(db, false)
+			if err != nil {
+				return diag.Wrap(diag.BootstrapFailed, err, "cannot read the lookup index")
+			}
+			opts := make([]present.Option[worklist.WorkRow], len(active))
+			for i, r := range active {
+				opts[i] = present.Option[worklist.WorkRow]{Value: r, Primary: r.DisplayName, Secondary: r.RelativeTime + " • " + r.Branch}
+			}
+			steps = append(steps, present.MultiSelectStep("rows", func(present.Answers) (present.MultiSelectSpec[worklist.WorkRow], error) {
+				return present.MultiSelectSpec[worklist.WorkRow]{Title: "Archive Works", Filterable: true, Options: opts}, nil
+			}))
+		}
+		var dirtyRows []worklist.WorkRow
+		steps = append(steps,
+			present.ConfirmStep("confirm", func(a present.Answers) (present.ConfirmSpec, error) {
+				selected, _ := a.Value("rows").([]worklist.WorkRow)
+				return present.ConfirmSpec{Title: "Archive Works", Impact: archiveConfirmImpact(selected, workspaceRoot), Accept: "Archive", Reject: "Cancel"}, nil
+			}),
+			present.ConfirmSequenceStep("dirty", func(a present.Answers) ([]present.ConfirmSpec, error) {
+				if !a.Bool("confirm") || f.forceDirty {
+					return nil, nil
+				}
+				selected, _ := a.Value("rows").([]worklist.WorkRow)
+				dirtyRows = dirtyArchiveRows(selected)
+				specs := make([]present.ConfirmSpec, 0, len(dirtyRows))
+				for _, r := range dirtyRows {
+					specs = append(specs, present.ConfirmSpec{Title: r.DisplayName + "  (" + r.Branch + ")", Impact: "This worktree has uncommitted or untracked changes.\nArchiving it anyway will lose those changes.", Accept: "Archive anyway", Reject: "Keep active"})
+				}
+				return specs, nil
+			}),
+		)
+		ans, err := present.Wizard(ctx, pio, present.WizardSpec{Title: "Archive Works", Initial: initial, Steps: steps})
 		if err != nil {
 			return err
 		}
-		if len(picked) == 0 {
-			return diag.New(diag.Cancelled, "cancelled")
+		if !ans.Bool("confirm") {
+			return diag.New(diag.Cancelled, "archival declined at the confirmation prompt")
 		}
-		rows = picked
-	}
-
-	// Confirmation (FR-010): the multi-select picker carries its own for the
-	// interactive no-target path; every other path needs it here.
-	if explicit {
-		if interactive {
-			ok, err := present.Confirm(ctx, pio, present.ConfirmSpec{
-				Title:  "Archive Works",
-				Impact: archiveConfirmImpact(rows, workspaceRoot),
-				Accept: "Archive",
-				Reject: "Cancel",
-			})
-			if err != nil {
-				return err
-			}
-			if !ok {
-				return diag.New(diag.Cancelled, "archival declined at the confirmation prompt")
-			}
-		} else if !f.yes {
-			return diag.New(diag.Usage, "missing --yes: confirm the archival non-interactively with --yes")
-		}
+		rows, _ = ans.Value("rows").([]worklist.WorkRow)
+		requestedCount = len(rows)
+		dirtyAnswers, _ := ans.Value("dirty").([]bool)
+		declinedDirty = declinedDirtyRows(dirtyRows, dirtyAnswers)
+		rows = filterDirtyDeclines(rows, dirtyRows, dirtyAnswers)
 	}
 
 	// Non-interactive single-target dirty guard is fatal (exit 23) only when
@@ -214,19 +221,6 @@ func runArchive(cmd *cobra.Command, args []string, f archiveFlags) error {
 	}
 
 	cwd, _ := os.Getwd()
-	var ackDirty func(projection.Work) (bool, error)
-	if interactive && !f.forceDirty {
-		ackDirty = func(w projection.Work) (bool, error) {
-			r := rowFor(rows, w.ID)
-			return present.Confirm(ctx, pio, present.ConfirmSpec{
-				Title: r.DisplayName + "  (" + r.Branch + ")",
-				Impact: "This worktree has uncommitted or untracked changes.\n" +
-					"Archiving it anyway will lose those changes.",
-				Accept: "Archive anyway",
-				Reject: "Keep active",
-			})
-		}
-	}
 
 	rep, runErr := archive.Run(ctx, archive.Params{
 		Home:          home,
@@ -234,8 +228,10 @@ func runArchive(cmd *cobra.Command, args []string, f archiveFlags) error {
 		WorkspaceRoot: workspaceRoot,
 		Rows:          projectionRows(db, rows),
 		ForceDirty:    f.forceDirty,
-		AckDirty:      ackDirty,
-		CallerCWD:     cwd,
+		// A Work that becomes dirty after the preflight is left active. Asking a
+		// fresh question here would open another full-screen session.
+		AckDirty:  nil,
+		CallerCWD: cwd,
 	})
 
 	repositionOut := false
@@ -259,7 +255,10 @@ func runArchive(cmd *cobra.Command, args []string, f archiveFlags) error {
 			repositionOut = true
 		}
 	}
-	fmt.Fprintf(out, "work: archived %d of %d\n", rep.Archived(), len(rep.Outcomes))
+	for _, r := range declinedDirty {
+		fmt.Fprintf(errOut, "note: %s: worktree has uncommitted or untracked changes — left active\n", r.ID)
+	}
+	fmt.Fprintf(out, "work: archived %d of %d\n", rep.Archived(), requestedCount)
 
 	if repositionOut {
 		root := workspaceRoot
@@ -277,6 +276,43 @@ func runArchive(cmd *cobra.Command, args []string, f archiveFlags) error {
 	return runErr
 }
 
+func dirtyArchiveRows(rows []worklist.WorkRow) []worklist.WorkRow {
+	var dirty []worklist.WorkRow
+	for _, r := range rows {
+		if r.WorktreePath == "" {
+			continue
+		}
+		if d, err := gitx.Open(r.WorktreePath).IsDirty(); err == nil && d {
+			dirty = append(dirty, r)
+		}
+	}
+	return dirty
+}
+
+func filterDirtyDeclines(rows, dirty []worklist.WorkRow, answers []bool) []worklist.WorkRow {
+	approved := make(map[string]bool, len(dirty))
+	for i, r := range dirty {
+		approved[r.ID] = i < len(answers) && answers[i]
+	}
+	out := make([]worklist.WorkRow, 0, len(rows))
+	for _, r := range rows {
+		if accepted, isDirty := approved[r.ID]; !isDirty || accepted {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func declinedDirtyRows(dirty []worklist.WorkRow, answers []bool) []worklist.WorkRow {
+	var declined []worklist.WorkRow
+	for i, r := range dirty {
+		if i >= len(answers) || !answers[i] {
+			declined = append(declined, r)
+		}
+	}
+	return declined
+}
+
 // projectionRows fetches the current projection row for each selected Work so
 // the orchestrator has every column it needs; a row that vanished between
 // listing and now is skipped.
@@ -290,15 +326,6 @@ func projectionRows(db *projection.DB, rows []worklist.WorkRow) []projection.Wor
 		out = append(out, w)
 	}
 	return out
-}
-
-func rowFor(rows []worklist.WorkRow, id string) worklist.WorkRow {
-	for _, r := range rows {
-		if r.ID == id {
-			return r
-		}
-	}
-	return worklist.WorkRow{ID: id}
 }
 
 // archiveConsequences is the destructive-effects block every archive

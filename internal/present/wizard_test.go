@@ -151,6 +151,35 @@ func TestWizardViewIsAltScreenBoundedWithRuleAndTitle(t *testing.T) {
 	}
 }
 
+func TestWizardKeepsActiveConfirmVisibleWhenReceiptsFillViewport(t *testing.T) {
+	w := testWizard(WizardSpec{Title: "Start a Work", Steps: []Step{
+		ConfirmStep("confirm", func(Answers) (ConfirmSpec, error) {
+			return ConfirmSpec{
+				Title:  "Create Work",
+				Impact: "  repository: /src/demo\n  base: main\n  branch: feat/demo\n  workspace: /work\n  directory: /work/in-progress/demo_feat-demo",
+				Accept: "Create", Reject: "Cancel",
+			}, nil
+		}),
+	}})
+	w.receipts = []string{
+		Receipt(w.th, "Local repository path", MarkSuccess, "/src/demo"),
+		Receipt(w.th, "Branch prefix", MarkSuccess, "feat"),
+		Receipt(w.th, "Slug", MarkSuccess, "demo"),
+		Receipt(w.th, "Base branch", MarkSuccess, "main"),
+		Receipt(w.th, "Workspace root", MarkSuccess, "/work"),
+	}
+	w = send(w, tea.WindowSizeMsg{Width: 80, Height: 24})
+	view := w.View()
+	for _, want := range []string{"Create", "[ Cancel ]", "y/n · esc cancel"} {
+		if !strings.Contains(view.Content, want) {
+			t.Errorf("view lost active confirm content %q:\n%s", want, view.Content)
+		}
+	}
+	if n := strings.Count(view.Content, "\n") + 1; n > 24 {
+		t.Errorf("view is %d lines, exceeds height 24", n)
+	}
+}
+
 func typeKeys(s string) []tea.Msg {
 	out := make([]tea.Msg, 0, len(s))
 	for _, r := range s {

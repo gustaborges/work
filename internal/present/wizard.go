@@ -148,7 +148,17 @@ func (m wizard) Init() tea.Cmd {
 	if m.cur == nil {
 		return tea.Quit
 	}
-	return tea.Batch(tea.RequestBackgroundColor, m.cur.Init())
+	return tea.RequestBackgroundColor
+}
+
+// inheritFrame gives a newly built step the wizard's current dimensions and
+// resolved theme. It prevents every step transition from re-probing the
+// terminal background colour.
+func (m wizard) inheritFrame() wizard {
+	if cur, ok := m.cur.(frameAwareStep); ok {
+		m.cur = cur.withFrame(m.baseFrame)
+	}
+	return m
 }
 
 // prime hands the current step its interior size so its own rows()/Budget math
@@ -239,8 +249,8 @@ func (m wizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if next.cur == nil {
 			return next, tea.Quit
 		}
-		primed, sizeCmd := next.prime()
-		return primed, tea.Batch(primed.cur.Init(), sizeCmd)
+		primed, sizeCmd := next.inheritFrame().prime()
+		return primed, sizeCmd
 	}
 	return m, cmd
 }
@@ -258,10 +268,17 @@ func (m wizard) View() tea.View {
 		b.WriteString(m.th.Primary.Render(m.spec.Title) + "\n")
 	}
 	b.WriteString("\n")
-	for _, r := range m.receipts {
+	// The active control has priority over receipt history. Start with its
+	// largest possible body, then retain only the newest complete receipts that
+	// fit above it. This avoids hiding a confirmation's controls behind chrome.
+	body := m.cur.body(max(m.w, 1), max(m.h-m.baseChromeLines(), 1))
+	bodyLines := lineCount(body)
+	available := max(m.h-m.baseChromeLines()-bodyLines, 0)
+	receipts := m.visibleReceipts(available)
+	for _, r := range receipts {
 		b.WriteString(r)
 	}
-	chrome := m.chromeLines()
+	chrome := m.baseChromeLines() + receiptLines(receipts)
 	b.WriteString(m.cur.body(max(m.w, 1), max(m.h-chrome, 1)))
 
 	v := m.clamp(b.String())
@@ -276,14 +293,43 @@ func (m wizard) View() tea.View {
 // body: the rule, the optional title, one blank line, and every receipt line
 // (each receipt string ends with its own blank separator).
 func (m wizard) chromeLines() int {
+	return m.baseChromeLines() + receiptLines(m.receipts)
+}
+
+func (m wizard) baseChromeLines() int {
 	n := 2 // rule + blank
 	if m.spec.Title != "" {
 		n++
 	}
-	for _, r := range m.receipts {
+	return n
+}
+
+func receiptLines(receipts []string) int {
+	n := 0
+	for _, r := range receipts {
 		n += strings.Count(r, "\n")
 	}
 	return n
+}
+
+func lineCount(s string) int {
+	if s == "" {
+		return 0
+	}
+	return strings.Count(s, "\n") + 1
+}
+
+func (m wizard) visibleReceipts(available int) []string {
+	start := len(m.receipts)
+	for start > 0 {
+		n := strings.Count(m.receipts[start-1], "\n")
+		if n > available {
+			break
+		}
+		available -= n
+		start--
+	}
+	return m.receipts[start:]
 }
 
 // sizeMsg is the window size the current step should lay out against: the

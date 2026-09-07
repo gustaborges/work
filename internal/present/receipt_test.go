@@ -38,7 +38,7 @@ func TestReceiptColourOn(t *testing.T) {
 }
 
 func TestConfirmReceipt(t *testing.T) {
-	if got := ConfirmReceipt(offTheme(), "Create Work"); got != "✔ Create Work confirmed\n" {
+	if got := ConfirmReceipt(offTheme(), "Create Work"); got != "✔ Create Work confirmed\n\n" {
 		t.Errorf("ConfirmReceipt = %q", got)
 	}
 }
@@ -47,7 +47,7 @@ func TestAsciiMarkFallback(t *testing.T) {
 	if got := Receipt(asciiTheme(), "T", MarkSuccess, "v"); got != "T\n  ok v\n\n" {
 		t.Errorf("ascii receipt = %q", got)
 	}
-	if got := ConfirmReceipt(asciiTheme(), "T"); got != "ok T confirmed\n" {
+	if got := ConfirmReceipt(asciiTheme(), "T"); got != "ok T confirmed\n\n" {
 		t.Errorf("ascii confirm receipt = %q", got)
 	}
 }

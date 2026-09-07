@@ -86,7 +86,12 @@ func (m multiSelectModel[T]) checkedIndices() []int {
 	return out
 }
 
-func (m multiSelectModel[T]) Init() tea.Cmd { return tea.RequestBackgroundColor }
+func (m multiSelectModel[T]) Init() tea.Cmd { return nil }
+
+func (m multiSelectModel[T]) withFrame(f baseFrame) stepModel {
+	m.baseFrame = f
+	return m
+}
 
 func (m multiSelectModel[T]) Update(msg tea.Msg) (stepModel, tea.Cmd) {
 	if m.absorb(msg) {

@@ -48,7 +48,12 @@ func newConfirmModel(io IO, spec ConfirmSpec) confirmModel {
 	return confirmModel{baseFrame: newBaseFrame(io), spec: spec, focus: 1} // default to Reject
 }
 
-func (m confirmModel) Init() tea.Cmd { return tea.RequestBackgroundColor }
+func (m confirmModel) Init() tea.Cmd { return nil }
+
+func (m confirmModel) withFrame(f baseFrame) stepModel {
+	m.baseFrame = f
+	return m
+}
 
 func (m confirmModel) Update(msg tea.Msg) (stepModel, tea.Cmd) {
 	if m.absorb(msg) {

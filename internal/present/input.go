@@ -80,7 +80,12 @@ func newInputModel(ctx context.Context, io IO, spec InputSpec) inputModel {
 	}
 }
 
-func (m inputModel) Init() tea.Cmd { return tea.RequestBackgroundColor }
+func (m inputModel) Init() tea.Cmd { return nil }
+
+func (m inputModel) withFrame(f baseFrame) stepModel {
+	m.baseFrame = f
+	return m
+}
 
 func (m inputModel) Update(msg tea.Msg) (stepModel, tea.Cmd) {
 	if m.absorb(msg) {

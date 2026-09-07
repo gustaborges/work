@@ -138,9 +138,11 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	// resolution below share exactly the same rules (FR-005, FR-029).
 	var (
 		repoPath      string
+		repoName      string
 		prefix        string
 		slug, branch  string
 		base          basebranch.Choice
+		baseResolved  bool
 		workspaceRoot string
 	)
 
@@ -159,6 +161,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			normalized, err = reporef.ValidatePath(ref.Path)
 			if err == nil {
 				repoPath = normalized
+				repoName = filepath.Base(normalized)
 				return nil
 			}
 		}
@@ -206,10 +209,11 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	}
 
 	// resolveBaseFlag turns --base into a Choice once the repository path is
-	// known. It is idempotent: a no-op once base is resolved or while the path
-	// is still being collected interactively.
+	// known. The explicit state marker, rather than a property of Choice, is the
+	// sole resolution guard; an empty refname can therefore never cause a valid
+	// choice to be resolved again.
 	resolveBaseFlag := func() error {
-		if !f.baseSet || base.Refname != "" || repoPath == "" {
+		if !f.baseSet || baseResolved || repoPath == "" {
 			return nil
 		}
 		choices, err := basebranch.List(gitx.Open(repoPath))
@@ -220,6 +224,9 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			return diag.New(diag.NoBaseBranch, "the repository has no selectable base branch")
 		}
 		base, err = basebranch.Resolve(choices, f.base)
+		if err == nil {
+			baseResolved = true
+		}
 		return err
 	}
 
@@ -381,7 +388,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 				}
 				return present.ConfirmSpec{
 					Title:  "Create Work",
-					Impact: startImpact(repoPath, base, branch, workspaceRoot),
+					Impact: startImpact(repoPath, repoName, base, branch, workspaceRoot),
 					Accept: "Create",
 					Reject: "Cancel",
 				}, nil
@@ -395,20 +402,17 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			}
 			if bv, ok := ans.Value("base").(basebranch.Choice); ok {
 				base = bv
+				baseResolved = true
 			}
 			if needConfirm && !ans.Bool("confirm") {
 				return diag.New(diag.Cancelled, "creation declined at the confirmation prompt")
 			}
 		}
-	} else if needConfirm {
-		return diag.New(diag.Usage, "missing --yes: confirm the creation non-interactively with --yes")
 	}
 
 	if err := resolveBaseFlag(); err != nil {
 		return err
 	}
-
-	repoName := filepath.Base(repoPath)
 
 	// The workspace root is persisted only once every source- and name-level
 	// check has passed, so a rejected run never records a root (SC-004).
@@ -526,8 +530,7 @@ func baseBranchSpec(choices []basebranch.Choice) present.SelectSpec[basebranch.C
 
 // startImpact is the confirmation preview: the resolved repository, base branch
 // (short name only), branch, workspace root, and target directory.
-func startImpact(repoPath string, base basebranch.Choice, branch, workspaceRoot string) string {
-	repoName := filepath.Base(repoPath)
+func startImpact(repoPath, repoName string, base basebranch.Choice, branch, workspaceRoot string) string {
 	dirPath := filepath.Join(workspaceRoot, "in-progress", repoName+"_"+strings.ReplaceAll(branch, "/", "-"))
 	return fmt.Sprintf(
 		"  repository: %s\n  base:       %s\n  branch:     %s\n  workspace:  %s\n  directory:  %s",

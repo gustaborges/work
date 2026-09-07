@@ -20,7 +20,7 @@ func TestConfirmAccept(t *testing.T) {
 		if !cm.status().done || !cm.accepted || cm.state != listCompleted {
 			t.Fatalf("%s: done=%v accepted=%v state=%d", key, cm.status().done, cm.accepted, cm.state)
 		}
-		if cm.status().receipt != "✔ Create Work confirmed\n" {
+		if cm.status().receipt != "✔ Create Work confirmed\n\n" {
 			t.Errorf("%s: accept receipt = %q", key, cm.status().receipt)
 		}
 		if cm.status().cancelled {

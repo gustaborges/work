@@ -96,7 +96,12 @@ func (m selectModel[T]) rows() int {
 	return max((Budget{Height: m.h, Reserved: reserved}).VisibleRows()/per, 1)
 }
 
-func (m selectModel[T]) Init() tea.Cmd { return tea.RequestBackgroundColor }
+func (m selectModel[T]) Init() tea.Cmd { return nil }
+
+func (m selectModel[T]) withFrame(f baseFrame) stepModel {
+	m.baseFrame = f
+	return m
+}
 
 func (m selectModel[T]) Update(msg tea.Msg) (stepModel, tea.Cmd) {
 	if m.absorb(msg) {

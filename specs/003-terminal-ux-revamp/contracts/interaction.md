@@ -19,9 +19,10 @@ dirty-worktree acknowledgement.
 - On exit the primary buffer is restored automatically and the compact
   accepted-step receipts are reprinted to the UI channel, ahead of the command's
   stable stdout (§2, FR-007).
-- The `work resume` and `work archive` single-step selectors are one-step wizards;
-  `work start` composes its path / slug / prefix / base / workspace / confirm steps
-  into a single wizard so earlier receipts stay visible above the active step.
+- `work resume` is a one-step wizard; `work archive` composes selection (when
+  needed), overall confirmation, and its per-Work dirty acknowledgement sequence
+  into one wizard; `work start` composes its path / slug / prefix / base /
+  workspace / confirm steps into one wizard.
 
 ## 2. Step states and final render (FR-003, FR-005, FR-007, SC-002)
 
@@ -46,16 +47,18 @@ input/select ─────q or Esc──▶ step status.cancelled
     ✔ <displayValue>
   ```
 
-  then one blank separator line. While the wizard runs, every accepted receipt
-  stays visible above the active step; after exit the whole trail is reprinted to
-  terminal history. A selector's receipt **replaces its whole expanded list** — no
-  rows, no blank padding remain (FR-007, SC-002).
+  then one blank separator line. While the wizard runs, the newest complete
+  receipts that fit remain visible above the active step; receipt history yields
+  before active controls. After exit the whole trail is reprinted to terminal
+  history. A selector's receipt **replaces its whole expanded list** — no rows, no
+  blank padding remain (FR-007, SC-002).
 - A journey may supply a redacted `displayValue` or omit it for a value it marks
   sensitive (FR-004).
 - **Cancellation notice**: the single line `✘ Operation cancelled`. No title echo, no
   picker frame retained (FR-012).
-- A confirmation's accepted receipt is `✔ <title> confirmed`, written **before** the
-  command's stable stdout result (FR-030, research R7).
+- A confirmation's accepted receipt is `✔ <title> confirmed` followed by one blank
+  separator line, written **before** the command's stable stdout result (FR-030,
+  research R7).
 
 ## 3. Recoverable errors (FR-005, FR-006, SC-001)
 
