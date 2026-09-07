@@ -217,8 +217,10 @@ func gitIn(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// T043 — `work` no-args opens the home listing only "Start a Work"; q exits 0
-// with no state change; selecting the entry reaches the path prompt.
+// `work` no-args opens the home listing the shipped journeys ("Start a Work",
+// "Resume a Work", "Archive Works"); q exits 0 with no state change; selecting
+// "Start a Work" reaches the path prompt, "Resume a Work" reaches the recency
+// picker, and "Archive Works" reaches the archive flow.
 func TestHomeReachability(t *testing.T) {
 	needSeed(t)
 	bin := buildWorkBin(t)
@@ -227,8 +229,12 @@ func TestHomeReachability(t *testing.T) {
 	// Quit the home immediately: exit 0, nothing created.
 	c := newConsole(t, bin, env)
 	c.expect("Start a Work")
-	if s := c.snapshot(); strings.Contains(s, "Resume") || strings.Contains(s, "Archive") {
-		t.Fatalf("home exposes later-slice actions:\n%s", s)
+	c.expect("Resume a Work")
+	c.expect("Archive Works")
+	for _, reserved := range []string{"status", "import", "link", "plugin", "repository", "convention"} {
+		if strings.Contains(strings.ToLower(c.snapshot()), reserved) {
+			t.Fatalf("home exposes a later-slice action %q:\n%s", reserved, c.snapshot())
+		}
 	}
 	c.send("q")
 	if code := c.wait(); code != 0 {
@@ -246,6 +252,84 @@ func TestHomeReachability(t *testing.T) {
 	c2.send("\x03") // Ctrl-C before anything is created
 	if code := c2.wait(); code != 20 {
 		t.Fatalf("Ctrl-C at the path prompt exited %d, want 20", code)
+	}
+
+	// Selecting "Resume a Work" enters the recency picker; with no Works it
+	// prints the empty-list note and exits 0.
+	c3 := newConsole(t, bin, env)
+	c3.expect("Resume a Work")
+	c3.send("\x1b[B") // arrow down to "Resume a Work"
+	c3.send("\r")
+	if code := c3.wait(); code != 0 {
+		t.Fatalf("resume with no Works exited %d, want 0", code)
+	}
+	c3.expect("no Works to resume")
+
+	// Selecting "Archive Works" enters the archive flow; with no Works it prints
+	// the empty-list note and exits 0.
+	c4 := newConsole(t, bin, env)
+	c4.expect("Archive Works")
+	c4.send("\x1b[B\x1b[B") // arrow down to "Archive Works"
+	c4.send("\r")
+	if code := c4.wait(); code != 0 {
+		t.Fatalf("archive with no Works exited %d, want 0", code)
+	}
+	c4.expect("no active Works to archive")
+
+	// Non-interactive `work` renders no TUI and exits 2 with the one-line
+	// summary naming all three verbs (contracts/cli-work-home.md, FR-030).
+	cmd := exec.Command(bin)
+	cmd.Env = env
+	out, err := cmd.CombinedOutput()
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || ee.ExitCode() != 2 {
+		t.Fatalf("non-interactive `work` exit = %v, want 2\n%s", err, out)
+	}
+	for _, want := range []string{"work start", "work resume", "work archive", "work --help"} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("non-interactive summary missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// T039 — with Works present, arrowing to "Resume a Work" opens the recency
+// picker and "Archive Works" opens the multi-select list; `q` leaves either
+// without a state change. (contracts/cli-work-home.md, FR-030.)
+func TestHomeReachesPopulatedPickers(t *testing.T) {
+	needSeed(t)
+	bin := buildWorkBin(t)
+	env, homeDir, _ := ptyEnv(t)
+
+	repo := filepath.Join(homeDir, "demo")
+	makeRepo(t, repo)
+	ws := filepath.Join(homeDir, "ws")
+	seedWorks(t, bin, env, repo, ws, "alpha", "bravo")
+
+	// Home -> Resume a Work -> the recency picker lists a Work row.
+	c := newConsole(t, bin, env)
+	c.expect("Resume a Work")
+	c.send("\x1b[B\r") // down to "Resume a Work", enter
+	c.expect("demo  bravo")
+	c.send("q")
+	if code := c.wait(); code != 20 {
+		t.Fatalf("q at the resume picker exited %d, want 20", code)
+	}
+
+	// Home -> Archive Works -> the multi-select list shows checkboxes.
+	c2 := newConsole(t, bin, env)
+	c2.expect("Archive Works")
+	c2.send("\x1b[B\x1b[B\r") // down twice to "Archive Works", enter
+	c2.expect("[ ]")
+	c2.send("\x03") // Ctrl-C: cancel
+	if code := c2.wait(); code != 20 {
+		t.Fatalf("Ctrl-C at the archive picker exited %d, want 20", code)
+	}
+
+	// Nothing was archived.
+	for _, slug := range []string{"alpha", "bravo"} {
+		if _, err := os.Stat(filepath.Join(ws, "in-progress", "demo_"+slug, "worktree")); err != nil {
+			t.Errorf("%s worktree gone after a cancelled archive: %v", slug, err)
+		}
 	}
 }
 

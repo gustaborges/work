@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://work.dev/schemas/work-state/2.json",
+  "title": "work-state.json (schema 2) — F2",
+  "description": "Canonical, self-contained snapshot of a Work. Authority over the Work's persisted state, including status and last_accessed_at (ADR-0013). Written only by the core, atomically (temp + rename). Plugins never read or write this file. Schema 2 is an additive superset of schema 1: status gains 'archived', archived_at is new (present iff archived), and last_accessed_at is now mutable. Readers accept schema 1 or 2; writers always emit 2 (see specs/001-first-local-work/contracts/work-state.schema.json for schema 1).",
+  "type": "object",
+  "required": ["schema", "work", "meta", "links"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": 2,
+      "description": "Schema version. F2 emits 2. A schema-1 file (const 1, status only 'in-progress', no archived_at) is also a valid input."
+    },
+    "work": {
+      "type": "object",
+      "description": "Core-governed domain state. Plugins cannot create or write keys here.",
+      "required": [
+        "id",
+        "slug",
+        "status",
+        "start_mode",
+        "starter",
+        "branch",
+        "base_branch",
+        "branch_convention",
+        "created_at",
+        "last_accessed_at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Opaque, sortable, stable identity generated at creation (ULID). The only accepted form of an explicit command-line target for `work resume` / `work archive` (FR-026)."
+        },
+        "slug": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Short human-readable identifier chosen by the user at creation. Not unique; the interactive picker disambiguates same-slug Works."
+        },
+        "status": {
+          "enum": ["in-progress", "archived"],
+          "description": "'in-progress' is the resumable/active state. 'archived' means the worktree was destroyed and the snapshot relocated to <workspace>/archived/. F2 never transitions archived back to in-progress."
+        },
+        "archived_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339 UTC. Present if and only if status == 'archived'. Set once, at the archive commit."
+        },
+        "start_mode": {
+          "enum": ["new"],
+          "description": "Unchanged from F1. 'contribution' / 'fork' arrive with F4."
+        },
+        "starter": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Logical name of the Starter that resolved the source. Unchanged from F1."
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The branch the Work created. Left intact in the source repository when the Work is archived (FR-014)."
+        },
+        "base_branch": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Short name of the base ref the branch was started from. Unchanged from F1."
+        },
+        "branch_convention": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Resolved convention name. Unchanged from F1."
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339 UTC. Set once at creation; never rewritten by F2."
+        },
+        "last_accessed_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339 UTC. Mutable in F2: bumped to 'now' on a successful `work resume`, and set to the archival time on `work archive`. Determines resume ordering (FR-003)."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "archived" } } },
+          "then": { "required": ["archived_at"] },
+          "else": { "not": { "required": ["archived_at"] } }
+        }
+      ]
+    },
+    "meta": {
+      "type": "object",
+      "description": "Extensible metadata published by components. Empty in F2 (no plugins publish).",
+      "additionalProperties": true
+    },
+    "links": {
+      "type": "object",
+      "description": "First-class external relations, one value per semantic key. Empty in F2.",
+      "additionalProperties": { "type": "string" }
+    }
+  },
+  "examples": [
+    {
+      "schema": 2,
+      "work": {
+        "id": "01JB0K3M7Q8ZC4X2N6R9WFD5AE",
+        "slug": "add-retry-logic",
+        "status": "in-progress",
+        "start_mode": "new",
+        "starter": "local-path-starter",
+        "branch": "add-retry-logic",
+        "base_branch": "main",
+        "branch_convention": "freeform",
+        "created_at": "2026-09-05T14:03:11Z",
+        "last_accessed_at": "2026-09-06T09:41:52Z"
+      },
+      "meta": {},
+      "links": {}
+    },
+    {
+      "schema": 2,
+      "work": {
+        "id": "01JB0K3M7Q8ZC4X2N6R9WFD5AE",
+        "slug": "add-retry-logic",
+        "status": "archived",
+        "archived_at": "2026-09-06T18:22:00Z",
+        "start_mode": "new",
+        "starter": "local-path-starter",
+        "branch": "add-retry-logic",
+        "base_branch": "main",
+        "branch_convention": "freeform",
+        "created_at": "2026-09-05T14:03:11Z",
+        "last_accessed_at": "2026-09-06T18:22:00Z"
+      },
+      "meta": {},
+      "links": {}
+    }
+  ]
+}

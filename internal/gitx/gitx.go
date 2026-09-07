@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -293,10 +294,64 @@ func (r Repo) WorktreeAdd(dir, branch, base string) error {
 	return err
 }
 
+// WorktreeAddExisting checks an existing branch out into a new worktree at dir.
+// Unlike WorktreeAdd it does not create the branch — it is the inverse of
+// WorktreeRemove for a Work whose branch ref still exists (the archive
+// compensation path; the branch is never deleted, FR-014).
+func (r Repo) WorktreeAddExisting(dir, branch string) error {
+	_, err := r.run("worktree", "add", dir, branch)
+	return err
+}
+
 // WorktreeRemove force-removes a linked worktree.
 func (r Repo) WorktreeRemove(dir string) error {
 	_, err := r.run("worktree", "remove", "--force", dir)
 	return err
+}
+
+// WorktreePrune runs `git worktree prune`, clearing administrative entries for
+// worktrees whose directory has been deleted from disk.
+func (r Repo) WorktreePrune() error {
+	_, err := r.run("worktree", "prune")
+	return err
+}
+
+// StatusPorcelain returns the output of `git -C <Dir> status --porcelain`. Dir
+// is a working tree (a Work's worktree/). Empty output means the tree is clean.
+func (r Repo) StatusPorcelain() (string, error) {
+	out, err := r.run("status", "--porcelain")
+	if err != nil {
+		return "", err
+	}
+	return out, nil
+}
+
+// IsDirty reports whether the working tree at Dir has any uncommitted tracked
+// change or any untracked file — i.e. `git status --porcelain` produces any
+// output (research R7). An untracked-only tree is dirty.
+func (r Repo) IsDirty() (bool, error) {
+	out, err := r.StatusPorcelain()
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) != "", nil
+}
+
+// SourceRepoOf returns the path to the main repository a linked worktree
+// belongs to, resolved from the worktree's common git directory. It works only
+// while the worktree directory still exists on disk; a removed or moved worktree
+// returns an error. The result is the directory that contains the common ".git"
+// (or, for a bare source, the ".git" directory's parent).
+func SourceRepoOf(worktreeDir string) (string, error) {
+	out, err := run("-C", worktreeDir, "rev-parse", "--git-common-dir")
+	if err != nil {
+		return "", err
+	}
+	common := strings.TrimSpace(out)
+	if !filepath.IsAbs(common) {
+		common = filepath.Join(worktreeDir, common)
+	}
+	return filepath.Dir(filepath.Clean(common)), nil
 }
 
 // BranchDelete force-deletes a local branch.

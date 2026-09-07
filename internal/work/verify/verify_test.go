@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -93,6 +94,91 @@ func TestCheckMissingRow(t *testing.T) {
 	}
 	if rep.OK || len(rep.Problems) == 0 {
 		t.Errorf("Check(missing) OK = %v", rep.OK)
+	}
+}
+
+// archivedWork builds a coherent archived Work: snapshot under archived/, no
+// worktree, status archived with archived_at set.
+func archivedWork(t *testing.T) (*projection.DB, string) {
+	t.Helper()
+	ws := t.TempDir()
+	dir := filepath.Join(ws, "archived", "20260906-demo_add-retry")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	snap := &work.State{
+		Schema: work.Schema,
+		Work: work.WorkSection{
+			ID: "01JARCHIVED", Slug: "add-retry", Status: work.StatusArchived,
+			ArchivedAt: "2026-09-06T18:22:00Z", StartMode: work.StartModeNew,
+			Starter: "local-path-starter", Branch: "add-retry", BaseBranch: "main",
+			BranchConvention: "freeform", CreatedAt: "2026-09-05T14:03:11Z",
+			LastAccessedAt: "2026-09-06T18:22:00Z",
+		},
+		Meta:  map[string]any{},
+		Links: map[string]string{},
+	}
+	snapPath := filepath.Join(dir, "work-state.json")
+	if err := work.Write(snapPath, snap); err != nil {
+		t.Fatalf("work.Write: %v", err)
+	}
+	db, err := projection.Open(filepath.Join(t.TempDir(), "work.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if err := db.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	row := projection.Work{
+		ID: snap.Work.ID, Slug: snap.Work.Slug, Status: snap.Work.Status,
+		StartMode: snap.Work.StartMode, Starter: snap.Work.Starter, Branch: snap.Work.Branch,
+		BaseBranch: snap.Work.BaseBranch, BranchConvention: snap.Work.BranchConvention,
+		RepoName: "demo", DirPath: dir, WorktreePath: "", SnapshotPath: snapPath,
+		CreatedAt: snap.Work.CreatedAt, LastAccessedAt: snap.Work.LastAccessedAt,
+		ArchivedAt: snap.Work.ArchivedAt,
+	}
+	if err := db.Upsert(row); err != nil {
+		t.Fatal(err)
+	}
+	return db, snap.Work.ID
+}
+
+func TestCheckArchivedCoherent(t *testing.T) {
+	db, id := archivedWork(t)
+	rep, err := Check(db, id)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if !rep.OK {
+		t.Errorf("archived Work reported problems: %v", rep.Problems)
+	}
+}
+
+func TestCheckArchivedRejectsWorktreePath(t *testing.T) {
+	db, id := archivedWork(t)
+	row, _, _ := db.Get(id)
+	row.WorktreePath = "/somewhere/worktree"
+	if err := db.Upsert(row); err != nil {
+		t.Fatal(err)
+	}
+	rep, _ := Check(db, id)
+	if rep.OK || !strings.Contains(strings.Join(rep.Problems, "; "), "worktree_path") {
+		t.Errorf("expected a worktree_path problem, got %v", rep.Problems)
+	}
+}
+
+func TestCheckArchivedRejectsStaleStatus(t *testing.T) {
+	db, id := archivedWork(t)
+	row, _, _ := db.Get(id)
+	row.Status = "in-progress" // row disagrees with the snapshot
+	row.ArchivedAt = ""
+	if err := db.Upsert(row); err != nil {
+		t.Fatal(err)
+	}
+	rep, _ := Check(db, id)
+	if rep.OK {
+		t.Errorf("Check should fail when the row status disagrees with the snapshot")
 	}
 }
 

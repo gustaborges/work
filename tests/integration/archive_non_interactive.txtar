@@ -1,0 +1,41 @@
+# S8 — `work archive` non-interactively: it needs both explicit ids and --yes,
+# never opens a TUI, and rejects --json. With everything present it archives
+# without a prompt and returns a stable exit code. Covers US2 #4; FR-011, FR-029.
+
+gitrepo src
+env WS=$WORK/ws
+
+seedworks src alpha bravo
+today TODAY
+workid $WS/in-progress/src_bravo/work-state.json ID_BRAVO
+
+# Missing --yes -> exit 2, nothing archived, no TUI.
+! work archive $ID_BRAVO
+stderr '^error: usage: '
+! stderr 'Archive Works'
+activeorder bravo alpha
+exists $WS/in-progress/src_bravo/worktree
+
+# --json is rejected (it is a mutation) -> exit 2.
+! work archive $ID_BRAVO --json
+stderr '^error: usage: '
+
+# No ids at all, non-interactive -> exit 2.
+! work archive --yes
+stderr '^error: usage: '
+
+# ids + --yes -> archived with no prompt.
+work archive $ID_BRAVO --yes
+stdout '^work: archived [0-9A-HJKMNP-TV-Z]{26}  \('
+stdout '^work: archived 1 of 1$'
+! exists $WS/in-progress/src_bravo
+exists $WS/archived/${TODAY}-src_bravo/work-state.json
+! exists $WS/archived/${TODAY}-src_bravo/worktree
+grep '"status": "archived"' $WS/archived/${TODAY}-src_bravo/work-state.json
+grep '"schema": 2' $WS/archived/${TODAY}-src_bravo/work-state.json
+activeorder alpha
+verifycoherent
+
+# The branch the Work created is left intact (FR-014).
+exec git -C $WORK/src branch --list bravo
+stdout 'bravo'

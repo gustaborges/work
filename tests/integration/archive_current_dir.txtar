@@ -1,0 +1,33 @@
+# S10c — archiving the Work whose worktree is the caller's current directory:
+# the worktree is still destroyed and the session is repositioned out to the
+# workspace root (a safe, reported location), never left stranded in a deleted
+# directory. Covers the edge case; ADR-0018 amendment; research R5, R10.
+
+gitrepo src
+env WS=$WORK/ws
+
+seedworks src alpha bravo
+today TODAY
+workid $WS/in-progress/src_alpha/work-state.json ID_ALPHA
+workid $WS/in-progress/src_bravo/work-state.json ID_BRAVO
+
+# With the shell hook active: WORK_CD_FILE receives the workspace root.
+env WORK_CD_FILE=$WORK/cdfile
+cd $WS/in-progress/src_alpha/worktree
+work archive $ID_ALPHA --yes
+cd $WORK
+stdout '^work: archived 1 of 1$'
+! exists $WS/in-progress/src_alpha
+grep 'ws$' $WORK/cdfile
+! grep 'in-progress' $WORK/cdfile
+
+# Without the hook: a stderr notice that names the workspace root to cd to, and
+# no false claim that a directory change happened.
+env WORK_CD_FILE=
+cd $WS/in-progress/src_bravo/worktree
+work archive $ID_BRAVO --yes
+cd $WORK
+stdout '^work: archived 1 of 1$'
+stderr 'directory that was archived away'
+stderr 'cd to the workspace root'
+verifycoherent

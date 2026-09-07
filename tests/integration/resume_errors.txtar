@@ -1,0 +1,35 @@
+# S3 — `work resume` error paths. Each exits with the contract code, prints one
+# `error: <token>: <message>` on stderr, and performs zero snapshot / zero
+# projection writes. Covers US1 #4, #5; FR-005, FR-007, FR-020; edge cases.
+
+gitrepo src
+env WS=$WORK/ws
+
+seedworks src alpha bravo charlie
+activeorder charlie bravo alpha
+
+workid $WS/in-progress/src_bravo/work-state.json ID_BRAVO
+
+# Unknown id -> exit 21, nothing changed.
+! work resume 01000000000000000000000000
+stderr '^error: target-not-found: '
+activeorder charlie bravo alpha
+
+# Non-interactive with no target -> exit 2, no TUI, nothing changed.
+! work resume
+stderr '^error: usage: '
+! stderr 'Resume a Work'
+activeorder charlie bravo alpha
+
+# --json is rejected (it is a mutation) -> exit 2.
+! work resume --json $ID_BRAVO
+stderr '^error: usage: '
+
+# An archived id -> exit 22 (archive stand-in: flip the snapshot, let the next
+# command reconcile the projection).
+archivesnap $WS/in-progress/src_bravo/work-state.json
+! work resume $ID_BRAVO
+stderr '^error: target-archived: '
+
+# bravo dropped out of the active list; alpha and charlie still ordered.
+activeorder charlie alpha

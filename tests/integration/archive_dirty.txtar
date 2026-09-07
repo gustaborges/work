@@ -1,0 +1,40 @@
+# S9 — a dirty worktree is not destroyed without --force-dirty. The un-acked
+# Work stays fully active and is reported; the rest of the batch proceeds and the
+# invocation still exits 0. Covers US2 #5; SC-009; FR-013.
+
+gitrepo src
+env WS=$WORK/ws
+
+seedworks src clean dirty
+today TODAY
+workid $WS/in-progress/src_clean/work-state.json ID_CLEAN
+workid $WS/in-progress/src_dirty/work-state.json ID_DIRTY
+
+# An untracked file makes the dirty Work's worktree dirty.
+dirty $WS/in-progress/src_dirty/worktree
+
+# A single explicit dirty target, non-interactive, no --force-dirty -> exit 23,
+# nothing archived (the dirty guard is the whole job).
+! work archive $ID_DIRTY --yes
+stderr '^error: dirty-worktree: '
+exists $WS/in-progress/src_dirty/worktree
+grep '"status": "in-progress"' $WS/in-progress/src_dirty/work-state.json
+
+# Batch: clean is archived, dirty is left active and noted, exit 0.
+work archive $ID_DIRTY $ID_CLEAN --yes
+stdout '^work: archived 1 of 2$'
+stderr 'worktree has uncommitted or untracked changes'
+! exists $WS/in-progress/src_clean
+exists $WS/archived/${TODAY}-src_clean/work-state.json
+exists $WS/in-progress/src_dirty/worktree
+grep '"status": "in-progress"' $WS/in-progress/src_dirty/work-state.json
+activeorder dirty
+verifycoherent
+
+# Re-run with --force-dirty: the dirty Work is archived too.
+work archive $ID_DIRTY --yes --force-dirty
+stdout '^work: archived 1 of 1$'
+! exists $WS/in-progress/src_dirty
+exists $WS/archived/${TODAY}-src_dirty/work-state.json
+grep '"status": "archived"' $WS/archived/${TODAY}-src_dirty/work-state.json
+verifycoherent

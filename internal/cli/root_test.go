@@ -8,9 +8,9 @@ import (
 	"github.com/gustaborges/work/internal/diag"
 )
 
-func TestRootHasF1Subcommands(t *testing.T) {
+func TestRootHasSubcommands(t *testing.T) {
 	root := newRootCmd()
-	want := map[string]bool{"start": false, "shell-init": false}
+	want := map[string]bool{"start": false, "resume": false, "archive": false, "shell-init": false}
 	for _, c := range root.Commands() {
 		if _, ok := want[c.Name()]; ok {
 			want[c.Name()] = true
@@ -43,6 +43,66 @@ func TestBareWorkNonInteractiveIsUsage(t *testing.T) {
 	}
 	if !strings.Contains(errb, "work start") {
 		t.Errorf("stderr does not point at `work start`: %s", errb)
+	}
+	if !strings.Contains(errb, "work resume") {
+		t.Errorf("stderr does not point at `work resume`: %s", errb)
+	}
+	if !strings.Contains(errb, "work archive") {
+		t.Errorf("stderr does not point at `work archive`: %s", errb)
+	}
+}
+
+func TestArchiveRejectsJSON(t *testing.T) {
+	_, _, code := runWork(t, "archive", "--json")
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2", code)
+	}
+}
+
+func TestArchiveNonInteractiveNoTargetIsUsage(t *testing.T) {
+	out, errb, code := runWork(t, "archive")
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2\nstderr: %s", code, errb)
+	}
+	if out != "" {
+		t.Errorf("stdout should be empty, got %q", out)
+	}
+}
+
+func TestArchiveNonInteractiveMissingYesIsUsage(t *testing.T) {
+	_, errb, code := runWork(t, "archive", "01000000000000000000000000")
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2\nstderr: %s", code, errb)
+	}
+	if !strings.Contains(errb, "--yes") {
+		t.Errorf("stderr does not name --yes: %s", errb)
+	}
+}
+
+func TestArchiveFlagSurface(t *testing.T) {
+	a := newArchiveCmd()
+	for _, f := range []string{"yes", "force-dirty"} {
+		if a.Flags().Lookup(f) == nil {
+			t.Errorf("`work archive` missing --%s", f)
+		}
+	}
+}
+
+func TestResumeRejectsJSON(t *testing.T) {
+	_, _, code := runWork(t, "resume", "--json")
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2", code)
+	}
+}
+
+func TestResumeNonInteractiveNoTargetIsUsage(t *testing.T) {
+	// No workspace configured, no target, not a TTY: exit 2, no TUI.
+	out, errb, code := runWork(t, "resume")
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2\nstderr: %s", code, errb)
+	}
+	if out != "" {
+		t.Errorf("stdout should be empty, got %q", out)
 	}
 }
 

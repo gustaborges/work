@@ -36,6 +36,8 @@ func newRootCmd() *cobra.Command {
 	_ = root.PersistentFlags().MarkHidden("json")
 
 	root.AddCommand(newStartCmd())
+	root.AddCommand(newResumeCmd())
+	root.AddCommand(newArchiveCmd())
 	root.AddCommand(newShellInitCmd())
 
 	return root
@@ -48,7 +50,7 @@ func newRootCmd() *cobra.Command {
 func runHome(cmd *cobra.Command) error {
 	if !tui.IsInteractive() {
 		return diag.New(diag.Usage,
-			"run `work start <path>` to create a Work; see `work --help` for all commands")
+			"run `work start <path>` to create a Work, `work resume` to return to one, or `work archive` to close one; see `work --help` for all commands")
 	}
 	choice, err := tui.RunHome(cmd.Context())
 	if err != nil {
@@ -57,6 +59,10 @@ func runHome(cmd *cobra.Command) error {
 	switch choice {
 	case tui.HomeStartWork:
 		return runStart(cmd, "", startFlags{})
+	case tui.HomeResumeWork:
+		return runResume(cmd, "", false)
+	case tui.HomeArchiveWork:
+		return runArchive(cmd, nil, archiveFlags{})
 	default:
 		// Left the home without choosing anything.
 		return nil
