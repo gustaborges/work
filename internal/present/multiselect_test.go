@@ -115,8 +115,8 @@ func TestMultiConfirmFlow(t *testing.T) {
 	if !isQuit(cmd) || done.state != listCompleted {
 		t.Fatalf("confirm accept did not complete: quit=%v state=%d", isQuit(cmd), done.state)
 	}
-	if done.View().Content != "✔ Archive Works confirmed\n" {
-		t.Errorf("completed view = %q", done.View().Content)
+	if done.finalFrame() != "✔ Archive Works confirmed\n" {
+		t.Errorf("completed finalFrame = %q", done.finalFrame())
 	}
 	if got := done.picked(); strings.Join(got, ",") != "id-a,id-c" {
 		t.Errorf("picked = %v, want [id-a id-c]", got)
@@ -131,8 +131,8 @@ func TestMultiCancelKeys(t *testing.T) {
 		if !isQuit(cmd) || !mm.outcome().cancelled {
 			t.Errorf("%s: quit=%v cancelled=%v", key, isQuit(cmd), mm.outcome().cancelled)
 		}
-		if mm.View().Content != "✘ Operation cancelled\n" {
-			t.Errorf("%s: view = %q", key, mm.View().Content)
+		if mm.finalFrame() != "✘ Operation cancelled\n" {
+			t.Errorf("%s: finalFrame = %q", key, mm.finalFrame())
 		}
 	}
 	// Ctrl-C also cancels from the confirming sub-state.

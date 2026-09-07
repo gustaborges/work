@@ -38,6 +38,14 @@ func (f *baseFrame) absorb(msg tea.Msg) bool {
 	return false
 }
 
+// leave is the command a primitive returns on reaching a terminal state:
+// clear the whole active frame, then quit. ClearScreen in inline mode erases
+// the frame region (however many rows it grew to) without touching the
+// scrollback above it — Bubble Tea's plain-quit final render only clears from
+// the cursor's last row, which strands a tall frame like a long selector.
+// run then writes the compact receipt or notice into the cleared area.
+func leave() tea.Cmd { return tea.Sequence(tea.ClearScreen, tea.Quit) }
+
 // clamp bounds content to the viewport: every line is truncated to f.w display
 // cells and the frame is capped at f.h lines, so no active frame ever wraps the
 // body or scrolls into scrollback — content that scrolls off cannot be

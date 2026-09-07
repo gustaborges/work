@@ -113,15 +113,18 @@ func TestSelectFinalViews(t *testing.T) {
 	if !isQuit(cmd) || cm.state != listCompleted {
 		t.Fatalf("enter did not complete: quit=%v state=%d", isQuit(cmd), cm.state)
 	}
-	if got := cm.View().Content; got != "Base branch\n  ✔ origin/main  5c56cbc\n\n" {
-		t.Errorf("completed View = %q", got)
+	if got := cm.finalFrame(); got != "Base branch\n  ✔ origin/main  5c56cbc\n\n" {
+		t.Errorf("completed finalFrame = %q", got)
+	}
+	if cm.View().Content != "" {
+		t.Errorf("completed View should be empty so the list clears, got %q", cm.View().Content)
 	}
 
 	for _, key := range []string{"q", "esc", "ctrl+c"} {
 		mm := testSelectModel(SelectSpec[string]{Title: "T", Options: branchOptions()})
 		next, cmd := mm.Update(press(key))
-		if !isQuit(cmd) || next.(selectModel[string]).View().Content != "✘ Operation cancelled\n" {
-			t.Errorf("%s: cancel view = %q", key, next.(selectModel[string]).View().Content)
+		if !isQuit(cmd) || next.(selectModel[string]).finalFrame() != "✘ Operation cancelled\n" {
+			t.Errorf("%s: cancel finalFrame = %q", key, next.(selectModel[string]).finalFrame())
 		}
 	}
 }

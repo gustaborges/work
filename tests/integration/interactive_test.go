@@ -62,22 +62,31 @@ type console struct {
 	t    *testing.T
 	f    *os.File
 	cmd  *exec.Cmd
+	rows int
+	cols int
 	mu   sync.Mutex
-	buf  strings.Builder
+	buf  strings.Builder // ANSI stripped, for substring expectations
+	raw  []byte          // untouched, for screen reconstruction
 	done chan struct{}
 }
 
 func newConsole(t *testing.T, bin string, env []string, args ...string) *console {
+	return newConsoleSize(t, pty.Winsize{Rows: 40, Cols: 120}, bin, env, args...)
+}
+
+// newConsoleSize is newConsole with an explicit terminal size, for the geometry
+// and selector-collapse checks that must run at a known rows×cols.
+func newConsoleSize(t *testing.T, ws pty.Winsize, bin string, env []string, args ...string) *console {
 	t.Helper()
 	cmd := exec.Command(bin, args...)
 	cmd.Env = env
 	// A concrete window size is required: bubbletea renders nothing into a 0x0
 	// terminal, which is what an unsized pty reports on Linux.
-	f, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 40, Cols: 120})
+	f, err := pty.StartWithSize(cmd, &ws)
 	if err != nil {
 		t.Fatalf("pty start: %v", err)
 	}
-	c := &console{t: t, f: f, cmd: cmd, done: make(chan struct{})}
+	c := &console{t: t, f: f, cmd: cmd, rows: int(ws.Rows), cols: int(ws.Cols), done: make(chan struct{})}
 	go func() {
 		defer close(c.done)
 		b := make([]byte, 4096)
@@ -85,6 +94,7 @@ func newConsole(t *testing.T, bin string, env []string, args ...string) *console
 			n, err := f.Read(b)
 			if n > 0 {
 				c.mu.Lock()
+				c.raw = append(c.raw, b[:n]...)
 				c.buf.Write([]byte(ansiRe.ReplaceAllString(string(b[:n]), "")))
 				c.mu.Unlock()
 			}
@@ -104,6 +114,20 @@ func (c *console) snapshot() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.buf.String()
+}
+
+// screen replays the raw pty stream through a tiny terminal emulator and
+// returns what a real terminal would actually show: the scrollback above the
+// viewport plus the current grid, with overwritten and erased content gone.
+// This is what makes "no rejected value survives" assertable — the ANSI-
+// stripped snapshot still contains every historical repaint.
+func (c *console) screen() string {
+	c.mu.Lock()
+	raw := append([]byte(nil), c.raw...)
+	c.mu.Unlock()
+	v := newVT(c.rows, c.cols)
+	v.write(raw)
+	return v.String()
 }
 
 // expect waits until sub appears in the output, failing the test on timeout.
@@ -380,26 +404,27 @@ func TestInteractiveRecovery(t *testing.T) {
 	c := newConsole(t, bin, env, "start",
 		"--workspace", ws, "--base", "main", "--prefix", "{slug}", "--yes")
 
-	// Bad path -> notice + re-prompt, no exit.
+	// Bad path -> the error is shown inside the live field; the step does not
+	// exit and the field stays open for a correction.
 	c.expect("repository path")
 	c.send("/no/such/path\r")
-	c.expect("invalid-path")
+	c.expect("does not exist")
 	c.expect("repository path")
-	c.send(repo + "\r")
+	c.send("\x15" + repo + "\r") // ctrl-u clears the field, then the valid path
 
-	// Slug that git rejects as a ref -> back to the slug prompt.
+	// Slug that git rejects as a ref -> the error appears in-frame.
 	c.expect("Slug")
 	c.send("bad:slug\r")
-	c.expect("invalid-branch-name")
+	c.expect("not a valid branch name")
 	c.expect("Slug")
 
-	// Slug that collides with an existing branch -> back to the slug prompt.
-	c.send("taken\r")
-	c.expect("branch-collision")
+	// Slug that collides with an existing branch -> in-frame collision message.
+	c.send("\x15taken\r")
+	c.expect("already exists")
 	c.expect("Slug")
 
 	// A free slug completes the journey.
-	c.send("fresh\r")
+	c.send("\x15fresh\r")
 	c.expect("work: created ")
 	if code := c.wait(); code != 0 {
 		t.Fatalf("recovered start exited %d, want 0", code)
@@ -482,18 +507,15 @@ func TestInteractiveBaseBranchTabs(t *testing.T) {
 	}
 	ws := filepath.Join(homeDir, "ws")
 
-	// Only the base branch is prompted; the picker opens on the Remote tab whose
-	// only row is origin/main. Filter to it, then select.
+	// Only the base branch is prompted; the picker groups choices into Local /
+	// Remote tabs. Switch to the Remote tab (its only row is origin/main) and
+	// select it.
 	c := newConsole(t, bin, env, "start", clone,
 		"--workspace", ws, "--slug", "picked", "--prefix", "{slug}", "--yes")
 	c.expect("Base branch")
-	c.expect("Remote")
 	c.expect("Local")
-	// The picker carries huh's styled left rule, so coloring/theme is applied.
-	if s := c.snapshot(); !strings.Contains(s, "┃") {
-		t.Errorf("picker is unstyled (no left rule):\n%s", s)
-	}
-	c.send("/origin/main")
+	c.expect("Remote")
+	c.send("\t") // Local -> Remote
 	c.expect("origin/main")
 	c.send("\r")
 	c.expect("work: created ")

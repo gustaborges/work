@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -67,12 +68,19 @@ type outcome struct {
 }
 
 // sessionModel is the contract every primitive model satisfies so run can drive
-// them uniformly. The model MUST set its View to the compact final frame before
-// returning tea.Quit, so Bubble Tea's graceful final render commits only that
-// frame (research R4).
+// them uniformly. On reaching a terminal state the model renders an empty View
+// (so Bubble Tea's inline renderer clears the whole active frame, however tall)
+// and exposes the compact receipt or notice through finalFrame; run writes that
+// into the freshly cleared area once the program has exited. Committing the
+// final frame through Bubble Tea's shrink path instead is unreliable for a
+// frame that was many rows tall, e.g. a long selector (research R4).
 type sessionModel interface {
 	tea.Model
 	outcome() outcome
+	// finalFrame is the compact string to print after the program exits, or ""
+	// when the step left nothing to show (a Fatal abort, or a context-driven
+	// interrupt caught outside the model).
+	finalFrame() string
 }
 
 // run executes one primitive model as a bounded inline Bubble Tea program bound
@@ -90,7 +98,18 @@ func run(ctx context.Context, pio IO, m sessionModel) (sessionModel, error) {
 		tea.WithInput(pio.in()),
 		tea.WithOutput(pio.ui()),
 	).Run()
-	return classify(final, err)
+	sm, cerr := classify(final, err)
+	// The program has cleared its active frame; drop the compact receipt or
+	// notice into the now-empty area, ahead of any stable stdout the CLI adds.
+	if sm != nil {
+		if frame := sm.finalFrame(); frame != "" {
+			if !strings.HasSuffix(frame, "\n") {
+				frame += "\n"
+			}
+			_, _ = io.WriteString(pio.ui(), frame)
+		}
+	}
+	return sm, cerr
 }
 
 // classify turns a finished Bubble Tea program into the (model, error) pair the
@@ -99,7 +118,8 @@ func run(ctx context.Context, pio IO, m sessionModel) (sessionModel, error) {
 func classify(final tea.Model, err error) (sessionModel, error) {
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			return nil, diag.New(diag.Cancelled, "cancelled")
+			fm, _ := final.(sessionModel)
+			return fm, diag.New(diag.Cancelled, "cancelled")
 		}
 		return nil, diag.Wrap(diag.Usage, err, "the interactive prompt could not be shown")
 	}

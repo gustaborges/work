@@ -20,8 +20,8 @@ func TestConfirmAccept(t *testing.T) {
 		if !isQuit(cmd) || !cm.accepted || cm.state != listCompleted {
 			t.Fatalf("%s: quit=%v accepted=%v state=%d", key, isQuit(cmd), cm.accepted, cm.state)
 		}
-		if cm.View().Content != "✔ Create Work confirmed\n" {
-			t.Errorf("%s: accept view = %q", key, cm.View().Content)
+		if cm.finalFrame() != "✔ Create Work confirmed\n" {
+			t.Errorf("%s: accept finalFrame = %q", key, cm.finalFrame())
 		}
 		if cm.outcome().cancelled {
 			t.Errorf("%s: accept marked cancelled", key)
@@ -46,8 +46,8 @@ func TestConfirmReject(t *testing.T) {
 		if !isQuit(cmd) || cm.accepted {
 			t.Fatalf("%s: quit=%v accepted=%v", key, isQuit(cmd), cm.accepted)
 		}
-		if cm.View().Content != "✘ Cancel\n" {
-			t.Errorf("%s: reject view = %q", key, cm.View().Content)
+		if cm.finalFrame() != "✘ Cancel\n" {
+			t.Errorf("%s: reject finalFrame = %q", key, cm.finalFrame())
 		}
 		if cm.outcome().cancelled {
 			t.Errorf("%s: reject is not a cancellation (returns (false,nil))", key)
@@ -63,8 +63,8 @@ func TestConfirmCancel(t *testing.T) {
 		if !isQuit(cmd) || !cm.outcome().cancelled {
 			t.Fatalf("%s: quit=%v cancelled=%v", key, isQuit(cmd), cm.outcome().cancelled)
 		}
-		if cm.View().Content != "✘ Operation cancelled\n" {
-			t.Errorf("%s: cancel view = %q", key, cm.View().Content)
+		if cm.finalFrame() != "✘ Operation cancelled\n" {
+			t.Errorf("%s: cancel finalFrame = %q", key, cm.finalFrame())
 		}
 	}
 }
