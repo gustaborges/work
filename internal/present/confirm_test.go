@@ -31,12 +31,19 @@ func TestConfirmAccept(t *testing.T) {
 		}
 	}
 
-	// Enter on the (moved) Accept focus also accepts.
+	// Enter confirms by default, matching the shared interactive key contract.
 	m := testConfirmModel(spec)
-	next, _ := m.Update(press("left")) // toggle focus from Reject to Accept
-	next, _ = next.Update(press("enter"))
+	next, _ := m.Update(press("enter"))
 	if !next.(confirmModel).accepted {
-		t.Errorf("enter on Accept focus did not accept")
+		t.Errorf("enter on default Accept focus did not accept")
+	}
+
+	// Moving to Reject makes Enter decline.
+	m = testConfirmModel(spec)
+	next, _ = m.Update(press("right"))
+	next, _ = next.Update(press("enter"))
+	if next.(confirmModel).accepted {
+		t.Errorf("enter on Reject focus accepted")
 	}
 }
 

@@ -170,7 +170,7 @@ func TestWizardKeepsActiveConfirmVisibleWhenReceiptsFillViewport(t *testing.T) {
 	}
 	w = send(w, tea.WindowSizeMsg{Width: 80, Height: 24})
 	view := w.View()
-	for _, want := range []string{"Create", "[ Cancel ]", "y/n · esc cancel"} {
+	for _, want := range []string{"[ Create ]", "Cancel", "y/n · esc cancel"} {
 		if !strings.Contains(view.Content, want) {
 			t.Errorf("view lost active confirm content %q:\n%s", want, view.Content)
 		}

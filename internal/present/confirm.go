@@ -45,7 +45,10 @@ type confirmModel struct {
 }
 
 func newConfirmModel(io IO, spec ConfirmSpec) confirmModel {
-	return confirmModel{baseFrame: newBaseFrame(io), spec: spec, focus: 1} // default to Reject
+	// Enter is the common "continue / confirm" key across the interactive
+	// controls. Keep its initial target consistent with that contract; users can
+	// still choose the explicit Reject action with arrows, n, Esc, or Ctrl-C.
+	return confirmModel{baseFrame: newBaseFrame(io), spec: spec} // default to Accept
 }
 
 func (m confirmModel) Init() tea.Cmd { return nil }
