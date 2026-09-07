@@ -22,6 +22,13 @@ func TestStartReceiptsLeaveNoDebris(t *testing.T) {
 	repo := filepath.Join(homeDir, "src")
 	makeRepo(t, repo)
 	gitIn(t, repo, "branch", "taken")
+	// ValidatePath displays the absolute, symlink-resolved repository path.
+	// macOS commonly exposes the temporary directory as /var while its
+	// canonical path is /private/var.
+	displayRepo, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		t.Fatalf("resolve repository path for receipt: %v", err)
+	}
 
 	c := newConsoleSize(t, pty.Winsize{Rows: 24, Cols: 80}, bin, env, "start")
 
@@ -66,7 +73,7 @@ func TestStartReceiptsLeaveNoDebris(t *testing.T) {
 
 	// One receipt per accepted step.
 	for _, want := range []string{
-		"Local repository path\n  \u2714 " + repo,
+		"Local repository path\n  \u2714 " + displayRepo,
 		"Slug\n  \u2714 my-work",
 		"Base branch\n  \u2714 main",
 		"\u2714 Create Work confirmed",
