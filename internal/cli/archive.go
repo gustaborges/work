@@ -12,6 +12,7 @@ import (
 	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/gitx"
+	"github.com/gustaborges/work/internal/present"
 	"github.com/gustaborges/work/internal/projection"
 	"github.com/gustaborges/work/internal/reconcile"
 	"github.com/gustaborges/work/internal/shellintegration"
@@ -55,7 +56,7 @@ func runArchive(cmd *cobra.Command, args []string, f archiveFlags) error {
 	}
 	out := cmd.OutOrStdout()
 	errOut := cmd.ErrOrStderr()
-	interactive := tui.IsInteractive()
+	interactive := present.IsInteractive()
 
 	if f.jsonSet {
 		return diag.New(diag.Usage, "--json is not accepted on `work archive` (it is a mutation)")

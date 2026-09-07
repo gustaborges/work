@@ -11,6 +11,7 @@ import (
 	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/gitx"
+	"github.com/gustaborges/work/internal/present"
 	"github.com/gustaborges/work/internal/reconcile"
 	"github.com/gustaborges/work/internal/resume"
 	"github.com/gustaborges/work/internal/shellintegration"
@@ -44,7 +45,7 @@ func runResume(cmd *cobra.Command, target string, jsonSet bool) error {
 	}
 	out := cmd.OutOrStdout()
 	errOut := cmd.ErrOrStderr()
-	interactive := tui.IsInteractive()
+	interactive := present.IsInteractive()
 	target = strings.TrimSpace(target)
 
 	// --json is a read-only flag; resume is a mutation (ADR-0017).

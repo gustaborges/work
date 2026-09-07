@@ -18,6 +18,7 @@ import (
 	"github.com/gustaborges/work/internal/create"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/gitx"
+	"github.com/gustaborges/work/internal/present"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/reporef"
 	"github.com/gustaborges/work/internal/shellintegration"
@@ -83,7 +84,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	}
 	out := cmd.OutOrStdout()
 	errOut := cmd.ErrOrStderr()
-	interactive := tui.IsInteractive()
+	interactive := present.IsInteractive()
 
 	if f.jsonSet {
 		return diag.New(diag.Usage, "--json is not accepted on `work start` (it is a mutation)")
