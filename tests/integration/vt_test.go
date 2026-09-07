@@ -248,6 +248,26 @@ func (v *vt) String() string {
 	return strings.Join(lines, "\n")
 }
 
+// deSoftWrap rejoins lines the terminal hard-wrapped at the right margin: a
+// content line whose display width is exactly cols is glued to the line below
+// it. bubbletea's inline renderer keeps its own lines (titles, prompts,
+// receipts) well short of the margin, so this only ever repairs a wrapped long
+// value such as an absolute path.
+func deSoftWrap(screen string, cols int) string {
+	if cols <= 0 {
+		return screen
+	}
+	var out []string
+	for _, ln := range strings.Split(screen, "\n") {
+		if n := len(out); n > 0 && ansi.StringWidth(out[n-1]) == cols {
+			out[n-1] += ln
+			continue
+		}
+		out = append(out, ln)
+	}
+	return strings.Join(out, "\n")
+}
+
 func rowString(row []rune) string {
 	var b strings.Builder
 	for _, r := range row {
