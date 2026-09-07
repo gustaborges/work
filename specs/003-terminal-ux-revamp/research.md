@@ -9,8 +9,8 @@ open decisions listed in `temp/tui-revamp.md` §15 are resolved here (R7, R11, R
 R16–R18).
 
 Governing sources: `docs/prd.md` v3 RF-50–RF-64 / RNF-10–RNF-11;
-`docs/adr/adr-0019-superficie-cli-com-home-estatica.md`;
-`docs/adr/adr-0020-fronteira-generica-de-apresentacao-inline.md`;
+`docs/adr/adr-0019-static-cli-home-grouped-help.md`;
+`docs/adr/adr-0020-inline-interactive-presentation.md`;
 `docs/add/add-0001-work-system-architecture.md` §12; `docs/roadmap.md` §4 + F2.5;
 `temp/tui-revamp.md`; the F1/F2 design sets; the current Go implementation.
 
