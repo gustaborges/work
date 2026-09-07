@@ -18,7 +18,12 @@ type MultiSelectSpec[T comparable] struct {
 	Options     []Option[T]
 	Filterable  bool
 	Confirm     *ConfirmSpec
-	Receipt     func(picked []Option[T]) string
+	// ConfirmImpact, when set, replaces Confirm.Impact with a line computed from
+	// the checked options at the moment the confirmation opens — for a
+	// consequence that depends on how many rows are checked. Presentation
+	// strings only; present never inspects the underlying Values.
+	ConfirmImpact func(picked []Option[T]) string
+	Receipt       func(picked []Option[T]) string
 }
 
 type multiSelectModel[T comparable] struct {
@@ -215,14 +220,12 @@ func (m multiSelectModel[T]) outcome() outcome {
 }
 
 func (m multiSelectModel[T]) finalFrame() string {
-	switch m.state {
-	case listCompleted:
+	if m.state == listCompleted {
 		return m.receipt
-	case listCancelled:
-		return CancelNotice(m.th)
-	default:
-		return ""
 	}
+	// A cancelled selector leaves nothing in history; the "✘ Operation
+	// cancelled" line is the CLI diagnostic border's (contracts/diagnostics.md).
+	return ""
 }
 
 func (m multiSelectModel[T]) picked() []T {
@@ -290,8 +293,16 @@ func (m multiSelectModel[T]) confirmView() string {
 	for _, idx := range m.checkedIndices() {
 		fmt.Fprintf(&b, "  %s\n", m.spec.Options[idx].Primary)
 	}
-	if c.Impact != "" {
-		fmt.Fprintf(&b, "\n%s\n", c.Impact)
+	impact := c.Impact
+	if m.spec.ConfirmImpact != nil {
+		picked := make([]Option[T], 0, len(m.checkedIndices()))
+		for _, idx := range m.checkedIndices() {
+			picked = append(picked, m.spec.Options[idx])
+		}
+		impact = m.spec.ConfirmImpact(picked)
+	}
+	if impact != "" {
+		fmt.Fprintf(&b, "\n%s\n", impact)
 	}
 	fmt.Fprintf(&b, "\n%s", m.th.Muted.Render("enter confirm · esc back · ctrl+c cancel"))
 	return b.String()

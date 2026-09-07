@@ -96,14 +96,12 @@ func (m confirmModel) outcome() outcome {
 }
 
 func (m confirmModel) finalFrame() string {
-	switch m.state {
-	case listCompleted:
+	if m.state == listCompleted {
 		return m.final
-	case listCancelled:
-		return CancelNotice(m.th)
-	default:
-		return ""
 	}
+	// A cancelled confirmation leaves nothing in history; the "✘ Operation
+	// cancelled" line is the CLI diagnostic border's (contracts/diagnostics.md).
+	return ""
 }
 
 func (m confirmModel) View() tea.View {

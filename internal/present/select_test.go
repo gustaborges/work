@@ -120,11 +120,13 @@ func TestSelectFinalViews(t *testing.T) {
 		t.Errorf("completed View should be empty so the list clears, got %q", cm.View().Content)
 	}
 
+	// A cancelled selector leaves no frame; the border prints the notice.
 	for _, key := range []string{"q", "esc", "ctrl+c"} {
 		mm := testSelectModel(SelectSpec[string]{Title: "T", Options: branchOptions()})
 		next, cmd := mm.Update(press(key))
-		if !isQuit(cmd) || next.(selectModel[string]).finalFrame() != "✘ Operation cancelled\n" {
-			t.Errorf("%s: cancel finalFrame = %q", key, next.(selectModel[string]).finalFrame())
+		cancelled := next.(selectModel[string])
+		if !isQuit(cmd) || cancelled.state != listCancelled || cancelled.finalFrame() != "" {
+			t.Errorf("%s: cancel finalFrame = %q (state %d)", key, cancelled.finalFrame(), cancelled.state)
 		}
 	}
 }

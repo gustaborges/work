@@ -43,13 +43,6 @@ func Receipt(th theme.Theme, title string, mark Mark, displayValue string) strin
 	return fmt.Sprintf("%s\n  %s %s\n\n", title, markGlyph(th, mark), displayValue)
 }
 
-// CancelNotice is the single line a cancelled step collapses to: no title echo,
-// no retained frame (contracts/interaction.md §2, FR-012). The programmatic
-// diag.Cancelled / exit 20 is unaffected.
-func CancelNotice(th theme.Theme) string {
-	return fmt.Sprintf("%s Operation cancelled\n", markGlyph(th, MarkFailure))
-}
-
 // ConfirmReceipt is what an accepted pre-mutation confirmation collapses to,
 // written before the command's stable stdout result (FR-030, research R7).
 func ConfirmReceipt(th theme.Theme, title string) string {

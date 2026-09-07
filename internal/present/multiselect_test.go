@@ -131,8 +131,9 @@ func TestMultiCancelKeys(t *testing.T) {
 		if !isQuit(cmd) || !mm.outcome().cancelled {
 			t.Errorf("%s: quit=%v cancelled=%v", key, isQuit(cmd), mm.outcome().cancelled)
 		}
-		if mm.finalFrame() != "✘ Operation cancelled\n" {
-			t.Errorf("%s: finalFrame = %q", key, mm.finalFrame())
+		// A cancelled selector leaves no frame; the border prints the notice.
+		if mm.finalFrame() != "" {
+			t.Errorf("%s: finalFrame = %q, want empty", key, mm.finalFrame())
 		}
 	}
 	// Ctrl-C also cancels from the confirming sub-state.
