@@ -18,10 +18,11 @@ external generator.
 | **compact** | `width < artWidth` | the single word `WORK` (optional `bold`), then the tagline and the direction on their own lines; **no wrapping breakage**, fits in `width` |
 
 - `artWidth` is the fixed display width of the embedded art (measured with
-  display-width helpers). The exact glyph design is chosen and screenshotted in
-  implementation phase 5 and appended to this contract; the draft is
-  `temp/tui-revamp.md` §10.1.
-- Tagline (draft, confirmed in visual review): `Isolated work, ready when you are.`
+  display-width helpers). The shipped glyph design is recorded in
+  [§ Shipped wordmark](#shipped-wordmark) below; it is the single `const
+  wordmarkArt` in `internal/present/brand/wordmark.go`.
+- Tagline (confirmed in visual review): `Isolated work, ready when you are.`
+  followed by `Run 'work --help' to get started.`
 - The gradient is **never** required to read the word: the plain and compact forms
   must be equally legible (SC-009 asks ≥ 90 % of reviewers to read `WORK` and rate
   both gradient and fallback readable).
@@ -45,3 +46,34 @@ Q7/Q8.
 - No animation, no per-frame redraw (it is static text).
 - No `figlet` / `go-figure` / runtime font dependency.
 - No user-configurable wordmark or colours.
+
+## Shipped wordmark
+
+A hand-placed block-glyph asset (Unicode box-drawing / block elements), six rows,
+`artWidth = 34`, `artHeight = 6`. Every row is right-padded to `artWidth` at init
+so the block is rectangular and the per-column gradient lines up across all four
+glyphs.
+
+```
+██╗    ██╗ ██████╗ ██████╗ ██╗  ██╗
+██║    ██║██╔═══██╗██╔══██╗██║ ██╔╝
+██║ █╗ ██║██║   ██║██████╔╝█████╔╝
+██║███╗██║██║   ██║██╔══██╗██╔═██╗
+╚███╔███╔╝╚██████╔╝██║  ██║██║  ██╗
+ ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝
+```
+
+Full interactive form (gradient `#11A8CD`→`#8B7CF6` swept left-to-right by column,
+TrueColor):
+
+```
+<WORK art>
+
+Isolated work, ready when you are.
+
+Run 'work --help' to get started.
+```
+
+Golden strings for the wide-TrueColor, wide-colour-off, and compact forms are
+pinned in `internal/present/brand/brand_test.go`; a terminal screenshot lives with
+the F2.5 release notes.
