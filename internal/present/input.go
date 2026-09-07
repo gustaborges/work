@@ -45,8 +45,8 @@ type inputModel struct {
 	spec InputSpec
 	ctx  context.Context
 
-	value  []rune
-	cursor int
+	value    []rune
+	cursorAt int
 
 	state    inputState
 	curErr   string // at most one live error; "" = none
@@ -76,13 +76,18 @@ func newInputModel(ctx context.Context, io IO, spec InputSpec) inputModel {
 		spec:      spec,
 		ctx:       ctx,
 		value:     v,
-		cursor:    len(v),
+		cursorAt:  len(v),
 	}
 }
 
-func (m inputModel) Init() tea.Cmd { return tea.RequestBackgroundColor }
+func (m inputModel) Init() tea.Cmd { return nil }
 
-func (m inputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m inputModel) withFrame(f baseFrame) stepModel {
+	m.baseFrame = f
+	return m
+}
+
+func (m inputModel) Update(msg tea.Msg) (stepModel, tea.Cmd) {
 	if m.absorb(msg) {
 		return m, nil
 	}
@@ -97,7 +102,7 @@ func (m inputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.accept()
 		case fatal:
 			m.fatal = underlying
-			return m, leave()
+			return m, nil
 		default:
 			m.curErr = underlying.Error()
 			return m, nil
@@ -113,36 +118,36 @@ func (m inputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m inputModel) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m inputModel) handleKey(key tea.KeyPressMsg) (stepModel, tea.Cmd) {
 	switch key.String() {
 	case "ctrl+c", "esc":
 		// A text field cannot cancel on "q" — it is a valid character. The help
 		// line names Esc as the cancel key.
 		m.state = inputCancelled
-		return m, leave()
+		return m, nil
 	case "enter":
 		return m.submit()
 	case "backspace":
-		if m.cursor > 0 {
-			m.value = append(m.value[:m.cursor-1], m.value[m.cursor:]...)
-			m.cursor--
+		if m.cursorAt > 0 {
+			m.value = append(m.value[:m.cursorAt-1], m.value[m.cursorAt:]...)
+			m.cursorAt--
 			m.curErr = "" // an edit clears the current error (contract §3)
 		}
 		return m, nil
 	case "left":
-		m.cursor = max(m.cursor-1, 0)
+		m.cursorAt = max(m.cursorAt-1, 0)
 		return m, nil
 	case "right":
-		m.cursor = min(m.cursor+1, len(m.value))
+		m.cursorAt = min(m.cursorAt+1, len(m.value))
 		return m, nil
 	case "home", "ctrl+a":
-		m.cursor = 0
+		m.cursorAt = 0
 		return m, nil
 	case "end", "ctrl+e":
-		m.cursor = len(m.value)
+		m.cursorAt = len(m.value)
 		return m, nil
 	case "ctrl+u":
-		m.value, m.cursor, m.curErr = m.value[:0], 0, ""
+		m.value, m.cursorAt, m.curErr = m.value[:0], 0, ""
 		return m, nil
 	}
 	// Printable input: insert the produced text at the cursor. Shift is allowed
@@ -150,8 +155,8 @@ func (m inputModel) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// text and must not be inserted.
 	if key.Mod&^tea.ModShift == 0 && key.Text != "" {
 		r := []rune(key.Text)
-		m.value = append(m.value[:m.cursor], append(r, m.value[m.cursor:]...)...)
-		m.cursor += len(r)
+		m.value = append(m.value[:m.cursorAt], append(r, m.value[m.cursorAt:]...)...)
+		m.cursorAt += len(r)
 		m.curErr = ""
 	}
 	return m, nil
@@ -159,7 +164,7 @@ func (m inputModel) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // submit starts a validation pass. With no validator the value is accepted
 // immediately.
-func (m inputModel) submit() (tea.Model, tea.Cmd) {
+func (m inputModel) submit() (stepModel, tea.Cmd) {
 	if m.spec.Validate == nil {
 		return m.accept()
 	}
@@ -172,11 +177,11 @@ func (m inputModel) submit() (tea.Model, tea.Cmd) {
 	)
 }
 
-func (m inputModel) accept() (tea.Model, tea.Cmd) {
+func (m inputModel) accept() (stepModel, tea.Cmd) {
 	m.accepted = string(m.value)
 	m.state = inputCompleted
 	m.receipt = Receipt(m.th, m.spec.Title, MarkSuccess, m.displayValue())
-	return m, leave()
+	return m, nil
 }
 
 func (m inputModel) displayValue() string {
@@ -190,25 +195,35 @@ func (m inputModel) displayValue() string {
 	}
 }
 
-func (m inputModel) outcome() outcome {
-	return outcome{cancelled: m.state == inputCancelled, fatal: m.fatal}
-}
-
-// finalFrame is the compact string run prints once the program has cleared its
-// active frame: the receipt on accept, and nothing otherwise. A cancelled step
-// leaves no frame — the single "✘ Operation cancelled" line is the CLI
-// diagnostic border's to print (contracts/diagnostics.md).
-func (m inputModel) finalFrame() string {
-	if m.state == inputCompleted {
-		return m.receipt
+func (m inputModel) status() stepStatus {
+	return stepStatus{
+		done:      m.state == inputCompleted,
+		cancelled: m.state == inputCancelled,
+		fatal:     m.fatal,
+		receipt:   m.receipt,
+		answer:    m.accepted,
 	}
-	return ""
 }
 
-func (m inputModel) View() tea.View {
+// cursor sits at the edit position on the input line: past the "❯ " chevron and
+// the display width of the value left of the cursor. The input line is body's
+// first line after the title and the optional description.
+func (m inputModel) cursorPos() (tea.Position, bool) {
+	if m.state != inputEditing || m.fatal != nil || m.spec.Secret {
+		return tea.Position{}, false
+	}
+	y := 1 // past the title line
+	if m.spec.Description != "" {
+		y++
+	}
+	x := DisplayWidth("❯ ") + DisplayWidth(string(m.value[:m.cursorAt]))
+	return tea.Position{X: x, Y: y}, true
+}
+
+func (m inputModel) body(width, height int) string {
+	m.w, m.h = width, height
 	if m.fatal != nil || m.state != inputEditing {
-		// Terminal state: render nothing so leave() clears the whole frame.
-		return tea.NewView("")
+		return ""
 	}
 
 	var b strings.Builder
@@ -221,7 +236,7 @@ func (m inputModel) View() tea.View {
 	if m.spec.Secret {
 		shown = strings.Repeat("•", len(m.value))
 	}
-	fmt.Fprintf(&b, "> %s\n\n", TruncTail(shown, max(m.w-2, 1)))
+	fmt.Fprintf(&b, "❯ %s\n\n", TruncTail(shown, max(m.w-2, 1)))
 
 	switch {
 	case m.curErr != "":
@@ -231,7 +246,7 @@ func (m inputModel) View() tea.View {
 	default:
 		b.WriteString(m.th.Muted.Render("enter accept · esc cancel"))
 	}
-	return m.clamp(b.String())
+	return b.String()
 }
 
 // Input runs an interactive text-entry step and returns the accepted value.
@@ -239,9 +254,11 @@ func (m inputModel) View() tea.View {
 // validation error is returned unwrapped for the CLI diagnostic border. Callers
 // gate on an interactive terminal first (contracts/presentation-boundary.md).
 func Input(ctx context.Context, io IO, spec InputSpec) (string, error) {
-	final, err := run(ctx, io, newInputModel(ctx, io, spec))
+	ans, err := Wizard(ctx, io, WizardSpec{Steps: []Step{
+		InputStep("value", func(Answers) (InputSpec, error) { return spec, nil }),
+	}})
 	if err != nil {
 		return "", err
 	}
-	return final.(inputModel).accepted, nil
+	return ans.String("value"), nil
 }

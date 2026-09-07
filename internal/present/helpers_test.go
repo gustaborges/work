@@ -2,6 +2,7 @@ package present
 
 import (
 	"reflect"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -36,7 +37,7 @@ func press(s string) tea.KeyPressMsg {
 }
 
 // typeText feeds each rune of s as its own key press.
-func typeText(m tea.Model, s string) tea.Model {
+func typeText(m stepModel, s string) stepModel {
 	for _, r := range s {
 		m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: r, Text: string(r)}))
 	}
@@ -71,7 +72,7 @@ func drain(cmd tea.Cmd) []tea.Msg {
 }
 
 // feed applies every message in msgs to m in order.
-func feed(m tea.Model, msgs ...tea.Msg) (tea.Model, tea.Cmd) {
+func feed(m stepModel, msgs ...tea.Msg) (stepModel, tea.Cmd) {
 	var cmd tea.Cmd
 	for _, msg := range msgs {
 		m, cmd = m.Update(msg)
@@ -79,11 +80,21 @@ func feed(m tea.Model, msgs ...tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func isQuit(cmd tea.Cmd) bool {
-	for _, msg := range drain(cmd) {
-		if _, ok := msg.(tea.QuitMsg); ok {
-			return true
-		}
+// stepBody renders a step's own content at an 80×24 interior — the frame the
+// wizard would compose it into, minus the shared rule/title/receipts.
+func stepBody(m stepModel) string { return m.body(80, 24) }
+
+// clampedFrame renders a step body at w×h bounded to the viewport the way
+// baseFrame.clamp
+// bounds the whole composed wizard screen: no line wider than w, no more than h
+// lines.
+func clampedFrame(m stepModel, w, h int) string {
+	lines := strings.Split(m.body(w, h), "\n")
+	for i, ln := range lines {
+		lines[i] = TruncTail(ln, w)
 	}
-	return false
+	if h > 0 && len(lines) > h {
+		lines = lines[:h]
+	}
+	return strings.Join(lines, "\n")
 }

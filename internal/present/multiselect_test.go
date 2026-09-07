@@ -36,7 +36,7 @@ func TestMultiCheckboxAndFocusAreIndependent(t *testing.T) {
 		t.Errorf("cursor = %d, want 1", mm.cursor)
 	}
 
-	v := mm.View().Content
+	v := stepBody(mm)
 	// Row 0: unfocused + checked → "  [x] demo  alpha"
 	if !strings.Contains(v, "  [x] demo  alpha") {
 		t.Errorf("checked-unfocused row wrong:\n%s", v)
@@ -54,10 +54,10 @@ func TestMultiCheckboxAndFocusAreIndependent(t *testing.T) {
 func TestMultiUnselectedRowsAreStableAcrossFocusMove(t *testing.T) {
 	m := testMultiModel(MultiSelectSpec[string]{Title: "Archive Works", Options: workRows()})
 
-	before := rowGeometry(m.View().Content)
+	before := rowGeometry(stepBody(m))
 	next, _ := m.Update(press("down"))
 	next, _ = next.Update(press("down"))
-	after := rowGeometry(next.(multiSelectModel[string]).View().Content)
+	after := rowGeometry(stepBody(next.(multiSelectModel[string])))
 
 	if len(before) != len(after) {
 		t.Fatalf("row count changed on focus move: %d -> %d", len(before), len(after))
@@ -71,8 +71,9 @@ func TestMultiUnselectedRowsAreStableAcrossFocusMove(t *testing.T) {
 
 func TestMultiEmptyEnterIsNoOp(t *testing.T) {
 	m := testMultiModel(MultiSelectSpec[string]{Title: "T", Options: workRows()})
-	next, cmd := m.Update(press("enter"))
-	if isQuit(cmd) || next.(multiSelectModel[string]).state != listChoosing {
+	next, _ := m.Update(press("enter"))
+	nm := next.(multiSelectModel[string])
+	if nm.status().done || nm.state != listChoosing {
 		t.Errorf("Enter with nothing checked advanced the step")
 	}
 }
@@ -94,8 +95,8 @@ func TestMultiConfirmFlow(t *testing.T) {
 	if cm.state != listConfirming {
 		t.Fatalf("state = %d, want confirming", cm.state)
 	}
-	if !strings.Contains(cm.View().Content, "2 worktree(s) will be destroyed") {
-		t.Errorf("impact not shown in confirm view:\n%s", cm.View().Content)
+	if !strings.Contains(stepBody(cm), "2 worktree(s) will be destroyed") {
+		t.Errorf("impact not shown in confirm view:\n%s", stepBody(cm))
 	}
 
 	// Esc goes back to the list without dropping the checks.
@@ -110,13 +111,13 @@ func TestMultiConfirmFlow(t *testing.T) {
 
 	// Enter again → confirming → Enter → completed.
 	next, _ = back.Update(press("enter"))
-	next, cmd := next.Update(press("enter"))
+	next, _ = next.Update(press("enter"))
 	done := next.(multiSelectModel[string])
-	if !isQuit(cmd) || done.state != listCompleted {
-		t.Fatalf("confirm accept did not complete: quit=%v state=%d", isQuit(cmd), done.state)
+	if !done.status().done || done.state != listCompleted {
+		t.Fatalf("confirm accept did not complete: done=%v state=%d", done.status().done, done.state)
 	}
-	if done.finalFrame() != "✔ Archive Works confirmed\n" {
-		t.Errorf("completed finalFrame = %q", done.finalFrame())
+	if done.status().receipt != "✔ Archive Works confirmed\n\n" {
+		t.Errorf("completed receipt = %q", done.status().receipt)
 	}
 	if got := done.picked(); strings.Join(got, ",") != "id-a,id-c" {
 		t.Errorf("picked = %v, want [id-a id-c]", got)
@@ -126,14 +127,14 @@ func TestMultiConfirmFlow(t *testing.T) {
 func TestMultiCancelKeys(t *testing.T) {
 	for _, key := range []string{"q", "esc", "ctrl+c"} {
 		m := testMultiModel(MultiSelectSpec[string]{Title: "T", Options: workRows()})
-		next, cmd := m.Update(press(key))
+		next, _ := m.Update(press(key))
 		mm := next.(multiSelectModel[string])
-		if !isQuit(cmd) || !mm.outcome().cancelled {
-			t.Errorf("%s: quit=%v cancelled=%v", key, isQuit(cmd), mm.outcome().cancelled)
+		if !mm.status().cancelled {
+			t.Errorf("%s: cancelled=%v", key, mm.status().cancelled)
 		}
-		// A cancelled selector leaves no frame; the border prints the notice.
-		if mm.finalFrame() != "" {
-			t.Errorf("%s: finalFrame = %q, want empty", key, mm.finalFrame())
+		// A cancelled selector leaves no receipt; the border prints the notice.
+		if mm.status().receipt != "" {
+			t.Errorf("%s: receipt = %q, want empty", key, mm.status().receipt)
 		}
 	}
 	// Ctrl-C also cancels from the confirming sub-state.
@@ -141,8 +142,8 @@ func TestMultiCancelKeys(t *testing.T) {
 	m := testMultiModel(spec)
 	next, _ := m.Update(press("space"))
 	next, _ = next.Update(press("enter"))
-	next, cmd := next.Update(press("ctrl+c"))
-	if !isQuit(cmd) || !next.(multiSelectModel[string]).outcome().cancelled {
+	next, _ = next.Update(press("ctrl+c"))
+	if !next.(multiSelectModel[string]).status().cancelled {
 		t.Errorf("Ctrl-C from confirming did not cancel")
 	}
 }

@@ -1,7 +1,6 @@
 package present
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -24,8 +23,7 @@ func branchOptions() []Option[string] {
 	}
 }
 
-// rowColumns records, for one rendered frame, the number of body lines and the
-// starting column of the primary text on each — the SC-003 invariants.
+// bodyLines returns the option lines of one rendered frame.
 func bodyLines(v string) []string {
 	var out []string
 	for _, ln := range strings.Split(v, "\n") {
@@ -39,20 +37,20 @@ func bodyLines(v string) []string {
 func TestSelectGeometryStableAcrossMoveFilterTab(t *testing.T) {
 	m := testSelectModel(SelectSpec[string]{Title: "Base branch", Options: branchOptions(), Grouped: true, Filterable: true})
 
-	frame0 := m.View().Content
+	frame0 := stepBody(m)
 	cols0 := primaryColumnsOf(frame0)
 
 	// Move focus down.
 	next, _ := m.Update(press("down"))
 	m = next.(selectModel[string])
-	if got := primaryColumnsOf(m.View().Content); !equalInts(got, cols0) {
+	if got := primaryColumnsOf(stepBody(m)); !equalInts(got, cols0) {
 		t.Errorf("primary columns shifted on move: %v -> %v", cols0, got)
 	}
 
 	// Switch tab.
 	next, _ = m.Update(press("right"))
 	m = next.(selectModel[string])
-	if got := primaryColumnsOf(m.View().Content); !allEqual(got, cols0[0]) {
+	if got := primaryColumnsOf(stepBody(m)); !allEqual(got, cols0[0]) {
 		t.Errorf("primary columns shifted on tab switch: want all %d, got %v", cols0[0], got)
 	}
 
@@ -60,17 +58,17 @@ func TestSelectGeometryStableAcrossMoveFilterTab(t *testing.T) {
 	next, _ = m.Update(press("/"))
 	m = next.(selectModel[string])
 	m = typeText(m, "feat").(selectModel[string])
-	for _, c := range primaryColumnsOf(m.View().Content) {
+	for _, c := range primaryColumnsOf(stepBody(m)) {
 		if c != cols0[0] {
 			t.Errorf("primary column shifted while filtering: %d != %d", c, cols0[0])
 		}
 	}
 }
 
-func TestSelectFocusedRowIsBoldWithColourOff(t *testing.T) {
+func TestSelectFocusedRowIsIdentifiableWithColourOff(t *testing.T) {
 	// With colour off, focus must still be identifiable — the "❯ " marker.
 	m := testSelectModel(SelectSpec[string]{Title: "Pick", Options: branchOptions()})
-	v := m.View().Content
+	v := stepBody(m)
 	if !strings.Contains(v, "❯ origin/main") {
 		t.Errorf("focused row lacks the ❯ marker:\n%s", v)
 	}
@@ -90,7 +88,7 @@ func TestSelectFrameNeverExceedsHeight(t *testing.T) {
 	for _, size := range []tea.WindowSizeMsg{{Width: 40, Height: 10}, {Width: 80, Height: 24}, {Width: 160, Height: 50}} {
 		next, _ := m.Update(size)
 		mm := next.(selectModel[string])
-		v := mm.View().Content
+		v := clampedFrame(mm, size.Width, size.Height)
 		if n := strings.Count(v, "\n") + 1; n > size.Height {
 			t.Errorf("%dx%d: frame is %d lines\n%s", size.Width, size.Height, n, v)
 		}
@@ -102,31 +100,34 @@ func TestSelectFrameNeverExceedsHeight(t *testing.T) {
 	}
 }
 
-func TestSelectFinalViews(t *testing.T) {
+func TestSelectFinalStatus(t *testing.T) {
 	m := testSelectModel(SelectSpec[string]{
 		Title:   "Base branch",
 		Options: branchOptions(),
 		Receipt: func(o Option[string]) string { return o.Primary + "  " + o.Secondary },
 	})
-	next, cmd := m.Update(press("enter"))
+	next, _ := m.Update(press("enter"))
 	cm := next.(selectModel[string])
-	if !isQuit(cmd) || cm.state != listCompleted {
-		t.Fatalf("enter did not complete: quit=%v state=%d", isQuit(cmd), cm.state)
+	if !cm.status().done || cm.state != listCompleted {
+		t.Fatalf("enter did not complete: done=%v state=%d", cm.status().done, cm.state)
 	}
-	if got := cm.finalFrame(); got != "Base branch\n  ✔ origin/main  5c56cbc\n\n" {
-		t.Errorf("completed finalFrame = %q", got)
+	if got := cm.status().receipt; got != "Base branch\n  ✔ origin/main  5c56cbc\n\n" {
+		t.Errorf("completed receipt = %q", got)
 	}
-	if cm.View().Content != "" {
-		t.Errorf("completed View should be empty so the list clears, got %q", cm.View().Content)
+	if cm.status().answer != "origin/main" {
+		t.Errorf("answer = %v, want origin/main", cm.status().answer)
+	}
+	if stepBody(cm) != "" {
+		t.Errorf("completed body should be empty so the list clears, got %q", stepBody(cm))
 	}
 
-	// A cancelled selector leaves no frame; the border prints the notice.
+	// A cancelled selector leaves no receipt; the border prints the notice.
 	for _, key := range []string{"q", "esc", "ctrl+c"} {
 		mm := testSelectModel(SelectSpec[string]{Title: "T", Options: branchOptions()})
-		next, cmd := mm.Update(press(key))
+		next, _ := mm.Update(press(key))
 		cancelled := next.(selectModel[string])
-		if !isQuit(cmd) || cancelled.state != listCancelled || cancelled.finalFrame() != "" {
-			t.Errorf("%s: cancel finalFrame = %q (state %d)", key, cancelled.finalFrame(), cancelled.state)
+		if !cancelled.status().cancelled || cancelled.state != listCancelled || cancelled.status().receipt != "" {
+			t.Errorf("%s: cancel receipt = %q (state %d)", key, cancelled.status().receipt, cancelled.state)
 		}
 	}
 }
@@ -150,8 +151,8 @@ func TestSelectGroupedHidesBarWithOneGroup(t *testing.T) {
 	if m.tabs != nil {
 		t.Errorf("tab bar shown for a single group: %v", m.tabs)
 	}
-	if strings.Contains(m.View().Content, "[Local]") {
-		t.Errorf("single-group tab rendered:\n%s", m.View().Content)
+	if strings.Contains(stepBody(m), "[Local]") {
+		t.Errorf("single-group tab rendered:\n%s", stepBody(m))
 	}
 }
 
@@ -201,5 +202,3 @@ func allEqual(a []int, v int) bool {
 	}
 	return len(a) > 0
 }
-
-var _ = context.Background

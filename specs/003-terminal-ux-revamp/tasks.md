@@ -132,7 +132,7 @@ import-boundary test. No `internal/cli` command is migrated yet.
 - [X] T022 [US1] Rewrite the base-branch step: build `[]present.Option[basebranch.Choice]` in `selectBase` with `Primary` = `c.Short`, `Secondary` = `c.ObjectShort` (+ scope), `Group` = `"Remote"`/`"Local"`; call `present.Select` with `Grouped:true, Filterable:true`; `Receipt` = `base.Format()`. Delete `internal/tui/basebranch_picker.go` + `basebranch_picker_test.go` and `tui.BaseBranchItem`/`SelectBaseBranch`. Port the tab-switch and two-tab-hidden behaviour into `select.go` if not already there (Phase 2 T010). (FR-007, FR-008.)
 - [X] T023 [US1] Rewrite the workspace-root step in `resolveWorkspace`: `present.Input` pre-filled with `workspace.SuggestDefault()`, `Validate` runs `workspace.Validate`, `Receipt` shows the absolute path. Delete `tui.EditWorkspaceRoot`.
 - [X] T024 [US1] Rewrite the confirmation step: `present.Confirm{Title:"Create Work", Impact: <the current summary block>, Accept:"Create", Reject:"Cancel"}`; on accept the frame collapses to `✔ Create Work confirmed` (via `present`), then `create.Run` proceeds and the stable stdout lines print unchanged. `--yes` still skips it. Delete `tui.ConfirmCreate`. (FR-030; research R7.)
-- [~] T025 [US1] `prompts_test.go` deleted; `tui.InputPath`/`SelectPrefix`/`InputSlug`/`EditWorkspaceRoot`/`ConfirmCreate` removed from `prompts.go`; `ValidateSlug` moved to `internal/branchname` (`slug.go`, now returning `diag.InvalidBranchName`). `prompts.go` is retained only for `ConfirmArchive`/`AckDirtyWork`, which `internal/cli/archive.go` still imports — it is deleted in Phase 4 (T031) when archive migrates. `go build ./...` green.
+- [X] T025 [US1] `prompts_test.go` deleted; `tui.InputPath`/`SelectPrefix`/`InputSlug`/`EditWorkspaceRoot`/`ConfirmCreate` removed from `prompts.go`; `ValidateSlug` moved to `internal/branchname` (`slug.go`, now returning `diag.InvalidBranchName`). `prompts.go` is retained only for `ConfirmArchive`/`AckDirtyWork`, which `internal/cli/archive.go` still imports — it is deleted in Phase 4 (T031) when archive migrates. `go build ./...` green.
 - [X] T026 [US1] Update `internal/cli/start_test.go` and any F1 `.txtar` under `tests/integration` that asserts the **old** prompt/error text (e.g. a rejected-path line on stderr) to the new receipt/in-frame behaviour — **without** changing any stdout, token, or exit-code assertion. Confirm `invalid_path.txtar` and `invalid_slug.txtar` still assert the same exit codes and the same `work: created` success lines on the eventual success path.
 
 **Checkpoint**: `work start` runs entirely through `internal/present`; `internal/tui/{prompts,basebranch_picker}.go` are gone; quickstart Q1–Q4 pass on Linux + macOS; F1 S1–S12 and F2 S1–S13 green.
@@ -214,6 +214,27 @@ import-boundary test. No `internal/cli` command is migrated yet.
 - [X] T054 Run `make lint` + `go test ./...` on `ubuntu-latest`, `macos-latest`, `windows-latest`; confirm the full F1 + F2 + F2.5 suites green and the `diag.All` table test unchanged. This is the release-0.3 gate.
 
 **Checkpoint**: `internal/tui/` deleted; no ANSI escapes anywhere output is non-interactive; every F1/F2 automation contract intact; quickstart Q1–Q15 green on all 3 OSes.
+
+---
+
+## Phase 7: Follow-up — full-screen wizard per flow (R21, ADR-0021)
+
+**Branch**: `feature/003-terminal-ux-revamp-p7-follow-up`, cut from `feature/003-terminal-ux-revamp-p6-polish`; PR targets `feature/003-terminal-ux-revamp-p6-polish`. Spec/contract/research/ADR edits live on this branch alongside the code.
+
+**Goal**: The inline renderer ghosts on resize and on the `archive` confirm→list `Esc`-back. Move the three flows onto one alternate-screen `present.Wizard` per flow so a full clear+repaint every frame makes the ghost impossible; keep every non-interactive contract byte-for-byte.
+
+**Independent Test**: at 80×24 and 160×50, resize the terminal mid-`work start` selector → no duplicated headers; `work archive` check→Enter→confirm→`Esc` back → no stacked "Archive Works" headers; `work start … --yes | cat` and `work resume <id> | cat` emit zero `\x1b` with F1/F2-identical stdout lines and exit codes.
+
+- [X] T055 `internal/present`: add `stepModel` (`body`/`status`/`cursorPos`); migrate `input`/`select`/`multiselect`/`confirm` off standalone `tea.Model` + `tea.Quit`; migrate the model tests (`View().Content`→`body()`, `isQuit`+`finalFrame`→`status()`).
+- [X] T056 `internal/present`: add `wizard.go` (`Wizard`, `WizardSpec`, `Step`, `InputStep`/`SelectStep`/`MultiSelectStep`/`ConfirmStep`, `Answers`, `StepResolved`) + `wizard_test.go`; `present.go` `runWizard`/`classifyWizard` reprint the receipt trail to the UI channel after `?1049l`; `frame.go` drops `leave()`, adds `rule()`. `Input`/`Select`/`MultiSelect`/`Confirm` become one-step wizards (so `resume.go`/`archive.go` need no change).
+- [X] T057 Visual fold: real `❯` chevron in `Input` with a hardware text cursor at the edit position; the focused two-line row styles only its primary line (`Primary`), secondary always `Muted`.
+- [X] T058 `internal/cli/start.go`: restructure `runStart` around one `present.Wizard`; F1 validation closures reused verbatim; `baseBranchSpec` drops the per-row SHA and its receipt/confirm summary show the short name only; `workspace.Persist` moves to after the wizard.
+- [X] T059 `tests/integration/vt_test.go`: alt-screen support (DECSET 1049/1047/47 save/blank/restore, no scrollback in alt mode; VPA) + `TestVTAlternateScreen`; re-pin `interactive_test.go` (declined run no longer persists the workspace root).
+- [X] T060 Spec / contract / research / ADR: `spec.md` FR-001/FR-007/SC-001-002/Out of Scope; `contracts/interaction.md` §1/§2/§5; `research.md` R1/R2/R4/R18 + new R21; new `docs/adr/adr-0021`, ADR-0020 marked partially superseded; `docs/add/add-0001` §12.2/§12.3; `docs/prd.md` RF-53; `README.md`/`CLAUDE.md`; `internal/present/doc.go`.
+- [X] T061 `make lint` + `GIT_CONFIG_GLOBAL=/dev/null go test ./...` green; `git grep "leave()\|sessionModel" internal/present` empty; manual full-screen smoke of the three flows + `Ctrl-C` (exit 20) + `NO_COLOR=1 work resume`.
+- [X] T062 PR #25 follow-up: keep active controls visible by yielding old receipts first; normalize confirmation receipt spacing; issue one background-colour query per wizard; make interactive archive one wizard with individual dirty-Work acknowledgements; simplify `work start` base/confirmation/repository-name flow; cover the 80×24 confirmation regression.
+
+**Checkpoint**: the three flows render full-screen with zero ghosting; base selector is hash-free; every F1/F2 stdout line / error token / exit code byte-for-byte unchanged; `go test ./...` green on all 3 OSes.
 
 ---
 

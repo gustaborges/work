@@ -45,12 +45,20 @@ type confirmModel struct {
 }
 
 func newConfirmModel(io IO, spec ConfirmSpec) confirmModel {
-	return confirmModel{baseFrame: newBaseFrame(io), spec: spec, focus: 1} // default to Reject
+	// Enter is the common "continue / confirm" key across the interactive
+	// controls. Keep its initial target consistent with that contract; users can
+	// still choose the explicit Reject action with arrows, n, Esc, or Ctrl-C.
+	return confirmModel{baseFrame: newBaseFrame(io), spec: spec} // default to Accept
 }
 
-func (m confirmModel) Init() tea.Cmd { return tea.RequestBackgroundColor }
+func (m confirmModel) Init() tea.Cmd { return nil }
 
-func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m confirmModel) withFrame(f baseFrame) stepModel {
+	m.baseFrame = f
+	return m
+}
+
+func (m confirmModel) Update(msg tea.Msg) (stepModel, tea.Cmd) {
 	if m.absorb(msg) {
 		return m, nil
 	}
@@ -61,7 +69,7 @@ func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch key.String() {
 	case "ctrl+c", "esc":
 		m.state = listCancelled
-		return m, leave()
+		return m, nil
 	case "left", "h", "right", "l", "tab":
 		m.focus ^= 1
 	case "y", "Y":
@@ -74,7 +82,7 @@ func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m confirmModel) decide(accepted bool) (tea.Model, tea.Cmd) {
+func (m confirmModel) decide(accepted bool) (stepModel, tea.Cmd) {
 	m.accepted = accepted
 	m.state = listCompleted
 	switch {
@@ -88,26 +96,25 @@ func (m confirmModel) decide(accepted bool) (tea.Model, tea.Cmd) {
 	default:
 		m.final = fmt.Sprintf("%s %s\n", markGlyph(m.th, MarkFailure), m.spec.reject())
 	}
-	return m, leave()
+	return m, nil
 }
 
-func (m confirmModel) outcome() outcome {
-	return outcome{cancelled: m.state == listCancelled}
-}
-
-func (m confirmModel) finalFrame() string {
-	if m.state == listCompleted {
-		return m.final
+func (m confirmModel) status() stepStatus {
+	return stepStatus{
+		done:      m.state == listCompleted,
+		cancelled: m.state == listCancelled,
+		receipt:   m.final,
+		answer:    m.accepted,
 	}
-	// A cancelled confirmation leaves nothing in history; the "✘ Operation
-	// cancelled" line is the CLI diagnostic border's (contracts/diagnostics.md).
-	return ""
 }
 
-func (m confirmModel) View() tea.View {
+func (m confirmModel) cursorPos() (tea.Position, bool) { return tea.Position{}, false }
+
+func (m confirmModel) body(width, height int) string {
+	m.w, m.h = width, height
 	switch m.state {
 	case listCancelled, listCompleted:
-		return tea.NewView("")
+		return ""
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n", m.th.Primary.Render(m.spec.Title))
@@ -116,7 +123,7 @@ func (m confirmModel) View() tea.View {
 	}
 	b.WriteString(m.choiceBar() + "\n\n")
 	b.WriteString(m.th.Muted.Render("←/→ move · enter choose · y/n · esc cancel"))
-	return m.clamp(b.String())
+	return b.String()
 }
 
 func (m confirmModel) choiceBar() string {
@@ -133,9 +140,11 @@ func (m confirmModel) choiceBar() string {
 // reject, and diag.Cancelled on Esc / Ctrl-C. Callers gate on an interactive
 // terminal first.
 func Confirm(ctx context.Context, io IO, spec ConfirmSpec) (bool, error) {
-	final, err := run(ctx, io, newConfirmModel(io, spec))
+	ans, err := Wizard(ctx, io, WizardSpec{Steps: []Step{
+		ConfirmStep("value", func(Answers) (ConfirmSpec, error) { return spec, nil }),
+	}})
 	if err != nil {
 		return false, err
 	}
-	return final.(confirmModel).accepted, nil
+	return ans.Bool("value"), nil
 }

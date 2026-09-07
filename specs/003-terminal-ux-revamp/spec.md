@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-07
 
-**Status**: Draft
+**Status**: Complete
 
 **Input**: User description: `temp/tui-revamp.md`, with the explicit requirement that the `WORK` wordmark be terminal art using a gradient of the settled primary and secondary colors.
 
@@ -105,13 +105,13 @@ As a user invoking Work from scripts or redirected streams, I continue to receiv
 
 ### Functional Requirements
 
-- **FR-001**: Interactive command flows MUST use the current terminal screen buffer and MUST NOT enter an alternate or full-screen buffer.
+- **FR-001**: Each interactive command flow MUST run as one full-screen alternate-buffer program; on exit the primary buffer MUST be restored and the compact accepted-step receipts MUST be reprinted to the UI channel so they enter terminal history (ADR-0021).
 - **FR-002**: Every active control MUST remain bounded by the terminal's current rows and columns after reserving space for its title, current error, help, filter, and confirmation content.
 - **FR-003**: When an interactive step is accepted, its live control MUST be replaced by a compact receipt containing the step title, a success mark, and the accepted display value.
 - **FR-004**: A journey MUST be able to provide a redacted receipt or omit the receipt value for sensitive input.
 - **FR-005**: A recoverable validation failure attributable to the active field MUST appear within that field's live frame; editing or retrying MUST replace the previous failure.
 - **FR-006**: At most one current validation error MUST be visible for the active field, and rejected values or obsolete validation messages MUST NOT remain in terminal history after acceptance.
-- **FR-007**: A selector MAY retain a generous, stable scrolling viewport while active, but MUST collapse to its compact receipt on acceptance and MUST NOT retain blank padding in the following history.
+- **FR-007**: A selector MAY retain a generous, stable scrolling viewport while active, but MUST collapse to its compact receipt on acceptance; that receipt appears in the primary-buffer history reprinted when the flow exits, with no blank padding.
 - **FR-008**: Moving focus, toggling a choice, filtering, or changing a group MUST NOT change the starting columns or rendered line counts of unchanged rows.
 - **FR-009**: Focused options MUST be bold and MUST use a textual focus position whose display width is reserved for every row; color MAY reinforce focus but MUST NOT be required to perceive it.
 - **FR-010**: Single-select and multi-select controls MUST consistently support arrow keys and `j`/`k` for movement, Enter for selection or continuation, `/` for filtering where filtering exists, and a clearly displayed cancellation key.
@@ -159,7 +159,7 @@ As a user invoking Work from scripts or redirected streams, I continue to receiv
 
 - Backward navigation that edits an accepted earlier step and invalidates later choices.
 - New public journeys, aliases, command grammar, domain mutations, or plugin capabilities.
-- A graphical interface or alternate/full-screen terminal mode.
+- A graphical interface.
 - A user-selectable theme editor or new `--no-color` flag; existing environment-based opt-outs are included.
 - Choosing or exposing a presentation library as a public contract.
 
@@ -167,8 +167,8 @@ As a user invoking Work from scripts or redirected streams, I continue to receiv
 
 ### Measurable Outcomes
 
-- **SC-001**: After any number of rejected attempts followed by acceptance, terminal history contains exactly one receipt for the step and zero rejected values or obsolete validation errors.
-- **SC-002**: 100% of completed interactive controls leave a compact final result with no selectable rows or viewport padding; 100% of cancelled controls leave one concise cancellation result.
+- **SC-001**: After any number of rejected attempts followed by acceptance, the terminal history reprinted when the flow exits contains exactly one receipt for the step and zero rejected values or obsolete validation errors.
+- **SC-002**: 100% of completed interactive controls leave a compact final result (in the reprinted history) with no selectable rows or viewport padding; 100% of cancelled controls leave one concise cancellation result.
 - **SC-003**: Across focus movement, selection toggles, filtering, and group changes, unchanged selector rows exhibit zero change in rendered line count and zero change in the starting columns of their focus marker, checkbox, primary text, and secondary text.
 - **SC-004**: At terminal sizes 40×10, 80×24, and 160×50, every active control remains within the available viewport; long and Unicode content causes zero unintended scrollback lines from an oversized frame.
 - **SC-005**: Help lists 100% of public commands present in the tested binary exactly once, lists zero unavailable commands, and renders zero empty command groups.

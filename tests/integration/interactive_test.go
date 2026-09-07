@@ -360,9 +360,10 @@ func TestInteractiveCancelAtConfirm(t *testing.T) {
 	}
 
 	// An interrupt delivered before the commit step also rolls back to exit 20.
-	// (The declined run above already persisted the workspace root.)
+	// The workspace root is persisted only after the wizard is accepted (p7), so
+	// the declined run above wrote no config — this run supplies --workspace too.
 	c2 := newConsole(t, bin, env, "start", repo,
-		"--base", "main", "--slug", "intr", "--prefix", "{slug}")
+		"--workspace", ws, "--base", "main", "--slug", "intr", "--prefix", "{slug}")
 	c2.expect("Create Work")
 	c2.send("\x03") // Ctrl-C
 	if code := c2.wait(); code != 20 {

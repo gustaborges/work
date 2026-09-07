@@ -86,9 +86,14 @@ func (m multiSelectModel[T]) checkedIndices() []int {
 	return out
 }
 
-func (m multiSelectModel[T]) Init() tea.Cmd { return tea.RequestBackgroundColor }
+func (m multiSelectModel[T]) Init() tea.Cmd { return nil }
 
-func (m multiSelectModel[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m multiSelectModel[T]) withFrame(f baseFrame) stepModel {
+	m.baseFrame = f
+	return m
+}
+
+func (m multiSelectModel[T]) Update(msg tea.Msg) (stepModel, tea.Cmd) {
 	if m.absorb(msg) {
 		m.refilter()
 		return m, nil
@@ -100,7 +105,7 @@ func (m multiSelectModel[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	s := key.String()
 	if s == "ctrl+c" {
 		m.state = listCancelled
-		return m, leave()
+		return m, nil
 	}
 
 	if m.state == listConfirming {
@@ -147,7 +152,7 @@ func (m multiSelectModel[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch s {
 	case "q", "esc":
 		m.state = listCancelled
-		return m, leave()
+		return m, nil
 	case "/":
 		if m.spec.Filterable {
 			m.filtering = true
@@ -182,7 +187,7 @@ func (m *multiSelectModel[T]) toggle() {
 
 // advance handles Enter on the list: a no-op with nothing checked, otherwise
 // either the confirmation sub-state or straight to completion.
-func (m multiSelectModel[T]) advance() (tea.Model, tea.Cmd) {
+func (m multiSelectModel[T]) advance() (stepModel, tea.Cmd) {
 	if len(m.checkedIndices()) == 0 {
 		return m, nil
 	}
@@ -194,7 +199,7 @@ func (m multiSelectModel[T]) advance() (tea.Model, tea.Cmd) {
 	return m.complete()
 }
 
-func (m multiSelectModel[T]) complete() (tea.Model, tea.Cmd) {
+func (m multiSelectModel[T]) complete() (stepModel, tea.Cmd) {
 	picked := make([]Option[T], 0, len(m.checkedIndices()))
 	for _, idx := range m.checkedIndices() {
 		picked = append(picked, m.spec.Options[idx])
@@ -212,21 +217,19 @@ func (m multiSelectModel[T]) complete() (tea.Model, tea.Cmd) {
 		m.receipt = Receipt(m.th, m.spec.Title, MarkSuccess, strings.Join(labels, ", "))
 	}
 	m.state = listCompleted
-	return m, leave()
+	return m, nil
 }
 
-func (m multiSelectModel[T]) outcome() outcome {
-	return outcome{cancelled: m.state == listCancelled}
-}
-
-func (m multiSelectModel[T]) finalFrame() string {
-	if m.state == listCompleted {
-		return m.receipt
+func (m multiSelectModel[T]) status() stepStatus {
+	return stepStatus{
+		done:      m.state == listCompleted,
+		cancelled: m.state == listCancelled,
+		receipt:   m.receipt,
+		answer:    m.picked(),
 	}
-	// A cancelled selector leaves nothing in history; the "✘ Operation
-	// cancelled" line is the CLI diagnostic border's (contracts/diagnostics.md).
-	return ""
 }
+
+func (m multiSelectModel[T]) cursorPos() (tea.Position, bool) { return tea.Position{}, false }
 
 func (m multiSelectModel[T]) picked() []T {
 	var out []T
@@ -236,12 +239,13 @@ func (m multiSelectModel[T]) picked() []T {
 	return out
 }
 
-func (m multiSelectModel[T]) View() tea.View {
+func (m multiSelectModel[T]) body(width, height int) string {
+	m.w, m.h = width, height
 	switch m.state {
 	case listCompleted, listCancelled:
-		return tea.NewView("")
+		return ""
 	case listConfirming:
-		return m.clamp(m.confirmView())
+		return m.confirmView()
 	}
 
 	var b strings.Builder
@@ -260,12 +264,7 @@ func (m multiSelectModel[T]) View() tea.View {
 			Checkable: true, Checked: m.checked[idx],
 			Primary: opt.Primary, Secondary: opt.Secondary,
 		}
-		for _, line := range Row(spec) {
-			if i == m.cursor {
-				line = m.th.Primary.Render(line)
-			}
-			b.WriteString(line + "\n")
-		}
+		writeRow(&b, m.th, Row(spec), i == m.cursor)
 	}
 
 	if len(m.visible) > rows {
@@ -283,7 +282,7 @@ func (m multiSelectModel[T]) View() tea.View {
 		}
 		b.WriteString(m.th.Muted.Render(h))
 	}
-	return m.clamp(b.String())
+	return b.String()
 }
 
 func (m multiSelectModel[T]) confirmView() string {
@@ -313,9 +312,12 @@ func (m multiSelectModel[T]) confirmView() string {
 // (q / Esc on the list, Ctrl-C anywhere) returns diag.Cancelled (exit 20).
 // Callers gate on an interactive terminal first.
 func MultiSelect[T comparable](ctx context.Context, io IO, spec MultiSelectSpec[T]) ([]T, error) {
-	final, err := run(ctx, io, newMultiSelectModel(io, spec))
+	ans, err := Wizard(ctx, io, WizardSpec{Steps: []Step{
+		MultiSelectStep("value", func(Answers) (MultiSelectSpec[T], error) { return spec, nil }),
+	}})
 	if err != nil {
 		return nil, err
 	}
-	return final.(multiSelectModel[T]).picked(), nil
+	v, _ := ans.Value("value").([]T)
+	return v, nil
 }

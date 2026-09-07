@@ -1,12 +1,12 @@
 # ADR-0020: Fronteira Genérica de Apresentação Interativa Inline
 
-**Status:** Aceito
+**Status:** Aceito — decisão sobre a estrutura de renderização (sessão inline por etapa e recusa do buffer alternativo) **substituída parcialmente pela ADR-0021**. A fronteira genérica CLI ↔ apresentação, os estados explícitos de etapa, a geometria estável, o ownership de streams e a fronteira de diagnóstico permanecem em vigor.
 
 **Data:** 2026-09-07
 
 **Contexto de produto:** `docs/prd.md` — RF-51 a RF-62, RF-64 e RNF-11; `specs/003-terminal-ux-revamp/spec.md`
 
-**Relaciona-se com:** ADR-0009 (stack central), ADR-0019 (superfície CLI)
+**Relaciona-se com:** ADR-0009 (stack central), ADR-0019 (superfície CLI), ADR-0021 (apresentação full-screen)
 
 **Governa:** `docs/add/add-0001-work-system-architecture.md` §12
 

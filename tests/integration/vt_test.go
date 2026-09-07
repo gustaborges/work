@@ -4,21 +4,64 @@ package integration
 
 import (
 	"strings"
+	"testing"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 )
 
+// TestVTAlternateScreen: entering the alt buffer hides the primary buffer,
+// writes there leave no scrollback, and leaving it restores the primary buffer
+// unchanged — the reprint a full-screen program does after exit then lands in
+// the restored primary buffer.
+func TestVTAlternateScreen(t *testing.T) {
+	v := newVT(4, 20)
+	v.write([]byte("primary line\r\n"))
+	v.write([]byte("\x1b[?1049h"))
+	v.write([]byte("full screen frame\r\nsecond frame line\r\n"))
+	if got := v.String(); strings.Contains(got, "primary line") {
+		t.Errorf("primary buffer leaked into the alt screen:\n%s", got)
+	}
+	if !strings.Contains(v.String(), "full screen frame") {
+		t.Errorf("alt-screen content not shown:\n%s", v.String())
+	}
+	v.write([]byte("\x1b[?1049l"))
+	after := v.String()
+	if !strings.Contains(after, "primary line") {
+		t.Errorf("primary buffer not restored after exiting the alt screen:\n%s", after)
+	}
+	for _, gone := range []string{"full screen frame", "second frame line"} {
+		if strings.Contains(after, gone) {
+			t.Errorf("alt-screen content %q survived into the primary buffer:\n%s", gone, after)
+		}
+	}
+	// A post-exit reprint lands in the restored primary buffer.
+	v.write([]byte("receipt reprint\r\n"))
+	if !strings.Contains(v.String(), "receipt reprint") {
+		t.Errorf("post-exit reprint missing:\n%s", v.String())
+	}
+}
+
 // vt is a deliberately small terminal emulator: just enough of the cursor,
-// erase, and scroll semantics to reconstruct what bubbletea's inline renderer
-// leaves visible after a run. It is not a conformance-grade VT — it handles the
-// sequences the renderer actually emits (CUU/CUD/CUF/CUB/CHA, ED, EL, CR, LF,
-// TAB, BS) and ignores styling and private-mode toggles.
+// erase, scroll, and alternate-screen semantics to reconstruct what bubbletea's
+// renderer leaves visible after a run. It is not a conformance-grade VT — it
+// handles the sequences the renderer actually emits (CUU/CUD/CUF/CUB/CHA/VPA,
+// ED, EL, CR, LF, TAB, BS, and the DECSET 1049/1047/47 alt-screen toggle) and
+// ignores styling and the other private-mode toggles.
 type vt struct {
 	rows, cols int
 	grid       [][]rune
 	scroll     []string // lines that scrolled above the viewport
 	cx, cy     int
+
+	// Alternate-screen buffer (DECSET 1049/1047/47). A full-screen program
+	// enters it on start and leaves it on exit; the primary buffer and its
+	// scrollback are saved on enter and restored on exit, so nothing the
+	// program painted survives (ADR-0021).
+	alt       bool
+	savedCx   int
+	savedCy   int
+	savedGrid [][]rune
 }
 
 func newVT(rows, cols int) *vt {
@@ -130,9 +173,21 @@ func (v *vt) escape(s string) int {
 	}
 }
 
+// altModes are the DECSET/DECRST parameters that toggle the alternate screen.
+var altModes = map[string]bool{"?1049": true, "?1047": true, "?47": true}
+
 func (v *vt) csi(final byte, params string) {
+	if altModes[params] {
+		switch final {
+		case 'h':
+			v.enterAlt()
+		case 'l':
+			v.exitAlt()
+		}
+		return
+	}
 	if strings.ContainsAny(params, "?><$") {
-		return // private modes / DECRQM: not visible content
+		return // other private modes / DECRQM: not visible content
 	}
 	n := func(def int) int {
 		if params == "" {
@@ -160,8 +215,12 @@ func (v *vt) csi(final byte, params string) {
 		v.cx = min(v.cx+n(1), v.cols-1)
 	case 'D':
 		v.cx = max(v.cx-n(1), 0)
-	case 'G':
+	case 'G', '`': // CHA / HPA — column position absolute
 		v.cx = clamp(n(1)-1, 0, v.cols-1)
+	case 'd': // VPA — line position absolute (bubbletea's per-line frame diff)
+		v.cy = clamp(n(1)-1, 0, v.rows-1)
+	case 'e': // VPR — line position relative
+		v.cy = clamp(v.cy+n(1), 0, v.rows-1)
 	case 'H', 'f':
 		row, col := 1, 1
 		if k := strings.IndexByte(params, ';'); k >= 0 {
@@ -228,7 +287,11 @@ func (v *vt) put(r rune) {
 
 func (v *vt) lineFeed() {
 	if v.cy >= v.rows-1 {
-		v.scroll = append(v.scroll, rowString(v.grid[0]))
+		if !v.alt {
+			// The alternate screen has no scrollback: content that scrolls off
+			// the top is gone, not captured (DECSET 1049).
+			v.scroll = append(v.scroll, rowString(v.grid[0]))
+		}
 		copy(v.grid, v.grid[1:])
 		v.grid[v.rows-1] = blankRow(v.cols)
 		return
@@ -236,8 +299,38 @@ func (v *vt) lineFeed() {
 	v.cy++
 }
 
+// enterAlt switches to the alternate screen: the primary grid and cursor are
+// saved, the working grid is cleared, and the cursor homes.
+func (v *vt) enterAlt() {
+	if v.alt {
+		return
+	}
+	v.savedGrid = v.grid
+	v.savedCx, v.savedCy = v.cx, v.cy
+	v.grid = make([][]rune, v.rows)
+	for i := range v.grid {
+		v.grid[i] = blankRow(v.cols)
+	}
+	v.cx, v.cy, v.alt = 0, 0, true
+}
+
+// exitAlt restores the primary screen exactly as it was before enterAlt.
+func (v *vt) exitAlt() {
+	if !v.alt {
+		return
+	}
+	if v.savedGrid != nil {
+		v.grid = v.savedGrid
+	}
+	v.cx, v.cy = v.savedCx, v.savedCy
+	v.savedGrid, v.alt = nil, false
+}
+
 func (v *vt) String() string {
-	lines := append([]string(nil), v.scroll...)
+	var lines []string
+	if !v.alt {
+		lines = append(lines, v.scroll...)
+	}
 	for _, row := range v.grid {
 		lines = append(lines, rowString(row))
 	}

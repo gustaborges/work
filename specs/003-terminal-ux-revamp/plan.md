@@ -332,6 +332,11 @@ has not merged).
 | 4 — US3 Stable selectors + US4 diagnostics (migrate resume/archive pickers; fix the archive double-render defect; the diagnostic border + cancellation notice) | `feature/003-terminal-ux-revamp-p4-us3-us4` | phase 3 tip |
 | 5 — US2 Brand home & grouped help (wordmark + gradient, responsive/plain fallback; `cobra.Group` + custom help; delete `homeModel`) | `feature/003-terminal-ux-revamp-p5-us2-brand` | phase 4 tip |
 | 6 — US5 Non-interactive compatibility sweep + polish (no-ANSI / `NO_COLOR` / `TERM=dumb` tests; F1/F2 regression; remove `internal/tui`; `huh` keep-or-drop decision) | `feature/003-terminal-ux-revamp-p6-polish` | phase 5 tip |
+| 7 — Follow-up: full-screen `present.Wizard` per flow; hash-free base selector; VT emulator alt-screen support (R21, ADR-0021) | `feature/003-terminal-ux-revamp-p7-follow-up` | phase 6 tip |
+
+Phase 7 note: the spec / contract / research / ADR edits for phase 7 live on the
+p7 branch alongside the code (p0-specs is far behind), and its PR targets
+`feature/003-terminal-ux-revamp-p6-polish` per the stacked-PR cadence.
 
 Rules (identical spirit to F1/F2):
 

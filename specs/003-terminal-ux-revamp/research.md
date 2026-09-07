@@ -39,8 +39,11 @@ exactly this: keep the stack, add the boundary.
   and external validation complicate form construction, the receipt lifecycle needs
   view hooks, and sequencing migrates into the form; it does nothing for
   resume/archive.
-- *Full-screen alternate buffer* — rejected (FR-001, ADR-0020, §11.E): erases the
-  useful history of accepted decisions and breaks shell continuity.
+- *Full-screen alternate buffer* — **adopted in phase 7** (ADR-0021, R21). Rejected
+  in the original slice because it seemed to erase the useful history of accepted
+  decisions; the phase-7 design reprints the receipt trail to the primary buffer on
+  exit, so that objection no longer holds, and a full clear+repaint every frame is
+  the only structural fix for the inline renderer's resize / back-nav ghosting.
 - *Patch only the archive bug + colours* — rejected (§11.F): leaves validation
   scars, missing receipts, retained picker frames, domain-aware APIs, and the
   unhelpful home; insufficient as the F2.5 slice.
@@ -107,11 +110,19 @@ opaque `Value` out of the renderer; the CLI maps a selected `Value` straight bac
 its domain object. Closures are the missing seam that keeps domain rules in the CLI
 while letting the active control own their transient display.
 
+Phase 7 adds `present.Wizard(ctx, IO, WizardSpec{Title, Initial, Steps})` over
+ordered `Step`s (`InputStep` / `SelectStep` / `MultiSelectStep` / `ConfirmStep`,
+each with a `build(Answers) (spec, error)` closure so a later step reads earlier
+answers); `Input` / `Select` / `MultiSelect` / `Confirm` keep their signatures as
+one-step wizards. `StepResolved(answer)` lets a build skip a step a flag already
+answered.
+
 **Alternatives considered.**
-- *One program for the whole interview* — deferred (ADR-0020; §8.5): would ease
-  backward navigation and a global screen budget, but moves sequencing into
-  presentation or needs an async session protocol. No current requirement (back-nav
-  is explicitly out of scope, FR / spec). Revisit only if that changes.
+- *One program for the whole interview* — **adopted in phase 7** (R21, ADR-0021).
+  Deferred in the original slice as only easing back-nav (still out of scope); the
+  real driver turned out to be eliminating the inline renderer's ghosting and
+  keeping accepted receipts visible above the active step. Sequencing stays in the
+  CLI via the per-step `build(Answers)` closures — no async protocol.
 - *Return a typed `Cancelled` sentinel instead of `diag.Error`* — rejected: every
   caller already switches on `diag` categories; reusing `diag.Cancelled` keeps the
   border code and the exit-code mapping untouched.
@@ -142,22 +153,25 @@ because it is the shared error vocabulary and is already domain-free.
 
 ## R4 — Step lifecycle and the final render (FR-003, FR-005, FR-007, ADD §12.2)
 
-**Decision.** Each primitive is one Bubble Tea program with explicit states:
+**Decision.** Each primitive is a `stepModel` with explicit states:
 
 ```text
 editing ──invalid──▶ editing (error replaced in-frame, one error max)
    │
-   ├──accepted──▶ completed(compact receipt) ──▶ tea.Quit
-   └──cancel────▶ cancelled(compact notice)  ──▶ tea.Quit
+   ├──accepted──▶ status.done (compact receipt)  ──▶ wizard appends receipt, advances
+   └──cancel────▶ status.cancelled               ──▶ wizard quits
 ```
 
-For `Confirm` / `MultiSelect.Confirm`: `choosing → confirming → completed`; `Esc`
+For `Confirm` / `MultiSelect.Confirm`: `choosing → confirming → done`; `Esc`
 from `confirming` returns to `choosing` (no mutation — `present` cannot mutate);
-`Ctrl-C` goes to `cancelled`. The final state is set **before** returning `tea.Quit`,
-so Bubble Tea's guaranteed graceful final render commits only the compact frame. The
-receipt is: `<title>` line, then `  ✔ <value>` (or the caller's `Receipt`), then one
-blank separator line. The cancellation notice is a single `✘ Operation cancelled`
-line (no title echo).
+`Ctrl-C` goes to `cancelled`. Phase 7: a step never calls `tea.Quit` itself — it
+reports a terminal `status()` and the enclosing `present.Wizard` drives the
+transition. The receipt is: `<title>` line, then `  ✔ <value>` (or the caller's
+`Receipt`), then one blank separator line. While the wizard runs the receipt trail
+stays visible above the active step; **the durable render is the wizard's reprint
+of that trail to the primary buffer after `?1049l` tears down the alt screen**, and
+the cancellation notice (`✘ Operation cancelled`, no title echo) is the diagnostic
+border's, printed to the restored primary buffer.
 
 **Rationale.** `temp/tui-revamp.md` §3.2/§8.4 and §6.1. `huh`'s standalone form
 returns an empty view on completion (values vanish); the hand-rolled pickers never
@@ -540,6 +554,9 @@ encodes and ADR-0019 ratifies.
 5. Brand home + grouped help (US2); delete `home.go` / `homeModel`.
 6. Non-interactive compatibility sweep (US5) + F1/F2 regression + remove
    `internal/tui` + the `huh` keep-or-drop decision (R19).
+7. **Follow-up (R21, ADR-0021):** move the three flows onto a single full-screen
+   `present.Wizard` per flow; hash-free base selector; VT emulator alt-screen
+   support. Every F1/F2 non-interactive contract stays byte-for-byte.
 
 **Rationale.** Prototype the risky final-frame behaviour before broad refactoring;
 keep each phase independently shippable and green; never compile two implementations
@@ -598,3 +615,44 @@ regression gates. The `console` PTY harness and `ansiRe` scrubber already exist.
   which is the whole point (SC-002, SC-004).
 - *Only PTY tests* — rejected: slow, `unix`-only, and poor at pinning exact geometry;
   model + golden tests give fast deterministic coverage of SC-003.
+
+---
+
+## R21 — Phase 7: one full-screen wizard per flow (ADR-0021)
+
+**Decision.** Move `work start` / `resume` / `archive` from per-step inline Bubble
+Tea programs to **one alternate-screen program per flow** — a `present.Wizard` over
+ordered `Step`s. The four primitives become a domain-free `stepModel`
+(`body(w,h)` / `status()` / `cursorPos()`); the wizard composes a `Primary` top
+rule, the flow title, the accepted-receipt trail, and the current step's body, and
+returns `tea.View{AltScreen: true}` (the only alt-screen mechanism in Bubble Tea
+v2). On exit the primary buffer is restored and the receipt trail is reprinted to
+the UI channel, ahead of the stable stdout. `Input` / `Select` / `MultiSelect` /
+`Confirm` keep their signatures as one-step wizards, so `resume.go` / `archive.go`
+need no change; only `start.go` is restructured, its F1 validation closures reused
+verbatim. The base-branch selector drops the per-row short SHA; its receipt and the
+confirm summary show the short name only.
+
+**Rationale.** Bubble Tea's inline (standard) renderer loses frame height on a
+terminal resize and on the `archive` confirm→list `Esc`-back, repainting the header
+over stale rows (the base title / `[Local] Remote` bar stacks 5–6×; the
+`deSoftWrap` test hack is the same class). A full clear+repaint every frame — which
+the alternate buffer gives for free — makes that structurally impossible. Per-step
+programs also could not keep earlier receipts on screen during the interview. The
+original rejection of the alt buffer (R1, ADR-0020 §11.E — "erases useful history")
+is answered by the post-exit reprint.
+
+**Alternatives considered.**
+- *Fix the inline renderer's height tracking* — rejected: reimplements part of
+  Bubble Tea and stays fragile per new frame transition.
+- *Keep inline steps, stack receipts manually* — rejected: does nothing for the
+  ghost in the active selector or in `archive`, and cross-program buffer splicing
+  stays unpredictable.
+- *A single non-alt full-screen form* — rejected: the renderer still strands rows
+  when a tall frame (long list) shrinks to a short one (receipt) in the current
+  buffer.
+
+**VT emulator.** `tests/integration/vt_test.go` gains alt-screen support: the
+DECSET 1049/1047/47 toggle (save/blank/restore the primary grid, no scrollback
+capture in alt mode) and VPA (`CSI n d`), which is how Bubble Tea's per-line frame
+diff repositions the cursor. A focused unit test (`TestVTAlternateScreen`) pins it.

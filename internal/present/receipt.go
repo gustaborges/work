@@ -46,5 +46,5 @@ func Receipt(th theme.Theme, title string, mark Mark, displayValue string) strin
 // ConfirmReceipt is what an accepted pre-mutation confirmation collapses to,
 // written before the command's stable stdout result (FR-030, research R7).
 func ConfirmReceipt(th theme.Theme, title string) string {
-	return fmt.Sprintf("%s %s confirmed\n", markGlyph(th, MarkSuccess), title)
+	return fmt.Sprintf("%s %s confirmed\n\n", markGlyph(th, MarkSuccess), title)
 }
