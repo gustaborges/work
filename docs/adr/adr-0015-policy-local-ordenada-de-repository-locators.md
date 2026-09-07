@@ -1,32 +1,32 @@
-# ADR-0015: Policy Local Ordenada de Repository Locators
+# ADR-0015: Ordered Local Policy of Repository Locators
 
-**Status:** Aceito
+**Status:** Accepted
 
-**Data:** 2026-08-31
+**Date:** 2026-08-31
 
-**Contexto de produto:** `docs/prd.md` — RF-40 a RF-48 e RNF-9
+**Product Context:** `docs/prd.md` — RF-40 to RF-48 and RNF-9
 
-**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seção 7.2
+**Governs:** `docs/add/add-0001-work-system-architecture.md`, Section 7.2
 
-## Contexto
+## Context
 
-Uma máquina pode ter vários mecanismos de localização, como aliases, índice corporativo e filesystem. A preferência entre esses mecanismos é uma propriedade do ambiente do usuário; prioridade no manifesto, ordem de instalação ou agregação de resultados introduziriam precedência implícita e arbitragem sem autoridade comum.
+A machine may have multiple locator mechanisms, such as aliases, corporate index, and filesystem. Preference between these mechanisms is a property of the user's environment; prioritization in the manifest, order of installation, or aggregation of results would introduce implicit precedence and arbitration without common authority.
 
-## Decisão
+## Decision
 
-Manter uma Repository Resolution Policy global, declarativa e ordenada, formada por referências qualificadas `<alias>/<component>`. A resolução percorre a policy por Chain of Responsibility: Locator inelegível é ignorado; zero matches avança; um match válido conclui; múltiplos matches válidos são escolhidos pelo usuário e encerram a chain; falha operacional interrompe a resolução. A v1 não agrega resultados, não possui scores, nem `continue_on_locator_error`.
+Maintain a global, declarative, and ordered Repository Resolution Policy formed by qualified references `<alias>/<component>`. Resolution traverses the policy by Chain of Responsibility: ineligible Locator is ignored; zero matches advances; one valid match concludes; multiple valid matches are chosen by the user and end the chain; operational failure interrupts resolution. v1 does not aggregate results, has no scores, and no `continue_on_locator_error`.
 
-Instalar ou habilitar plugin não modifica a policy. Remover um Locator da policy somente deixa de usá-lo; não cria um estado individual de habilitação. Desabilitar o plugin torna seus Locators indisponíveis, mas preserva suas posições na policy. Desinstalar plugin remove, mediante confirmação explícita, as referências afetadas na mesma alteração consistente.
+Installing or enabling a plugin does not modify the policy. Removing a Locator from the policy simply stops using it; it does not create an individual enablement state. Disabling the plugin makes its Locators unavailable, but preserves their positions in the policy. Uninstalling a plugin removes, upon explicit confirmation, the affected references in the same consistent change.
 
-A TUI e os comandos diretos são agrupados em `work repository`. A API direta usa `policy list|add|remove|move|replace` para a sequência, `locator list` para os Locators instalados e `root list|add|remove|replace` para as raízes de busca. A gramática é governada pela ADR-0017.
+The TUI and direct commands are grouped under `work repository`. The direct API uses `policy list|add|remove|move|replace` for the sequence, `locator list` for installed Locators, and `root list|add|remove|replace` for search roots. The grammar is governed by ADR-0017.
 
-## Consequências
+## Consequences
 
-O comportamento é determinístico, auditável e não muda silenciosamente quando plugins são instalados. Em contrapartida, o usuário precisa incluir e ordenar Locators de propósito, e uma falha de Locator configurado interrompe a resolução na v1.
+Behavior is deterministic, auditable, and does not change silently when plugins are installed. In exchange, the user must explicitly include and order Locators, and a failure of a configured Locator interrupts resolution in v1.
 
-## Alternativas rejeitadas
+## Rejected Alternatives
 
-* Prioridade numérica no manifesto ou ordem de instalação: seriam implícitas e instáveis.
-* Plugin oficial sempre em posição fixa: a preferência pertence ao usuário.
-* Executar todos e agregar resultados: exige arbitragem, aumenta custo e torna o resultado sensível aos plugins instalados.
-* Policies por Starter: recriam acoplamento entre origem e localização na v1.
+* Numeric priority in manifest or order of installation: would be implicit and unstable.
+* Official plugin always in fixed position: preference belongs to the user.
+* Run all and aggregate results: requires arbitration, increases cost, and makes the result sensitive to installed plugins.
+* Policies per Starter: recreate coupling between origin and location in v1.

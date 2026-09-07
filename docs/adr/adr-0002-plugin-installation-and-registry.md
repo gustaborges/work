@@ -1,40 +1,40 @@
-# ADR-0002: Instalação de Plugins, Registro Gerado e Separação de Config/Estado
+# ADR-0002: Plugin Installation, Generated Registry, and Config/State Separation
 
-**Status:** Aceito
-**Data:** 2026-08-23
-**Contexto de produto:** `docs/prd.md` — RF-16, RF-17, RF-20, RF-21, RNF-2, RNF-5
-**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seção 5
+**Status:** Accepted
+**Date:** 2026-08-23
+**Product Context:** `docs/prd.md` — RF-16, RF-17, RF-20, RF-21, RNF-2, RNF-5
+**Governs:** `docs/add/add-0001-work-system-architecture.md`, Section 5
 
-## Contexto
+## Context
 
-Sem um mecanismo de instalação definido, o fluxo implícito exigiria copiar arquivos manualmente e editar configuração central à mão — o oposto de RNF-2. Falta também uma separação entre config editada por humano e estado gerenciado pela ferramenta (RNF-5).
+Without a defined installation mechanism, the implicit flow would require copying files manually and editing central configuration by hand — the opposite of RNF-2. There is also a lack of separation between configuration edited by humans and state managed by the tool (RNF-5).
 
-## Decisão
+## Decision
 
-Origens remotas e caminhos locais alimentam o mesmo registro:
+Remote origins and local paths feed the same registry:
 
-* Instalar a partir de uma origem remota — clona o pacote, fixando uma referência de conteúdo no momento da instalação.
-* Instalar a partir de um caminho local — fixa uma cópia do conteúdo pelo mesmo pipeline.
-* Com `--link`, um caminho local pode ser vinculado, sem copiar, para desenvolvimento ativo; a opção é inválida para origem remota.
+* Install from a remote origin — clones the package, fixing a content reference at installation time.
+* Install from a local path — fixes a copy of the content through the same pipeline.
+* With `--link`, a local path can be linked, without copying, for active development; the option is invalid for remote origin.
 
-**Nome local e colisão de alias.** O nome usado no registro funciona como o alias que o usuário digita nos demais comandos de gestão de plugin (RF-17 a RF-21). Por padrão, a instalação usa o `name` declarado no manifesto do pacote (ADR-0012) como esse alias. Como esse campo é escolhido pelo autor do pacote sem nenhuma coordenação entre autores, dois pacotes de fontes diferentes podem propor o mesmo `name` — a garantia de unicidade não vem do manifesto, vem do registro local do usuário:
+**Local name and alias collision.** The name used in the registry serves as the alias the user types in other plugin management commands (RF-17 to RF-21). By default, installation uses the `name` declared in the package manifest (ADR-0012) as that alias. Since this field is chosen by the package author without coordination between authors, two packages from different sources may propose the same `name` — the guarantee of uniqueness does not come from the manifest, it comes from the user's local registry:
 
-* Se o alias resultante já existe no registro apontando para uma origem diferente, a instalação **falha** com uma mensagem explícita apontando o conflito (RF-21), em vez de sobrescrever ou auto-sufixar silenciosamente — auto-sufixo silencioso violaria RNF-3, já que o mesmo alias passaria a apontar para fontes diferentes em máquinas diferentes dependendo da ordem de instalação.
-* O usuário resolve escolhendo explicitamente um alias alternativo para aquele pacote. Reinstalar a mesma origem sob o mesmo alias já existente é idempotente, não é conflito.
-* Essa unicidade é sempre **local** ao registro do usuário, nunca global — é a mesma garantia que já existe para clonar dois repositórios git: não há como ter dois diretórios com o mesmo nome sem renomear um.
+* If the resulting alias already exists in the registry pointing to a different origin, the installation **fails** with an explicit message indicating the conflict (RF-21), rather than overwriting or silently auto-suffixing — silent auto-suffix would violate RNF-3, since the same alias would then point to different sources on different machines depending on installation order.
+* The user resolves this by explicitly choosing an alternative alias for that package. Reinstalling the same origin under the same existing alias is idempotent, not a conflict.
+* This uniqueness is always **local** to the user's registry, never global — it is the same guarantee that already exists for cloning two git repositories: there is no way to have two directories with the same name without renaming one.
 
-**Referência a componente individual.** Comandos que apontam para um componente específico aceitam o nome nu do componente quando ele é único entre os componentes habilitados; em colisão de nome entre pacotes diferentes, a referência é qualificada por pacote (esquema exato em `add-0001` §4).
+**Reference to individual component.** Commands that point to a specific component accept the bare component name when it is unique among enabled components; on name collision between different packages, the reference is qualified by package (exact schema in `add-0001` §4).
 
-A instalação separa, no layout de diretórios, config (editado por humano) de estado (gerado pela ferramenta) — layout completo em `add-0001` §5. O registro em si vive inteiramente no estado gerado, nunca editado à mão. Listar plugins instalados (RF-17) e desinstalar (RF-20) são comandos diretos de primeira classe, usáveis em CI/dotfiles sem depender da TUI de gestão descrita no ADD. Conforme ADR-0015, a policy de Repository Locators é configuração declarativa do usuário: instalação e habilitação não a alteram; ao desinstalar um plugin cujos Locators estejam nela, o Work exige tratamento explícito e remove as referências confirmadas na mesma alteração consistente. A sintaxe pública de instalação e gestão é governada pela ADR-0017.
+The installation separates, in the directory layout, configuration (edited by humans) from state (generated by the tool) — full layout in `add-0001` §5. The registry itself lives entirely in the generated state, never edited by hand. Listing installed plugins (RF-17) and uninstalling (RF-20) are direct first-class commands, usable in CI/dotfiles without relying on the TUI management described in the ADD. Following ADR-0015, the Repository Locators policy is user declarative configuration: installation and enablement do not alter it; when uninstalling a plugin whose Locators are in it, Work requires explicit handling and removes the confirmed references in the same consistent change. The public syntax for installation and management is governed by ADR-0017.
 
-## Alternativas consideradas
+## Alternatives Considered
 
-* **Config central editada à mão** — rejeitada: é a causa direta do gap descrito no Contexto e uma superfície de erro (usuário pode digitar errado um campo sem que nada valide contra o que o plugin de fato faz).
-* **Auto-sufixar alias em colisão** (ex.: instalar automaticamente como `plugin-2`) — rejeitada: o sufixo dependeria da ordem de instalação, tornando o alias não-determinístico entre máquinas/execuções diferentes (viola RNF-3); pedir uma escolha explícita é mais verboso mas reprodutível.
-* **Nome canônico sempre derivado da URL de origem** (em vez de alias curto) — rejeitada como padrão: resolve unicidade por construção, mas é verboso para o uso diário; fica disponível como sugestão natural quando uma escolha explícita é necessária, não como comportamento padrão.
+* **Central configuration edited by hand** — rejected: is the direct cause of the gap described in Context and an error surface (user can mistype a field with nothing validating it against what the plugin actually does).
+* **Auto-suffix alias on collision** (e.g., automatically install as `plugin-2`) — rejected: the suffix would depend on installation order, making the alias non-deterministic across machines/runs (violates RNF-3); asking for an explicit choice is more verbose but reproducible.
+* **Canonical name always derived from origin URL** (instead of short alias) — rejected as a default: solves uniqueness by construction, but is verbose for daily use; remains available as a natural suggestion when an explicit choice is needed, not as default behavior.
 
-## Consequências
+## Consequences
 
-**Positivas:** instalação é uma ação de primeira classe, auditável e scriptável; fronteira clara entre config e estado.
+**Positive:** installation is a first-class, auditable, and scriptable action; clear boundary between configuration and state.
 
-**Negativas / trade-offs:** mais um subsistema (registro + convenção de diretório) para construir e manter sincronizado — mitigado por ter uma única fonte de verdade (nunca estado duplicado entre o registro e os arquivos em disco).
+**Negative / trade-offs:** one more subsystem (registry + directory convention) to build and keep synchronized — mitigated by having a single source of truth (never duplicated state between the registry and files on disk).

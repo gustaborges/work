@@ -1,32 +1,32 @@
-# ADR-0000: Modelo de Execução de Plugins — Subprocessos Externos com Contrato Padronizado, Não Biblioteca In-Process
+# ADR-0000: Plugin Execution Model — External Subprocesses with Standardized Contract, Not In-Process Library
 
-**Status:** Aceito
-**Data:** 2026-08-23
-**Contexto de produto:** `docs/prd.md` — RNF-1, RNF-2, RNF-7, RF-22
+**Status:** Accepted
+**Date:** 2026-08-23
+**Product Context:** `docs/prd.md` — RNF-1, RNF-2, RNF-7, RF-22
 
-## Contexto
+## Context
 
-O PRD estabelece que, fora o Git, o núcleo não embute conhecimento de nenhuma ferramenta específica (RNF-1, RNF-2, RF-22): "o núcleo só conhece contratos e executáveis externos — a única invocação direta e interna é o próprio Git" é uma decisão arquitetural que decorre desse princípio, não um requisito de produto em si — por isso vive aqui, não no PRD. Esta ADR dá a essa decisão o registro formal que as demais ADRs deste conjunto (0001 em diante) já assumem como premissa.
+The PRD establishes that, except for Git, the core embeds no knowledge of any specific tool (RNF-1, RNF-2, RF-22): "the core knows only contracts and external executables — the only direct and internal invocation is Git itself" is an architectural decision that follows from this principle, not a product requirement in itself — therefore it lives here, not in the PRD. This ADR gives that decision the formal record that the other ADRs in this set (0001 onwards) already assume as a premise.
 
-O problema de fundo: como o Work deve executar a lógica de domínio de um plugin (interpretar um argumento, enriquecer contexto, relacionar recursos externos) sem que um bug ou comportamento malicioso desse plugin comprometa a estabilidade ou a segurança do núcleo?
+The underlying problem: how should Work execute a plugin's domain logic (interpret an argument, enrich context, relate external resources) without a bug or malicious behavior in that plugin compromising the stability or security of the core?
 
-## Decisão
+## Decision
 
-O `git` é a única ferramenta que o núcleo do Work invoca diretamente, in-process. Todo o restante do comportamento de domínio que envolve lógica — qualquer plugin que cumpra o papel de Starter, Importer ou Linker — roda como um processo externo, separado do processo do Work, comunicando-se por um contrato de entrada e saída bem definido e publicamente documentado. O núcleo nunca importa, carrega ou executa código de plugin dentro do seu próprio processo.
+`git` is the only tool that the Work core invokes directly, in-process. All other domain behavior involving logic — any plugin fulfilling the role of Starter, Importer, or Linker — runs as an external process, separate from the Work process, communicating via a well-defined and publicly documented input-output contract. The core never imports, loads, or executes plugin code within its own process.
 
-Uma contribuição de plugin sem lógica alguma — o catálogo de convenções de branch (ADR-0012) — não se enquadra nessa decisão por não ter comportamento de domínio a executar: é dado estático do manifesto, não um processo. A decisão aqui registrada é sobre como o Work roda o que precisa ser executado, não uma exigência de que toda contribuição de plugin seja executável.
+A plugin contribution with no logic at all — the branch convention catalog (ADR-0012) — does not fall under this decision because it has no domain behavior to execute: it is static manifest data, not a process. The decision recorded here is about how Work runs what needs to be executed, not a requirement that every plugin contribution be executable.
 
-Os detalhes concretos do contrato (formato do payload, transporte, convenção de código de saída) estão descritos em `docs/add/add-0001-work-system-architecture.md`, Seção 11 — esta ADR registra apenas a decisão de que a execução é sempre por processo externo, não a mecânica exata dessa comunicação.
+The concrete details of the contract (payload format, transport, exit code convention) are described in `docs/add/add-0001-work-system-architecture.md`, Section 11 — this ADR records only the decision that execution is always via external process, not the exact mechanics of that communication.
 
-Essa escolha é o que torna possível a neutralidade de linguagem decidida em ADR-0006: um modelo de execução in-process amarraria necessariamente os plugins à linguagem/runtime do núcleo.
+This choice is what makes possible the language neutrality decided in ADR-0006: an in-process execution model would necessarily tie plugins to the core's language/runtime.
 
-## Alternativas consideradas
+## Alternatives Considered
 
-* **Plugin in-process, carregado como biblioteca/extensão dentro do processo do Work** (modelo VS Code). Rejeitada: um plugin com bug ou comportamento malicioso derruba ou compromete o próprio processo do Work, e amplia a superfície de código que o usuário precisa confiar sem revisão — o oposto direto de RNF-7. Esse modelo também amarraria plugins à linguagem/runtime do núcleo, o que um levantamento de precedentes de mercado (git subcommands, credential helpers, LSP, `asdf`, `gh extension`, Terraform) mostra não ser necessário: toda ferramenta cujo modelo é "protocolo + subprocesso externo" é agnóstica de linguagem por design — a única exceção observada (VS Code) é justamente o modelo aqui rejeitado.
-* **Plugins compilados/linkados estaticamente no binário do Work.** Rejeitada: exigiria recompilar e republicar o próprio Work para adicionar um plugin de terceiro, o oposto de RNF-2 (extensibilidade sem fricção) e RF-22.
+* **In-process plugin, loaded as library/extension within the Work process** (VS Code model). Rejected: a buggy or malicious plugin crashes or compromises the Work process itself, and expands the surface of code that the user must trust without review — the direct opposite of RNF-7. This model would also tie plugins to the core's language/runtime, which a survey of market precedents (git subcommands, credential helpers, LSP, `asdf`, `gh extension`, Terraform) shows is unnecessary: every tool whose model is "protocol + external subprocess" is language-agnostic by design — the only observed exception (VS Code) is precisely the model rejected here.
+* **Plugins compiled/linked statically into the Work binary.** Rejected: would require recompiling and republishing Work itself to add a third-party plugin, the opposite of RNF-2 (friction-free extensibility) and RF-22.
 
-## Consequências
+## Consequences
 
-**Positivas:** um plugin com bug nunca derruba o processo do Work; a superfície de código que o usuário precisa auditar sem revisão fica restrita ao núcleo; nenhuma amarração de linguagem é imposta a quem escreve um plugin (ver ADR-0006).
+**Positive:** a buggy plugin never crashes the Work process; the surface of code the user must audit without review stays limited to the core; no language tie-in is imposed on plugin authors (see ADR-0006).
 
-**Negativas / trade-offs:** cada invocação de plugin paga o custo de criação de um processo separado — aceitável porque essas invocações acontecem em pontos discretos do fluxo (início de um Work, hooks de finalização), nunca em um loop quente.
+**Negative / trade-offs:** each plugin invocation pays the cost of spawning a separate process — acceptable because these invocations happen at discrete points in the flow (start of a Work, finalization hooks), never in a hot loop.

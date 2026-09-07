@@ -1,33 +1,33 @@
-# ADR-0017: Superfície CLI Progressiva e Consistente
+# ADR-0017: Progressive and Consistent CLI Surface
 
 **Status:** Superseded by ADR-0019
 
-**Substituída por:** ADR-0019 — Superfície CLI Progressiva com Home Estática e Ajuda Agrupada
+**Superseded by:** ADR-0019 — Progressive CLI Surface with Static Home and Grouped Help
 
-**Data:** 2026-09-04
+**Date:** 2026-09-04
 
-**Contexto de produto:** `docs/prd.md` — jornadas 7.1 a 7.7, RF-11 a RF-20, RF-25, RF-30, RF-31, RF-38, RF-45, RF-50 a RF-52 e RNF-10
+**Product context:** `docs/prd.md` — journeys 7.1 to 7.7, RF-11 to RF-20, RF-25, RF-30, RF-31, RF-38, RF-45, RF-50 to RF-52, and RNF-10
 
-**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seções 5, 6, 7.2, 8 e 12
+**Governs:** `docs/add/add-0001-work-system-architecture.md`, Sections 5, 6, 7.2, 8, and 12
 
-## Contexto
+## Context
 
-O Work delega escolhas difíceis à TUI para que iniciar, retomar e encerrar trabalho não exija memorizar uma árvore de comandos. A superfície proposta, porém, usava gramáticas diferentes em cada área administrativa: `policy` sem verbo, `locator list`, `roots list`, `plugin outdated`, `plugin update <nome>` e `convention set`. Reduzir toda a árvore à força produziria muitos comandos de topo ou flags que funcionariam como verbos, trocando profundidade sintática por ambiguidade.
+Work delegates difficult choices to the TUI so that starting, resuming, and archiving work does not require memorizing a command tree. The proposed surface, however, used different grammars in each administrative area: `policy` without a verb, `locator list`, `roots list`, `plugin outdated`, `plugin update <name>`, and `convention set`. Forcing the entire tree into uniformity would produce either many top-level commands or flags that function as verbs, trading syntactic depth for ambiguity.
 
-É necessário separar a linguagem humana, descoberta por reconhecimento, da API direta usada por scripts, mantendo ambas sobre as mesmas operações.
+It is necessary to separate human language, discovered through recognition, from the direct API used by scripts, keeping both grounded in the same operations.
 
-## Decisão
+## Decision
 
-Adotar **baixa profundidade de lembrança**, não profundidade sintática zero:
+Adopt **low recall depth**, not zero syntactic depth:
 
-* `work` sem argumentos abre uma home TUI da qual todas as jornadas são alcançáveis.
-* Os comandos cotidianos ficam no primeiro nível: `start`, `resume`, `archive`, `status`, `import` e `link`.
-* `plugin`, `repository` e `convention` são hubs interativos. Sem subcomando, mostram a TUI do domínio e tornam visível o comando direto equivalente à operação concluída.
-* Subcomandos administrativos formam a API de automação e seguem `work <caminho de recursos> <verbo>`: o verbo vem por último e cada termo anterior é um recurso no singular. Leitura usa `list` para coleções e `show` para um valor; `replace` substitui uma lista inteira.
-* Não existem aliases oficiais para comandos ou recursos. Completion reduz digitação sem duplicar o vocabulário público.
-* `work init` não faz parte da API pública. Bootstrap e configuração inicial acontecem sob demanda; configuração posterior é alcançável pelos hubs TUI.
+* `work` without arguments opens a TUI home from which all journeys are reachable.
+* Everyday commands stay at the first level: `start`, `resume`, `archive`, `status`, `import`, and `link`.
+* `plugin`, `repository`, and `convention` are interactive hubs. Without a subcommand, they show the domain TUI and make visible the direct command equivalent to the completed operation.
+* Administrative subcommands form the automation API and follow `work <resource path> <verb>`: the verb comes last and each preceding term is a resource in the singular. Reading uses `list` for collections and `show` for a single value; `replace` substitutes an entire list.
+* No official aliases exist for commands or resources. Completion reduces typing without duplicating the public vocabulary.
+* `work init` is not part of the public API. Bootstrap and initial configuration happen on demand; later configuration is reachable through the TUI hubs.
 
-### Superfície humana
+### Human surface
 
 ```text
 work
@@ -42,9 +42,9 @@ work repository
 work convention
 ```
 
-Sem alvo e com terminal interativo, `start`, `resume`, `archive`, `import` e `link` coletam ou oferecem as escolhas necessárias na TUI. Alvos explícitos pulam a seleção correspondente. `status` sem alvo usa o Work associado ao diretório corrente; fora de um Work exige alvo. Em stdin não interativo, qualquer valor obrigatório ausente falha com uso acionável, sem tentar abrir TUI.
+Without a target and with an interactive terminal, `start`, `resume`, `archive`, `import`, and `link` collect or offer necessary choices in the TUI. Explicit targets skip the corresponding selection. `status` without a target uses the Work associated with the current directory; outside a Work it requires a target. On non-interactive stdin, any missing required value fails with actionable usage, without attempting to open the TUI.
 
-### API direta
+### Direct API
 
 ```text
 work plugin list
@@ -72,28 +72,28 @@ work convention show
 work convention set <CONVENTION>
 ```
 
-`plugin update --check` é somente leitura; sem plugins explícitos, verifica todos os instalados. `plugin update` sem alvo abre a seleção interativa; com nomes explícitos atualiza aqueles plugins; `--all` atualiza todos os desatualizados após confirmação. `--check` e `--all` são mutuamente exclusivos.
+`plugin update --check` is read-only; without explicit plugins, it checks all installed ones. `plugin update` without a target opens interactive selection; with explicit names it updates those plugins; `--all` updates all outdated ones after confirmation. `--check` and `--all` are mutually exclusive.
 
-`plugin install <SOURCE>` aceita origem remota ou caminho local. `--link` exige caminho local e escolhe o vínculo de desenvolvimento em vez de uma instalação fixada; a flag descreve o efeito, não apenas a origem.
+`plugin install <SOURCE>` accepts remote origin or local path. `--link` requires a local path and chooses the development link instead of a pinned installation; the flag describes the effect, not just the origin.
 
-### Semântica transversal
+### Transverse semantics
 
-* Flags modificam operações; `add`, `remove`, `move`, `replace`, `install` e `uninstall` permanecem verbos.
-* `--yes` confirma impactos já determinados e nunca escolhe alvo, modo ou valor em nome do usuário.
-* Comandos de leitura (`status`, `list`, `show` e `update --check`) não alteram acesso recente, configuração, checkout ou proveniência.
-* Todo comando de leitura aceita `--json`. Mutações têm saída e códigos de saída estáveis para automação.
-* `remove` retira um item de uma coleção; `uninstall` remove um pacote; `archive` encerra um Work preservando seu estado; `replace` substitui uma coleção completa.
+* Flags modify operations; `add`, `remove`, `move`, `replace`, `install`, and `uninstall` remain verbs.
+* `--yes` confirms already-determined impacts and never chooses target, mode, or value on the user's behalf.
+* Read commands (`status`, `list`, `show`, and `update --check`) do not alter recent access, configuration, checkout, or provenance.
+* Every read command accepts `--json`. Mutations have stable output and exit codes for automation.
+* `remove` takes an item out of a collection; `uninstall` removes a package; `archive` ends a Work preserving its state; `replace` substitutes an entire collection.
 
-## Alternativas consideradas
+## Alternatives considered
 
-* **Manter a superfície anterior.** Rejeitada porque cada ramo exigia aprender defaults, pluralização e verbos diferentes.
-* **Achatar toda operação em comandos de topo.** Rejeitada por poluir o vocabulário cotidiano e apagar a relação entre recurso e operação.
-* **Expressar mutações administrativas por flags.** Rejeitada porque flags como `--add-root` e `--remove-locator` funcionariam como verbos disfarçados, com composição e ajuda piores.
-* **Oferecer aliases curtos como `repo`.** Rejeitada porque completion resolve o custo de digitação e um segundo nome aumenta a superfície reconhecível e documentável.
-* **Manter `work view` apenas para links.** Rejeitada porque `view` não informa o que será exibido e limita a evolução natural de um resumo do Work. `work status` inclui estado de núcleo e links sem executar extensões.
+* **Keep the previous surface.** Rejected because each branch required learning different defaults, pluralization, and verbs.
+* **Flatten every operation into top-level commands.** Rejected for polluting everyday vocabulary and erasing the relationship between resource and operation.
+* **Express administrative mutations through flags.** Rejected because flags like `--add-root` and `--remove-locator` would function as disguised verbs, with worse composition and help.
+* **Offer short aliases like `repo`.** Rejected because completion resolves typing cost and a second name expands the recognizable and documentable surface.
+* **Keep `work view` only for links.** Rejected because `view` does not convey what will be displayed and limits the natural evolution of a Work summary. `work status` includes core state and links without running extensions.
 
-## Consequências
+## Consequences
 
-**Positivas:** uma pessoa pode esquecer toda a árvore e se recuperar com `work`; comandos cotidianos permanecem rasos; a API não interativa ganha gramática regular e saídas estáveis; a TUI ensina a CLI por reconhecimento.
+**Positive:** a person can forget the entire tree and recover with `work`; everyday commands remain shallow; the non-interactive API gains regular grammar and stable outputs; the TUI teaches the CLI through recognition.
 
-**Negativas / trade-offs:** operações administrativas podem chegar a três níveis depois de `work`; `work view`, `plugin outdated`, `repository roots` e `work init` deixam de existir antes da v1, exigindo que documentação e completion usem somente as formas canônicas.
+**Negative / trade-offs:** administrative operations may reach three levels after `work`; `work view`, `plugin outdated`, `repository roots`, and `work init` cease to exist before v1, requiring documentation and completion to use only canonical forms.

@@ -1,36 +1,54 @@
-# ADR-0019: Superfície CLI Progressiva com Home Estática e Ajuda Agrupada
+# ADR-0019: Progressive CLI Surface with Static Home and Grouped Help
 
-**Status:** Aceito
+**Status:** Accepted
 
-**Data:** 2026-09-07
+**Date:** 2026-09-07
 
-**Substitui:** ADR-0017 — Superfície CLI Progressiva e Consistente
+**Supersedes:** ADR-0017 — Progressive and Consistent CLI Surface
 
-**Contexto de produto:** `docs/prd.md` — jornadas 7.1 a 7.7, RF-11 a RF-20, RF-25, RF-30, RF-31, RF-38, RF-45, RF-50 a RF-64 e RNF-10 a RNF-11
+**Product context:** `docs/prd.md` — journeys 7.1 to 7.7, RF-11 to RF-20, RF-25, RF-30, RF-31, RF-38, RF-45, RF-50 to RF-64, and RNF-10 to RNF-11
 
-**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seções 5, 6, 7.2, 8 e 12
+**Governs:** `docs/add/add-0001-work-system-architecture.md`, Sections 5, 6, 7.2, 8, and 12
 
-**Realizada por:** `docs/add/add-0001-work-system-architecture.md` §12
+**Realized by:** `docs/add/add-0001-work-system-architecture.md` §12
 
-## Contexto
+## Context
 
-A ADR-0017 estabeleceu corretamente uma superfície humana rasa, hubs interativos para administração e uma API direta regular. Sua home selecionável, porém, mistura descoberta com execução: retém um quadro interativo grande no histórico, duplica o inventário vivo de comandos e exige um fluxo de seleção até para quem precisa apenas recordar a sintaxe.
+ADR-0017 correctly established a shallow human surface, interactive hubs for administration,
+and a regular direct API. Its selectable home, however, mixes discovery with execution: it
+retains a large interactive frame in the history, duplicates the live command inventory, and
+requires a selection flow even for those who merely need to recall the syntax.
 
-O objetivo de produto permanece o mesmo — recuperar-se sem memorizar a árvore de comandos — mas a home TUI deixou de ser o mecanismo adequado. O Work precisa apresentar identidade própria, encaminhar para uma ajuda completa e manter cada jornada diretamente invocável, sem desfazer a gramática e as garantias de automação já aceitas.
+The product objective remains the same — recover without memorizing the command tree — but
+the home TUI is no longer the appropriate mechanism. Work needs to present its own identity,
+direct users to complete help, and keep each journey directly invocable, without undoing the
+grammar and automation guarantees already accepted.
 
-## Decisão
+## Decision
 
-Manter a gramática, os comandos cotidianos, os hubs administrativos e a semântica transversal da ADR-0017, substituindo apenas a decisão de home:
+Maintain the grammar, everyday commands, administrative hubs, and cross-cutting semantics
+of ADR-0017, replacing only the home decision:
 
-* Em terminal interativo, `work` sem argumentos renderiza uma saída estática com o wordmark `WORK` em arte de terminal, tagline e orientação para `work --help`; não abre seletor e sai 0.
-* Em terminais com cor verdadeira e contraste adequado, o wordmark usa um degradê do acento primário `#11A8CD` ao secundário `#8B7CF6`. Saídas estreitas, monocromáticas ou não interativas usam `WORK` em forma compacta e legível.
-* `work --help` é a fonte de descoberta: inclui marca, uso, opções e exatamente os comandos registrados no binário, agrupados por contexto. Grupos vazios e comandos ainda não implementados não aparecem.
-* A taxonomia mínima distingue comandos cotidianos/globais, comandos dependentes de um Work materializado, administração e setup/plumbing. A classificação não altera a gramática dos comandos.
-* Em modo não interativo, `work` sem argumentos preserva a falha de uso e o código 2; `work --help` sai 0. Nenhum dos dois caminhos emite controles interativos quando as streams relevantes não são TTYs.
-* Permanecem válidos os comandos cotidianos `start`, `resume`, `archive`, `status`, `import` e `link`; os hubs interativos `plugin`, `repository` e `convention`; a ausência de aliases; a pureza de leituras; `--json`; `--yes`; e os contratos estáveis de stdout, erro e código de saída.
-* Toda jornada pública continua diretamente invocável por comando documentado. A home e a ajuda facilitam reconhecimento; não se tornam um caminho de execução alternativo.
+* In an interactive terminal, `work` without arguments renders static output with the `WORK`
+  terminal art wordmark, tagline, and direction to `work --help`; does not open a selector
+  and exits 0.
+* On terminals with true color and adequate contrast, the wordmark uses a gradient from the
+  primary accent `#11A8CD` to the secondary `#8B7CF6`. Narrow, monochromatic, or non-interactive
+  outputs use `WORK` in compact, legible form.
+* `work --help` is the source of discovery: includes mark, usage, options, and exactly the
+  commands registered in the binary, grouped by context. Empty groups and unimplemented commands
+  do not appear.
+* The minimal taxonomy distinguishes everyday/global commands, commands dependent on a materialized
+  Work, administration, and setup/plumbing. The classification does not alter the grammar of commands.
+* In non-interactive mode, `work` without arguments preserves the usage failure and exit code 2;
+  `work --help` exits 0. Neither path emits interactive controls when relevant streams are not TTYs.
+* Remain valid the everyday commands `start`, `resume`, `archive`, `status`, `import`, and `link`;
+  the interactive hubs `plugin`, `repository`, and `convention`; the absence of aliases; the purity
+  of reads; `--json`; `--yes`; and the stable contracts of stdout, error, and exit code.
+* Every public journey remains directly invocable by documented command. Home and help facilitate
+  recognition; they do not become an alternate execution path.
 
-### Superfície humana preservada
+### Preserved human surface
 
 ```text
 work
@@ -46,9 +64,12 @@ work repository
 work convention
 ```
 
-Sem alvo e com terminal interativo, `start`, `resume`, `archive`, `import` e `link` coletam ou oferecem as escolhas necessárias. Alvos explícitos pulam somente a seleção correspondente. `status` sem alvo usa o Work associado ao diretório corrente. Em uso não interativo, valor obrigatório ausente falha com uso acionável, sem abrir controles interativos.
+Without a target and with an interactive terminal, `start`, `resume`, `archive`, `import`, and
+`link` collect or offer the necessary choices. Explicit targets skip only the corresponding selection.
+`status` without a target uses the Work associated with the current directory. In non-interactive use,
+missing mandatory value fails with actionable usage, without opening interactive controls.
 
-### API direta preservada
+### Preserved direct API
 
 ```text
 work plugin list
@@ -76,17 +97,30 @@ work convention show
 work convention set <CONVENTION>
 ```
 
-Os termos anteriores ao verbo continuam sendo recursos no singular; leituras usam `list` para coleções e `show` para um valor; `replace` substitui uma coleção completa. `plugin update --check` é somente leitura; `plugin update` sem alvo abre seleção; nomes explícitos ou `--all` determinam o conjunto a atualizar, com confirmação aplicável. `plugin install --link` exige caminho local. `work init` e aliases continuam fora da API pública.
+Terms before the verb continue to be resources in the singular; reads use `list` for collections
+and `show` for a single value; `replace` replaces an entire collection. `plugin update --check`
+is read-only; `plugin update` without a target opens selection; explicit names or `--all` determine
+the set to update, with applicable confirmation. `plugin install --link` requires a local path.
+`work init` and aliases continue outside the public API.
 
-## Alternativas consideradas
+## Alternatives considered
 
-* **Manter a home TUI e corrigir apenas seu quadro final.** Rejeitada porque continuaria duplicando descoberta e execução, além de exigir interação para consultar o produto.
-* **Fazer a home estática listar todos os comandos.** Rejeitada porque duplicaria o inventário que já pertence à ajuda e poderia divergir dele.
-* **Imprimir apenas a ajuda completa em `work`.** Rejeitada porque uma entrada curta preserva identidade e orientação sem despejar informação quando o usuário apenas testa o comando.
-* **Alterar junto a gramática administrativa.** Rejeitada porque o problema observado não invalida a baixa profundidade de lembrança nem os verbos e recursos já aceitos.
+* **Keep the home TUI and fix only its final frame.** Rejected because it would continue duplicating
+  discovery and execution, and require interaction to consult the product.
+* **Make the static home list all commands.** Rejected because it would duplicate the inventory
+  that already belongs to help and could diverge from it.
+* **Print only the complete help on `work`.** Rejected because a brief entry preserves identity
+  and orientation without dumping information when the user merely tests the command.
+* **Alter the administrative grammar along with it.** Rejected because the observed problem does
+  not invalidate the shallow depth of recall or the verbs and resources already accepted.
 
-## Consequências
+## Consequences
 
-**Positivas:** descoberta e execução ficam separadas; a ajuda não anuncia comandos inexistentes; o comando vazio deixa histórico curto; a identidade visual aparece sem introduzir uma segunda árvore de navegação; scripts preservam o comportamento detectável do comando vazio.
+**Positive:** discovery and execution are separated; help does not announce non-existent commands;
+the empty command leaves short history; visual identity appears without introducing a second
+navigation tree; scripts preserve the detectable behavior of the empty command.
 
-**Negativas / trade-offs:** iniciar uma jornada a partir do comando vazio exige consultar a ajuda e executar o comando indicado; a renderização de marca precisa de formas responsivas e sem cor; documentação F1/F2 que descreve a antiga home permanece histórica e deve ser explicitamente supersedida pelo contrato desta feature.
+**Negative / trade-offs:** starting a journey from the empty command requires consulting help and
+executing the indicated command; brand rendering needs responsive forms without color; F1/F2
+documentation describing the old home remains historical and must be explicitly superseded by
+the contract of this feature.

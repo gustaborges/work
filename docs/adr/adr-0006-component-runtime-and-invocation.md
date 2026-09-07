@@ -1,29 +1,29 @@
-# ADR-0006: Tecnologia e Modelo de Invocação de Componentes
+# ADR-0006: Component Runtime Technology and Invocation Model
 
-**Status:** Aceito
-**Data:** 2026-08-23
-**Contexto de produto:** `docs/prd.md` — RNF-2, RNF-6
-**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seção 11
+**Status:** Accepted
+**Date:** 2026-08-23
+**Product Context:** `docs/prd.md` — RNF-2, RNF-6
+**Governs:** `docs/add/add-0001-work-system-architecture.md`, Section 11
 
-## Contexto
+## Context
 
-O produto promete que qualquer pessoa deve poder escrever um plugin sem depender de um merge no repositório do Work (RNF-2); RNF-6 exige portabilidade entre os sistemas operacionais suportados. O modelo de execução por processo externo (ADR-0000) já é o que torna a neutralidade de linguagem possível — falta decidir como o núcleo efetivamente invoca um processo escrito em uma linguagem arbitrária de forma portátil.
+The product promises that anyone should be able to write a plugin without depending on a merge in the Work repository (RNF-2); RNF-6 requires portability across supported operating systems. The external process execution model (ADR-0000) is already what makes language neutrality possible — what remains is to decide how the core effectively invokes a process written in an arbitrary language in a portable way.
 
-## Decisão
+## Decision
 
-* Nenhuma restrição de linguagem/stack é imposta a um plugin. Restringir a binários autocontidos foi considerado e rejeitado: não compra segurança nenhuma (um binário malicioso é tão perigoso quanto um script malicioso — restringir stack é controle de portabilidade, não de segurança) e excluiria o autor mais provável de um plugin simples, que prefere uma linguagem de script a aprender uma nova linguagem só para publicar uma integração pequena.
-* O manifesto (ADR-0012) declara opcionalmente qual interpretador um componente precisa (ex: `python3`, `node`, `sh`; ausente significa executável autocontido).
-* O Work **nunca** depende de shebang ou do bit de execução do sistema operacional para escolher o interpretador — invoca explicitamente o interpretador declarado sobre o entrypoint quando ele existe, ou o entrypoint diretamente quando ausente. Isso é um requisito de portabilidade, não estilo: linhas de shebang não são interpretadas pela criação de processo do Windows — depender delas quebraria silenciosamente todo plugin em linguagem interpretada (provável maioria do ecossistema) em um SO suportado (RNF-6).
-* A presença do interpretador declarado é checada em preflight (na instalação/antes da primeira invocação): se ele não existe no `PATH`, o Work falha com uma mensagem específica e acionável, em vez de deixar o subprocesso falhar de forma críptica.
-* Um modelo de detecção automática entre binário pré-compilado por plataforma e script interpretado via shebang (visto em outras ferramentas de extensão de CLI) foi avaliado e não adotado tal qual: ele resolve um problema diferente (escolher entre múltiplos *artefatos* de release para a mesma extensão lógica, por plataforma), e seu modo interpretado ainda depende de shebang + bit de execução — exatamente o mecanismo evitado aqui por causa do Windows.
+* No language/stack restrictions are imposed on a plugin. Restricting to self-contained binaries was considered and rejected: it buys no security (a malicious binary is as dangerous as a malicious script — restricting stack is portability control, not security) and would exclude the most likely author of a simple plugin, who prefers a scripting language over learning a new language just to publish a small integration.
+* The manifest (ADR-0012) optionally declares which interpreter a component needs (e.g., `python3`, `node`, `sh`; absent means self-contained executable).
+* Work **never** depends on shebang or the operating system's execute bit to choose the interpreter — it explicitly invokes the declared interpreter over the entrypoint when it exists, or the entrypoint directly when absent. This is a portability requirement, not style: shebang lines are not interpreted by Windows process creation — depending on them would silently break every plugin in an interpreted language (likely majority of the ecosystem) on a supported OS (RNF-6).
+* The presence of the declared interpreter is checked in preflight (at installation/before first invocation): if it does not exist in `PATH`, Work fails with a specific and actionable message, rather than letting the subprocess fail cryptically.
+* An automatic detection model between platform-precompiled binary and interpreted script via shebang (seen in other CLI extension tools) was evaluated and not adopted as such: it solves a different problem (choosing between multiple *release artifacts* for the same logical extension, per platform), and its interpreted mode still depends on shebang + execute bit — exactly the mechanism avoided here because of Windows.
 
-## Alternativas consideradas
+## Alternatives Considered
 
-* **Totalmente aberto, sem declaração de interpretador no manifesto.** Fricção mínima ao autor, mas produz falhas do tipo "formato de executável inválido" sem contexto quando falta o interpretador — rejeitada.
-* **Restringir a binários autocontidos.** Elimina a classe de erro "faltou o interpretador", mas contradiz RNF-2/ADR-0000 e não melhora segurança, como descrito acima — rejeitada.
+* **Fully open, without interpreter declaration in the manifest.** Minimal friction for the author, but produces "invalid executable format" failures without context when the interpreter is missing — rejected.
+* **Restrict to self-contained binaries.** Eliminates the "missing interpreter" error class, but contradicts RNF-2/ADR-0000 and does not improve security, as described above — rejected.
 
-## Consequências
+## Consequences
 
-**Positivas:** plugins em qualquer linguagem funcionam de forma uniforme entre os SOs suportados, sem depender de mecanismo de SO não-portável; falhas por interpretador ausente são diagnosticadas claramente na instalação/preflight, não em uma invocação arbitrária depois.
+**Positive:** plugins in any language work uniformly across supported operating systems, without depending on a non-portable OS mechanism; failures due to missing interpreter are clearly diagnosed at installation/preflight, not at some arbitrary invocation later.
 
-**Negativas / trade-offs:** o interpretador declarado é autodeclarado, sem verificação independente além da checagem de existência no `PATH` — ela confirma que o interpretador existe, não que o entrypoint específico de fato roda sem erro. Esse risco residual é aceito, na mesma linha da confiança dada ao restante do manifesto (ADR-0012): se o entrypoint falhar por outro motivo, isso se manifesta no primeiro uso real como um erro de processo comum (código de saída não-zero, Seção 11 do ADD), nunca como uma falha silenciosa.
+**Negative / trade-offs:** the declared interpreter is self-declared, without independent verification beyond checking for existence in `PATH` — it confirms that the interpreter exists, not that the specific entrypoint actually runs without error. This residual risk is accepted, in line with the trust given to the rest of the manifest (ADR-0012): if the entrypoint fails for another reason, this manifests on first real use as a common process error (non-zero exit code, Section 11 of ADD), never as a silent failure.

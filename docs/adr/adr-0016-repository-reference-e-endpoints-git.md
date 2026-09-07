@@ -1,20 +1,20 @@
-# ADR-0016: Modelo de Repository Reference e Semântica de Endpoints Git
+# ADR-0016: Repository Reference Model and Git Endpoint Semantics
 
-**Status:** Aceito
+**Status:** Accepted
 
-**Data:** 2026-08-31
+**Date:** 2026-08-31
 
-**Contexto de produto:** `docs/prd.md` — RF-2, RF-42, RF-44 e RF-49
+**Product Context:** `docs/prd.md` — RF-2, RF-42, RF-44, and RF-49
 
-**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seções 4.1 e 7.1
+**Governs:** `docs/add/add-0001-work-system-architecture.md`, Sections 4.1 and 7.1
 
-## Contexto
+## Context
 
-Após interpretar um argumento, um Starter pode conhecer um caminho local, endpoints Git, um nome ou apenas um texto de busca. Esses dados têm semânticas distintas. Em especial, uma URL Git não é uma identidade canônica universal: protocolos, usuários, hosts e paths não admitem equivalências genéricas seguras.
+After interpreting an argument, a Starter may know a local path, Git endpoints, a name, or only search text. These data have distinct semantics. In particular, a Git URL is not a universal canonical identity: protocols, users, hosts, and paths do not admit safe generic equivalences.
 
-## Decisão
+## Decision
 
-A `Repository Reference` v1 é um objeto transitório com campos independentes e opcionais:
+The `Repository Reference` v1 is a transient object with independent and optional fields:
 
 ```jsonc
 {
@@ -27,19 +27,19 @@ A `Repository Reference` v1 é um objeto transitório com campos independentes e
 }
 ```
 
-`path` declara localização já resolvida e é validado diretamente pelo core. `git_fetch_urls` são endpoints conhecidos para fetch, não identidade canônica. `name` é uma propriedade conhecida, porém potencialmente ambígua. `query` é texto opaco para mecanismos locais; não deve ser promovido automaticamente a `name`.
+`path` declares already-resolved location and is validated directly by core. `git_fetch_urls` are known endpoints for fetch, not canonical identity. `name` is a known property, though potentially ambiguous. `query` is opaque text for local mechanisms; should not be automatically promoted to `name`.
 
-Locators declaram em `accepts` quais dos campos `git_fetch_urls`, `name` e `query` consomem; `path` nunca aparece ali. Um Locator que consome URLs compara fetch URLs em todos os remotes locais, não apenas `origin`, e usa operações nativas do Git em vez de reinterpretar `.git/config` ou regras de rewrite.
+Locators declare in `accepts` which of the fields `git_fetch_urls`, `name`, and `query` they consume; `path` never appears there. A Locator that consumes URLs compares fetch URLs across all local remotes, not just `origin`, and uses native Git operations instead of reinterpreting `.git/config` or rewrite rules.
 
-O Work não remove protocolos, usuários ou sufixos `.git`, não infere equivalência SSH/HTTPS e não usa URLs de push. A v1 não introduz identifiers tipados de provider; eles podem ser considerados quando existir consumo concreto além dos campos atuais.
+Work does not remove protocols, users, or `.git` suffixes, does not infer SSH/HTTPS equivalence, and does not use push URLs. v1 does not introduce typed provider identifiers; they may be considered when concrete consumption exists beyond current fields.
 
-## Consequências
+## Consequences
 
-Componentes de forge podem publicar conhecimento rico sem forçar dependência de provider nos Locators; clones de forks podem corresponder por `upstream`; aliases permanecem locais. Em troca, endpoints equivalentes não publicados pelo produtor podem não corresponder e não há identidade universal de repositório na v1.
+Forge components can publish rich knowledge without forcing provider dependency on Locators; forks clones can match by `upstream`; aliases remain local. In exchange, equivalent endpoints not published by the producer may not match, and there is no universal repository identity in v1.
 
-## Alternativas rejeitadas
+## Rejected Alternatives
 
-* `remote_url` singular ou URL Git canônica: não representam todos os endpoints nem possuem normalização universal segura.
-* Usar apenas `origin` ou URLs de push: omite clones legítimos e descreve destino operacional, não a fonte Git.
-* Tratar `name` como identificador global ou `query` como `name`: ambos perdem semântica e introduzem falsos matches.
-* Identifiers tipados na v1: ampliariam a superfície pública antes de haver necessidade comprovada.
+* Singular `remote_url` or canonical Git URL: do not represent all endpoints nor possess safe universal normalization.
+* Use only `origin` or push URLs: omits legitimate clones and describes operational destination, not the Git source.
+* Treat `name` as global identifier or `query` as `name`: both lose semantics and introduce false matches.
+* Typed identifiers in v1: would expand public surface before proven necessity.

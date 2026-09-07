@@ -1,49 +1,49 @@
-# ADR-0012: Modelo de Componentes e Manifesto de Plugins
+# ADR-0012: Component Model and Plugin Manifest
 
-**Status:** Aceito
+**Status:** Accepted
 
-**Data:** 2026-08-29
+**Date:** 2026-08-29
 
-**Contexto de produto:** `docs/prd.md` — RF-1, RF-2, RF-8, RF-22, RF-26 a RF-32, RNF-1, RNF-2, RNF-3 e RNF-7
+**Product Context:** `docs/prd.md` — RF-1, RF-2, RF-8, RF-22, RF-26 to RF-32, RNF-1, RNF-2, RNF-3 and RNF-7
 
-**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seções 4, 5, 7 e 9 a 11
+**Governs:** `docs/add/add-0001-work-system-architecture.md`, Sections 4, 5, 7 and 9 to 11
 
-## Contexto
+## Context
 
-O modelo anterior misturava papel de componente, capacidades abertas e hooks definidos por Starter. Isso deixa a elegibilidade de extensões dependente de convenções pouco explícitas e permite que o plugin descreva fluxo de controle que pertence ao Work. Também não separa com precisão a necessidade de dados de uma extensão da forma pela qual ela foi ativada.
+The previous model mixed component role, open capabilities and hooks defined by Starter. This leaves extension eligibility dependent on poorly explicit conventions and allows the plugin to describe control flow that belongs to Work. It also does not precisely separate an extension's data needs from the form by which it is activated.
 
-O produto precisa que um pacote possa declarar Starters, Repository Locators, Importers, Linkers e convenções de branch sem que o núcleo conheça a integração. Um pacote também precisa ser uma unidade coerente de instalação e manutenção: uma integração pode reunir componentes que fazem sentido apenas juntos. Ao mesmo tempo, o núcleo deve decidir, sem executar código, se uma operação pode rodar, quais dados ela recebe e quando seus efeitos podem ser incorporados.
+The product requires that a package be able to declare Starters, Repository Locators, Importers, Linkers and branch conventions without the core knowing the integration. A package also needs to be a coherent unit of installation and maintenance: an integration can bring together components that make sense only together. At the same time, the core must decide, without executing code, whether an operation can run, what data it receives and when its effects can be incorporated.
 
-## Decisão
+## Decision
 
-Um plugin é um pacote versionado e a unidade atômica de instalação, atualização, habilitação e remoção. Seu `plugin.json`, lido pelo Work no pipeline de instalação, declara zero ou mais componentes executáveis em `components[]` e zero ou mais convenções declarativas em `conventions[]`. Cada componente tem `role` obrigatório: `starter`, `repository-locator`, `importer` ou `linker`. `role` é o discriminador semântico: determina o contrato, os campos válidos do manifesto e as operações que o Work pode solicitar. Não existe campo `invocation` ou equivalente; protocolo e forma de ativação não são identidade do componente.
+A plugin is a versioned package and the atomic unit of installation, update, enablement and removal. Its `plugin.json`, read by Work in the installation pipeline, declares zero or more executable components in `components[]` and zero or more declarative conventions in `conventions[]`. Each component has a mandatory `role`: `starter`, `repository-locator`, `importer` or `linker`. `role` is the semantic discriminator: it determines the contract, valid manifest fields and operations Work can request. There is no `invocation` field or equivalent; protocol and activation form are not component identity.
 
-A identidade de componente é seu `name` lógico, nunca o arquivo que o implementa. O `name` do pacote é uma proposta de alias local: o registro instalado garante unicidade para o usuário e, quando nomes de componente colidem entre pacotes habilitados, o Work os qualifica como `<alias>/<nome>`.
+Component identity is its logical `name`, never the file implementing it. The package's `name` is a local alias proposal: the installed registry ensures uniqueness for the user and, when component names collide between enabled packages, Work qualifies them as `<alias>/<name>`.
 
-`conventions[]` permanece separado de `components[]`: uma convenção é uma contribuição estática, sem `role`, `entrypoint` ou `runtime`. Sem detecção dinâmica na v1, executar um processo para obter um catálogo já conhecido no manifesto só acrescentaria runtime, preflight e caminhos condicionais ao núcleo.
+`conventions[]` remains separate from `components[]`: a convention is a static contribution, without `role`, `entrypoint` or `runtime`. Without dynamic detection in v1, executing a process to obtain a catalog already known in the manifest only adds runtime, preflight and conditional paths to the core.
 
-O manifesto descreve estaticamente o que o componente é, as operações que oferece, pontos de ativação e dados requeridos. O Work controla lifecycle, seleção de Starter, publicação de eventos, elegibilidade, projeção de inputs, subprocessos, persistência de metadata/links e incorporação de arquivos. Plugins implementam comportamento de domínio, não o fluxo de controle do Work.
+The manifest statically describes what the component is, what operations it offers, activation points and required data. Work controls lifecycle, Starter selection, event publishing, eligibility, input projection, subprocesses, metadata/link persistence and file incorporation. Plugins implement domain behavior, not Work's control flow.
 
-Repository Locators declaram `accepts` não vazio com os campos de Repository Reference que sabem consumir. O core os considera apenas quando estão na Repository Resolution Policy, o plugin está habilitado e algum campo aceito está presente; a policy e as raízes de busca são controladas pelo usuário conforme ADR-0015. Importers declaram eventos em `on`, disponibilidade manual em `manual` e inputs em `inputs`. Linkers declaram uma `key`, descoberta opcional em `discover` e associação manual opcional em `manual`. Eventos são definidos pelo core; `starters` é filtro de ativação, nunca input. Antes de qualquer subprocesso, o core avalia a elegibilidade estaticamente e não executa componente apenas para descobrir se ele deveria rodar.
+Repository Locators declare non-empty `accepts` with Repository Reference fields they know how to consume. The core considers them only when they are in the Repository Resolution Policy, the plugin is enabled and some accepted field is present; the policy and search roots are controlled by the user as per ADR-0015. Importers declare events in `on`, manual availability in `manual` and inputs in `inputs`. Linkers declare a `key`, optional discovery in `discover` and optional manual association in `manual`. Events are defined by the core; `starters` is an activation filter, never input. Before any subprocess, the core evaluates eligibility statically and does not execute a component just to discover whether it should run.
 
-Links e metadata são espaços distintos. Inputs usam `link:<key>` ou `meta:<key>`, com `:optional` quando aplicável. Links possuem um valor por chave e são atualizados por upsert: a última origem vence. Importers escrevem em diretório temporário exclusivo e seus artefatos só são incorporados depois de validação completa de colisões.
+Links and metadata are distinct spaces. Inputs use `link:<key>` or `meta:<key>`, with `:optional` when applicable. Links have one value per key and are updated by upsert: the last source wins. Importers write to an exclusive temporary directory and their artifacts are incorporated only after complete collision validation.
 
-O evento v1 `start:finalized` é processado em fases: persistir dados do Starter, executar/persistir Linkers elegíveis e, então, executar Importers elegíveis. Não há ordem garantida entre componentes da mesma fase.
+The v1 `start:finalized` event is processed in phases: persist Starter data, execute/persist eligible Linkers and then execute eligible Importers. There is no guaranteed order between components of the same phase.
 
-## Alternativas consideradas
+## Alternatives Considered
 
-* **Manter `capabilities` e hooks comandados pelo Starter.** Rejeitada: capacidade aberta não descreve com precisão operação, ativação e inputs, e hooks no Starter acoplam indevidamente extensões ao iniciador que as disparou.
-* **Executar componentes para decidir elegibilidade.** Rejeitada: transforma ausência comum de dados em subprocesso desnecessário, torna o lifecycle menos previsível e introduz efeitos antes de o core decidir que a operação é válida.
-* **Receber o diretório real do Work no Importer.** Rejeitada: impede validação integral de colisões e permite alteração parcial antes de o core controlar a incorporação.
-* **Modelar convenções como quarto role.** Rejeitada: convenções não são executáveis e não precisam de runtime, entrada ou processo; separar os dois arrays torna essa diferença visível no schema, em vez de espalhar condicionais por manifesto, registro e execução.
-* **Um pacote por componente.** Rejeitada: força contribuições naturalmente acopladas, como reconhecer e importar dados de um pull request, a serem versionadas e instaladas separadamente.
+* **Keep `capabilities` and hooks commanded by Starter.** Rejected: open capability does not precisely describe operation, activation and inputs, and hooks in Starter unnecessarily couple extensions to the initiator that fired them.
+* **Execute components to decide eligibility.** Rejected: turns common data absence into unnecessary subprocess, makes lifecycle less predictable and introduces effects before the core decides the operation is valid.
+* **Pass the real Work directory to Importer.** Rejected: prevents comprehensive collision validation and allows partial alteration before the core controls incorporation.
+* **Model conventions as a fourth role.** Rejected: conventions are not executable and need no runtime, input or process; keeping the two arrays separate makes this difference visible in the schema, instead of spreading conditionals across manifest, registry and execution.
+* **One package per component.** Rejected: forces naturally coupled contributions, like recognizing and importing data from a pull request, to be versioned and installed separately.
 
-## Consequências
+## Consequences
 
-**Positivas:** o core decide operações de modo previsível e auditável; contratos são mínimos por role; dados de integração são preservados sem ampliar o modelo do núcleo; Importers não sobrescrevem arquivos do Work silenciosamente.
+**Positive:** the core decides operations in a predictable and auditable way; contracts are minimal per role; integration data is preserved without expanding the core model; Importers do not silently overwrite Work files.
 
-**Trade-offs:** o manifesto fica mais expressivo e requer validação discriminada por role; a resolução de repositório ganha uma policy explícita; extensões automáticas podem falhar depois da criação do Work, portanto o Work conclui com aviso em vez de desfazer um ambiente já materializado.
+**Trade-offs:** the manifest becomes more expressive and requires role-discriminated validation; repository resolution gains an explicit policy; automatic extensions can fail after Work creation, so Work concludes with a warning instead of undoing an already-materialized environment.
 
-## Relação com decisões anteriores
+## Relationship with Previous Decisions
 
-Esta ADR consolida as decisões de pacote/manifesto e convenções declarativas antes registradas separadamente. Ela substitui o modelo que usava `type`, `capabilities` ou `hooks`, bem como o contrato de hook anterior. ADRs 0014 a 0016 estendem este modelo com o role `repository-locator` e seu contrato. As decisões de subprocessos externos, runtime explícito e colisão de Starters continuam em ADRs próprios.
+This ADR consolidates package/manifest and declarative conventions decisions previously recorded separately. It replaces the model that used `type`, `capabilities` or `hooks`, as well as the previous hook contract. ADRs 0014 to 0016 extend this model with the `repository-locator` role and its contract. Decisions on external subprocesses, explicit runtime and Starter collision remain in their own ADRs.

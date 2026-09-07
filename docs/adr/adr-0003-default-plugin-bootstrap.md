@@ -1,25 +1,25 @@
-# ADR-0003: Bootstrap do Pacote de Plugin de Referência no Primeiro Uso
+# ADR-0003: Bootstrap of Reference Plugin Package on First Use
 
-**Status:** Aceito
-**Data:** 2026-08-23
-**Contexto de produto:** `docs/prd.md` — RF-10, RF-24, Seção 2 (motivação), RNF-1, RNF-7
-**Governa:** `docs/add/add-0001-work-system-architecture.md`, Seção 6
+**Status:** Accepted
+**Date:** 2026-08-23
+**Product context:** `docs/prd.md` — RF-10, RF-24, Section 2 (motivation), RNF-1, RNF-7
+**Governs:** `docs/add/add-0001-work-system-architecture.md`, Section 6
 
-## Contexto
+## Context
 
-Um núcleo 100% vazio faz `work start` "de fábrica" não fazer nada, contradizendo a própria proposta de valor do produto (eliminar atrito de preparação — PRD Seção 2). Embutir a lógica de resolução padrão como código do núcleo violaria diretamente RNF-1/RNF-7 e o princípio de execução por processo externo (ADR-0000) — passaria a existir comportamento de domínio vivendo dentro da superfície de confiança mínima, sem poder ser desinstalado/substituído.
+A 100% empty core makes `work start` "out of the box" do nothing, contradicting the product's very value proposition (eliminate setup friction — PRD Section 2). Embedding default resolution logic as core code would directly violate RNF-1/RNF-7 and the external-process execution principle (ADR-0000) — domain behavior would exist within the minimal trust surface, unable to be uninstalled or replaced.
 
-## Decisão
+## Decision
 
-Um pacote oficial de referência contém, no mínimo, um Starter fallback para referências a repositório local, um Repository Locator baseado em filesystem e uma convenção de branch `freeform` (ADRs 0012, 0014 e 0015). Ele é instalado automaticamente no primeiro uso, usando **exatamente o mesmo mecanismo** de instalação de qualquer plugin de terceiro (ADR-0002) — nunca como código embutido no núcleo. Para não depender de rede, o pacote vai embutido nos assets do binário/release como *seed*, mas ainda é "instalado" através do pipeline normal (grava manifesto, registro e entrypoint — ver `add-0001` §6); o Locator padrão entra inicialmente na policy global. O usuário pode desinstalar esse pacote como qualquer outro, e ele desaparece de fato, sem deixar comportamento fantasma no núcleo.
+An official reference package contains, at minimum, a fallback Starter for local repository references, a filesystem-based Repository Locator, and a `freeform` branch convention (ADRs 0012, 0014, and 0015). It is automatically installed on first use, using **exactly the same installation mechanism** as any third-party plugin (ADR-0002) — never as core code. To avoid network dependency, the package is embedded in binary/release assets as a *seed*, but is still "installed" through the normal pipeline (writes manifest, registry, and entrypoint — see `add-0001` §6); the default Locator initially enters the global policy. The user can uninstall this package like any other, and it truly disappears without leaving phantom behavior in the core.
 
-## Alternativas consideradas
+## Alternatives considered
 
-* **A — núcleo 100% vazio.** Máxima pureza em relação a RNF-1/RNF-7, mas onboarding péssimo — rejeitada.
-* **B — lógica default embutida no núcleo.** Zero fricção, mas viola ADR-0000/RNF-1/RNF-7 diretamente: comportamento de domínio vivendo na superfície que o usuário precisa confiar sem revisão, não auditável, não desinstalável — rejeitada.
+* **A — 100% empty core.** Maximum purity with respect to RNF-1/RNF-7, but poor onboarding — rejected.
+* **B — default logic embedded in core.** Zero friction, but directly violates ADR-0000/RNF-1/RNF-7: domain behavior living in the surface that users must trust without review, not auditable, not uninstallable — rejected.
 
-## Consequências
+## Consequences
 
-**Positivas:** onboarding funciona imediatamente sem violar a arquitetura; também serve como *dogfooding* do próprio contrato de manifesto/registro.
+**Positive:** onboarding works immediately without violating architecture; also serves as *dogfooding* of the manifest/registry contract itself.
 
-**Negativas / trade-offs:** aumenta o tamanho do binário/release e exige manter o seed compatível com o contrato de plugin — custo aceito para garantir primeiro uso funcional, offline e sem lógica de domínio embutida no núcleo.
+**Negative / trade-offs:** increases binary/release size and requires keeping the seed compatible with the plugin contract — cost accepted to ensure functional first use, offline and without domain logic embedded in core.

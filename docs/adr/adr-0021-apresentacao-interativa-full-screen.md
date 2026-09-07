@@ -1,104 +1,48 @@
-# ADR-0021: Apresentação Interativa Full-Screen para Jornadas Multi-Etapa
+# ADR-0021: Full-Screen Interactive Presentation for Multi-Step Journeys
 
-**Status:** Aceito
+**Status:** Accepted
 
-**Data:** 2026-09-07
+**Date:** 2026-09-07
 
-**Contexto de produto:** `docs/prd.md` — RF-53, RF-55, RF-57, RF-64; `specs/003-terminal-ux-revamp/spec.md` FR-001, FR-007
+**Product context:** `docs/prd.md` — RF-53, RF-55, RF-57, RF-64; `specs/003-terminal-ux-revamp/spec.md` FR-001, FR-007
 
-**Relaciona-se com:** ADR-0009 (stack central), ADR-0020 (fronteira genérica de apresentação)
+**Related to:** ADR-0009 (central stack), ADR-0020 (generic presentation boundary)
 
-**Governa:** `docs/add/add-0001-work-system-architecture.md` §12.2/§12.3
+**Governs:** `docs/add/add-0001-work-system-architecture.md` §12.2/§12.3
 
-**Realizada por:** `internal/present` (`Wizard`, `stepModel`), `internal/cli/start.go`
+**Realized by:** `internal/present` (`Wizard`, `stepModel`), `internal/cli/start.go`
 
-## Contexto
+## Context
 
-A ADR-0020 adotou, como primeira estrutura, uma **sessão inline delimitada por
-etapa**: cada passo de `work start` / `work resume` / `work archive` era um
-programa Bubble Tea independente renderizado no buffer corrente do terminal, que
-colapsava para um recibo de uma linha ao ser aceito, e recusou explicitamente o
-buffer alternativo.
+ADR-0020 adopted, as a first structure, an **inline session delimited by step**: each step of `work start` / `work resume` / `work archive` was an independent Bubble Tea program rendered in the terminal's current buffer, which collapsed to a one-line receipt when accepted, and explicitly rejected the alternate buffer.
 
-Em uso real dois problemas se mostraram estruturais, não de ajuste:
+In real use, two problems proved to be structural, not adjustable:
 
-1. **Fantasmas de renderização.** O renderer inline (padrão) do Bubble Tea perde a
-   altura do frame em um resize de terminal e na transição confirmar→lista do
-   `archive` (`Esc` para voltar): repinta o cabeçalho sem limpar as linhas
-   antigas, empilhando o título da base ou a barra de abas `[Local] Remote` cinco
-   ou seis vezes na tela. O hack `deSoftWrap` nos testes é um sintoma da mesma
-   classe.
-2. **Etapas independentes não compartilham tela.** Cada passo era seu próprio
-   programa; os recibos das etapas já aceitas só reapareciam no buffer primário
-   *depois* que aquele programa encerrava, e o programa seguinte entrava por cima.
-   A jornada não tinha continuidade visual.
+1. **Rendering ghosts.** The Bubble Tea inline renderer (default) loses the frame height on a terminal resize and in the confirm→list transition of `archive` (`Esc` to go back): it repaints the header without clearing old lines, stacking the title bar or the `[Local] Remote` tab bar five or six times on the screen. The `deSoftWrap` hack in tests is a symptom of the same class.
+2. **Independent steps don't share the screen.** Each step was its own program; the receipts of already-accepted steps only reappeared in the primary buffer *after* that program terminated, and the next program entered on top. The journey had no visual continuity.
 
-A ADR-0020 já previa que "um único programa que contenha toda a entrevista só
-será considerado se uma necessidade futura de navegação retroativa justificar a
-complexidade". A necessidade que apareceu não foi navegação retroativa e sim
-**eliminar o fantasma** e **manter os recibos visíveis durante a jornada**.
+ADR-0020 already foresaw that "a single program containing the entire interview will only be considered if a future need for retroactive navigation justifies the complexity". The need that emerged was not retroactive navigation but rather **eliminating the ghost** and **keeping receipts visible throughout the journey**.
 
-## Decisão
+## Decision
 
-Manter Bubble Tea e Lip Gloss e a fronteira genérica da ADR-0020, mudando apenas
-a estrutura de renderização:
+Keep Bubble Tea and Lip Gloss and the generic boundary from ADR-0020, changing only the rendering structure:
 
-* Cada jornada roda como **um único programa full-screen** (buffer alternativo),
-  um `present.Wizard` sobre etapas ordenadas. O buffer alternativo é ativado por
-  `tea.View{AltScreen: true}` — não há opção de programa para isso no Bubble Tea
-  v2.
-* Um **clear + repaint completo a cada frame** torna o fantasma de resize e de
-  volta-de-confirmação estruturalmente impossível.
-* As quatro primitivas (`Input`, `Select`, `MultiSelect`, `Confirm`) deixam de
-  ser `tea.Model` autônomas que chamam `tea.Quit` e passam a implementar um
-  `stepModel` livre de domínio (`body`, `status`, `cursorPos`). O wizard compõe o
-  quadro: uma régua `Primary` no topo, o título da jornada, o rastro de recibos
-  aceitos e o corpo da etapa corrente. Nenhuma etapa encerra o programa; ela
-  reporta um `status()` terminal e o wizard conduz a transição.
-* As assinaturas públicas `Input` / `Select` / `MultiSelect` / `Confirm` são
-  preservadas como wizards de uma etapa, então `resume` e `archive` migram sem
-  mudança de código; apenas `start` é reestruturado para compor suas seis etapas
-  condicionais em um wizard.
-* **Ao encerrar**, o buffer primário é restaurado automaticamente e os recibos
-  compactos das etapas aceitas são **reimpressos** no canal de UI (stderr, buffer
-  primário), à frente das linhas estáveis de stdout que a CLI escreve em seguida.
-  O "histórico do terminal" das métricas SC-001/SC-002 passa a significar essa
-  reimpressão pós-encerramento.
-* A fronteira de importação de `internal/present` é inalterada (stdlib + stack
-  Charm + `colorprofile` + `x/term` + runewidth/uniseg + `internal/diag`); o
-  teste `tests/contract/present_boundary_test.go` continua verde. Valores de
-  opção de qualquer tipo `T` atravessam via genéricos e voltam à CLI por type
-  assertion, sem `present` conhecer o tipo.
+* Each journey runs as **a single full-screen program** (alternate buffer), a `present.Wizard` over ordered steps. The alternate buffer is activated by `tea.View{AltScreen: true}` — there is no program option for this in Bubble Tea v2.
+* A **clear + full repaint on each frame** makes the ghost of resize and confirm-return structurally impossible.
+* The four primitives (`Input`, `Select`, `MultiSelect`, `Confirm`) stop being autonomous `tea.Model`s that call `tea.Quit` and start implementing a domain-free `stepModel` (`body`, `status`, `cursorPos`). The wizard composes the frame: a `Primary` ruler at the top, the journey title, the trail of accepted receipts, and the body of the current step. No step terminates the program; it reports a terminal `status()` and the wizard drives the transition.
+* The public signatures `Input` / `Select` / `MultiSelect` / `Confirm` are preserved as single-step wizards, so `resume` and `archive` migrate without code change; only `start` is restructured to compose its six conditional steps into a wizard.
+* **On termination**, the primary buffer is automatically restored and compact receipts of accepted steps are **reprinted** to the UI channel (stderr, primary buffer), ahead of the stable stdout lines the CLI writes next. The "terminal history" of SC-001/SC-002 metrics now means this post-termination reprint.
+* The import boundary of `internal/present` is unchanged (stdlib + Charm stack + `colorprofile` + `x/term` + runewidth/uniseg + `internal/diag`); the test `tests/contract/present_boundary_test.go` remains green. Option values of any type `T` cross via generics and return to the CLI via type assertion, without `present` knowing the type.
 
-## Alternativas consideradas
+## Alternatives considered
 
-* **Corrigir o renderer inline (rastrear altura, limpar antes de repintar).**
-  Rejeitada: seria reimplementar parte do renderer do Bubble Tea e ainda
-  frágil a cada nova transição de frame; o buffer alternativo com repaint total
-  resolve a classe inteira.
-* **Manter etapas inline independentes e só empilhar recibos manualmente.**
-  Rejeitada: não resolve o fantasma no seletor ativo nem no `archive`, e a
-  emenda de buffers entre programas continua imprevisível.
-* **Um formulário único no buffer corrente (sem alt-screen).** Rejeitada pelo
-  mesmo motivo da ADR-0020: o renderer inclusive nesse modo perde a altura do
-  frame ao encolher (lista longa → recibo curto) e deixa lixo em scrollback.
-* **Recusar o buffer alternativo (posição original da ADR-0020).** Revista: o
-  histórico útil das escolhas aceitas é preservado pela reimpressão no buffer
-  primário ao sair, então o motivo da recusa (apagar o histórico) não se aplica
-  a esta estrutura.
+* **Fix the inline renderer (track height, clear before repainting).** Rejected: it would be reimplementing part of Bubble Tea's renderer and still fragile with each new frame transition; the alternate buffer with full repaint solves the entire class.
+* **Keep inline steps independent and only manually stack receipts.** Rejected: it doesn't solve the ghost in the active selector or in `archive`, and the buffer splicing between programs remains unpredictable.
+* **A single form in the current buffer (no alt-screen).** Rejected for the same reason as ADR-0020: the renderer in this mode too loses frame height when shrinking (long list → short receipt) and leaves garbage in scrollback.
+* **Reject the alternate buffer (ADR-0020's original position).** Reviewed: the useful history of accepted choices is preserved by reprinting in the primary buffer on exit, so the reason for rejection (erasing history) does not apply to this structure.
 
-## Consequências
+## Consequences
 
-**Positivas:** o fantasma de resize e de volta-de-confirmação é impossível por
-construção; os recibos aceitos permanecem visíveis acima da etapa ativa durante
-toda a jornada de `work start`; o seletor de base não mostra mais o SHA curto por
-linha; a jornada é um app coerente; o `deSoftWrap` deixa de ser necessário para
-novas telas.
+**Positive:** the ghost of resize and confirm-return is impossible by construction; accepted receipts remain visible above the active step throughout the `work start` journey; the base selector no longer shows the short SHA per line; the journey is a coherent app; `deSoftWrap` is no longer needed for new screens.
 
-**Negativas / trade-offs:** a coleta interativa agora ocupa a tela inteira
-enquanto roda (o buffer primário volta intacto ao sair); o emulador VT dos testes
-de integração precisou aprender o toggle de buffer alternativo (DECSET
-1049/1047/47) e VPA; `work start` passou a resolver `--slug` / `--base` de flag
-*depois* do passo de caminho quando o SOURCE é interativo, e `workspace.Persist`
-move para depois do wizard (uma execução recusada não grava mais a raiz de
-workspace).
+**Negative / trade-offs:** interactive collection now occupies the full screen while running (the primary buffer returns intact on exit); the VT emulator in integration tests had to learn the alternate buffer toggle (DECSET 1049/1047/47) and VPA; `work start` now resolves `--slug` / `--base` from flags *after* the path step when SOURCE is interactive, and `workspace.Persist` moves to after the wizard (a rejected execution no longer writes the workspace root).
