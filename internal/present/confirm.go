@@ -61,7 +61,7 @@ func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch key.String() {
 	case "ctrl+c", "esc":
 		m.state = listCancelled
-		return m, tea.Quit
+		return m, leave()
 	case "left", "h", "right", "l", "tab":
 		m.focus ^= 1
 	case "y", "Y":
@@ -88,19 +88,28 @@ func (m confirmModel) decide(accepted bool) (tea.Model, tea.Cmd) {
 	default:
 		m.final = fmt.Sprintf("%s %s\n", markGlyph(m.th, MarkFailure), m.spec.reject())
 	}
-	return m, tea.Quit
+	return m, leave()
 }
 
 func (m confirmModel) outcome() outcome {
 	return outcome{cancelled: m.state == listCancelled}
 }
 
+func (m confirmModel) finalFrame() string {
+	switch m.state {
+	case listCompleted:
+		return m.final
+	case listCancelled:
+		return CancelNotice(m.th)
+	default:
+		return ""
+	}
+}
+
 func (m confirmModel) View() tea.View {
 	switch m.state {
-	case listCancelled:
-		return tea.NewView(CancelNotice(m.th))
-	case listCompleted:
-		return tea.NewView(m.final)
+	case listCancelled, listCompleted:
+		return tea.NewView("")
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n", m.th.Primary.Render(m.spec.Title))

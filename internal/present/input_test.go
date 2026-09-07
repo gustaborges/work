@@ -34,8 +34,11 @@ func TestInputAcceptsAndRendersExactReceipt(t *testing.T) {
 	if m.accepted != "my-work" {
 		t.Errorf("accepted = %q", m.accepted)
 	}
-	if got := m.View().Content; got != "Slug\n  ✔ my-work\n\n" {
-		t.Errorf("completed View = %q", got)
+	if got := m.finalFrame(); got != "Slug\n  ✔ my-work\n\n" {
+		t.Errorf("completed finalFrame = %q", got)
+	}
+	if m.View().Content != "" {
+		t.Errorf("completed View should be empty so the frame clears, got %q", m.View().Content)
 	}
 }
 
@@ -144,7 +147,7 @@ func TestInputSecretRedaction(t *testing.T) {
 		t.Errorf("secret value visible while editing:\n%s", m.View().Content)
 	}
 	m = submitInput(t, m)
-	got := m.View().Content
+	got := m.finalFrame()
 	if strings.Contains(got, "hunter2") {
 		t.Errorf("secret value leaked into the receipt:\n%s", got)
 	}
@@ -161,8 +164,8 @@ func TestInputCancelledViewIsExactNotice(t *testing.T) {
 		if !isQuit(cmd) || nm.state != inputCancelled {
 			t.Errorf("%s did not cancel: quit=%v state=%d", key, isQuit(cmd), nm.state)
 		}
-		if got := nm.View().Content; got != "✘ Operation cancelled\n" {
-			t.Errorf("%s cancelled View = %q", key, got)
+		if got := nm.finalFrame(); got != "✘ Operation cancelled\n" {
+			t.Errorf("%s cancelled finalFrame = %q", key, got)
 		}
 		if !nm.outcome().cancelled {
 			t.Errorf("%s outcome not cancelled", key)

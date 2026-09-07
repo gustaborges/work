@@ -114,7 +114,7 @@ func (m selectModel[T]) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	s := key.String()
 	if s == "ctrl+c" {
 		m.state = listCancelled
-		return m, tea.Quit
+		return m, leave()
 	}
 
 	if m.filtering {
@@ -137,7 +137,7 @@ func (m selectModel[T]) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "left", "right", "tab":
 			m.switchTab(s)
 		default:
-			if key.Mod == 0 && key.Text != "" {
+			if key.Mod&^tea.ModShift == 0 && key.Text != "" {
 				m.filter += key.Text
 				m.cursor, m.offset = 0, 0
 				m.refilter()
@@ -149,7 +149,7 @@ func (m selectModel[T]) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch s {
 	case "q", "esc":
 		m.state = listCancelled
-		return m, tea.Quit
+		return m, leave()
 	case "/":
 		if m.spec.Filterable {
 			m.filtering = true
@@ -197,19 +197,28 @@ func (m selectModel[T]) choose() (tea.Model, tea.Cmd) {
 	}
 	m.receipt = Receipt(m.th, m.spec.Title, MarkSuccess, value)
 	m.state = listCompleted
-	return m, tea.Quit
+	return m, leave()
 }
 
 func (m selectModel[T]) outcome() outcome {
 	return outcome{cancelled: m.state == listCancelled}
 }
 
-func (m selectModel[T]) View() tea.View {
+func (m selectModel[T]) finalFrame() string {
 	switch m.state {
 	case listCompleted:
-		return tea.NewView(m.receipt)
+		return m.receipt
 	case listCancelled:
-		return tea.NewView(CancelNotice(m.th))
+		return CancelNotice(m.th)
+	default:
+		return ""
+	}
+}
+
+func (m selectModel[T]) View() tea.View {
+	switch m.state {
+	case listCompleted, listCancelled:
+		return tea.NewView("")
 	}
 
 	var b strings.Builder

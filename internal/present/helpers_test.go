@@ -1,6 +1,8 @@
 package present
 
 import (
+	"reflect"
+
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -41,8 +43,8 @@ func typeText(m tea.Model, s string) tea.Model {
 	return m
 }
 
-// drain resolves a command (recursing into tea.BatchMsg) and returns every
-// concrete message it produced.
+// drain resolves a command (recursing into tea.BatchMsg and the unexported
+// []Cmd message tea.Sequence produces) and returns every concrete message.
 func drain(cmd tea.Cmd) []tea.Msg {
 	if cmd == nil {
 		return nil
@@ -55,6 +57,14 @@ func drain(cmd tea.Cmd) []tea.Msg {
 		}
 	case nil:
 	default:
+		if rv := reflect.ValueOf(msg); rv.Kind() == reflect.Slice {
+			for i := 0; i < rv.Len(); i++ {
+				if c, ok := rv.Index(i).Interface().(tea.Cmd); ok {
+					out = append(out, drain(c)...)
+				}
+			}
+			break
+		}
 		out = append(out, msg)
 	}
 	return out

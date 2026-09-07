@@ -100,5 +100,6 @@ type stubModel struct {
 
 func (m stubModel) Init() tea.Cmd                       { return tea.Quit }
 func (m stubModel) Update(tea.Msg) (tea.Model, tea.Cmd) { return m, tea.Quit }
-func (m stubModel) View() tea.View                      { return tea.NewView(m.view) }
+func (m stubModel) View() tea.View                      { return tea.NewView("") }
 func (m stubModel) outcome() outcome                    { return m.oc }
+func (m stubModel) finalFrame() string                  { return m.view }

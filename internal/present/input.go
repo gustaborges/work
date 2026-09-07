@@ -97,7 +97,7 @@ func (m inputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.accept()
 		case fatal:
 			m.fatal = underlying
-			return m, tea.Quit
+			return m, leave()
 		default:
 			m.curErr = underlying.Error()
 			return m, nil
@@ -119,7 +119,7 @@ func (m inputModel) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// A text field cannot cancel on "q" — it is a valid character. The help
 		// line names Esc as the cancel key.
 		m.state = inputCancelled
-		return m, tea.Quit
+		return m, leave()
 	case "enter":
 		return m.submit()
 	case "backspace":
@@ -145,8 +145,10 @@ func (m inputModel) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.value, m.cursor, m.curErr = m.value[:0], 0, ""
 		return m, nil
 	}
-	// Printable input: insert the produced text at the cursor.
-	if key.Mod == 0 && key.Text != "" {
+	// Printable input: insert the produced text at the cursor. Shift is allowed
+	// (it is how capitals and shifted symbols arrive); Ctrl/Alt chords are not
+	// text and must not be inserted.
+	if key.Mod&^tea.ModShift == 0 && key.Text != "" {
 		r := []rune(key.Text)
 		m.value = append(m.value[:m.cursor], append(r, m.value[m.cursor:]...)...)
 		m.cursor += len(r)
@@ -174,7 +176,7 @@ func (m inputModel) accept() (tea.Model, tea.Cmd) {
 	m.accepted = string(m.value)
 	m.state = inputCompleted
 	m.receipt = Receipt(m.th, m.spec.Title, MarkSuccess, m.displayValue())
-	return m, tea.Quit
+	return m, leave()
 }
 
 func (m inputModel) displayValue() string {
@@ -192,12 +194,24 @@ func (m inputModel) outcome() outcome {
 	return outcome{cancelled: m.state == inputCancelled, fatal: m.fatal}
 }
 
-func (m inputModel) View() tea.View {
+// finalFrame is the compact string run prints once the program has cleared its
+// active frame: the receipt on accept, the cancellation notice on cancel, and
+// nothing on a Fatal abort.
+func (m inputModel) finalFrame() string {
 	switch m.state {
 	case inputCompleted:
-		return tea.NewView(m.receipt)
+		return m.receipt
 	case inputCancelled:
-		return tea.NewView(CancelNotice(m.th))
+		return CancelNotice(m.th)
+	default:
+		return ""
+	}
+}
+
+func (m inputModel) View() tea.View {
+	if m.fatal != nil || m.state != inputEditing {
+		// Terminal state: render nothing so leave() clears the whole frame.
+		return tea.NewView("")
 	}
 
 	var b strings.Builder

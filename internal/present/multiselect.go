@@ -95,7 +95,7 @@ func (m multiSelectModel[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	s := key.String()
 	if s == "ctrl+c" {
 		m.state = listCancelled
-		return m, tea.Quit
+		return m, leave()
 	}
 
 	if m.state == listConfirming {
@@ -130,7 +130,7 @@ func (m multiSelectModel[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "space":
 			m.toggle()
 		default:
-			if key.Mod == 0 && key.Text != "" && key.Text != " " {
+			if key.Mod&^tea.ModShift == 0 && key.Text != "" && key.Text != " " {
 				m.filter += key.Text
 				m.cursor, m.offset = 0, 0
 				m.refilter()
@@ -142,7 +142,7 @@ func (m multiSelectModel[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch s {
 	case "q", "esc":
 		m.state = listCancelled
-		return m, tea.Quit
+		return m, leave()
 	case "/":
 		if m.spec.Filterable {
 			m.filtering = true
@@ -207,11 +207,22 @@ func (m multiSelectModel[T]) complete() (tea.Model, tea.Cmd) {
 		m.receipt = Receipt(m.th, m.spec.Title, MarkSuccess, strings.Join(labels, ", "))
 	}
 	m.state = listCompleted
-	return m, tea.Quit
+	return m, leave()
 }
 
 func (m multiSelectModel[T]) outcome() outcome {
 	return outcome{cancelled: m.state == listCancelled}
+}
+
+func (m multiSelectModel[T]) finalFrame() string {
+	switch m.state {
+	case listCompleted:
+		return m.receipt
+	case listCancelled:
+		return CancelNotice(m.th)
+	default:
+		return ""
+	}
 }
 
 func (m multiSelectModel[T]) picked() []T {
@@ -224,10 +235,8 @@ func (m multiSelectModel[T]) picked() []T {
 
 func (m multiSelectModel[T]) View() tea.View {
 	switch m.state {
-	case listCompleted:
-		return tea.NewView(m.receipt)
-	case listCancelled:
-		return tea.NewView(CancelNotice(m.th))
+	case listCompleted, listCancelled:
+		return tea.NewView("")
 	case listConfirming:
 		return m.clamp(m.confirmView())
 	}

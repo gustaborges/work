@@ -23,7 +23,6 @@ import (
 	"github.com/gustaborges/work/internal/reporef"
 	"github.com/gustaborges/work/internal/shellintegration"
 	"github.com/gustaborges/work/internal/starter"
-	"github.com/gustaborges/work/internal/tui"
 	"github.com/gustaborges/work/internal/workhome"
 	"github.com/gustaborges/work/internal/workspace"
 )
@@ -85,6 +84,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	out := cmd.OutOrStdout()
 	errOut := cmd.ErrOrStderr()
 	interactive := present.IsInteractive()
+	pio := present.IO{In: cmd.InOrStdin(), UI: errOut}
 
 	if f.jsonSet {
 		return diag.New(diag.Usage, "--json is not accepted on `work start` (it is a mutation)")
@@ -127,35 +127,52 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		return err
 	}
 
-	// 1+2. SOURCE → Starter → validated repository path. In an interactive
-	// terminal an invalid or unusable path returns to the path prompt instead
-	// of exiting, so the user can correct it without restarting (FR-013, S4).
+	// 1+2. SOURCE → Starter → validated repository path. The validation runs
+	// inside the interactive field: an invalid or unusable path is shown in the
+	// live frame and replaced on the next attempt, so a rejected path never
+	// reaches terminal history and the journey is not restarted (FR-005, S4).
 	var repoPath string
-	for {
-		s := strings.TrimSpace(source)
+	validatePath := func(_ context.Context, s string) error {
+		s = strings.TrimSpace(s)
 		if s == "" {
-			if !interactive {
-				return diag.New(diag.Usage, "no SOURCE given: pass a path to a local git repository")
+			return errors.New("a path is required")
+		}
+		ref, err := starter.Invoke(home.PluginsDir(), starterComp, s)
+		if err == nil {
+			var normalized string
+			normalized, err = reporef.ValidatePath(ref.Path)
+			if err == nil {
+				repoPath = normalized
+				return nil
 			}
-			source, err = tui.InputPath()
-			if err != nil {
+		}
+		if retryable(err, diag.InvalidPath, diag.UnusableRepo) {
+			return err // shown in-frame; the user can correct it
+		}
+		return present.Fatal(err)
+	}
+	if source != "" {
+		if err := validatePath(ctx, source); err != nil {
+			if underlying, fatal := present.IsFatal(err); fatal {
+				return underlying
+			}
+			if !interactive {
 				return err
 			}
-			continue
 		}
-		ref, ierr := starter.Invoke(home.PluginsDir(), starterComp, s)
-		if ierr == nil {
-			repoPath, ierr = reporef.ValidatePath(ref.Path)
+	}
+	if repoPath == "" {
+		if !interactive {
+			return diag.New(diag.Usage, "no SOURCE given: pass a path to a local git repository")
 		}
-		if ierr != nil {
-			if interactive && retryable(ierr, diag.InvalidPath, diag.UnusableRepo) {
-				fmt.Fprintln(errOut, diag.Format(ierr))
-				source = ""
-				continue
-			}
-			return ierr
+		if _, err := present.Input(ctx, pio, present.InputSpec{
+			Title:    "Local repository path",
+			Initial:  strings.TrimSpace(source),
+			Validate: validatePath,
+			Receipt:  func(string) string { return repoPath },
+		}); err != nil {
+			return err
 		}
-		break
 	}
 	repo := gitx.Open(repoPath)
 	repoName := filepath.Base(repoPath)
@@ -171,8 +188,14 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	switch {
 	case f.prefixSet:
 		prefix = f.prefix
+	case len(prefixes) == 1:
+		// A convention with a single prefix is not a choice.
+		prefix = prefixes[0]
 	case interactive:
-		prefix, err = tui.SelectPrefix(prefixes)
+		prefix, err = present.Select(ctx, pio, present.SelectSpec[string]{
+			Title:   "Branch prefix",
+			Options: stringOptions(prefixes),
+		})
 		if err != nil {
 			return err
 		}
@@ -181,41 +204,55 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	}
 
 	// 4+5. Slug → derived branch name, validated and collision-checked before
-	// any mutation. In an interactive terminal an invalid name or a collision
-	// returns to the slug prompt so the user can pick another (FR-013, S5, S6).
-	// Asked before the base branch: a rejected slug is the cheapest failure to
-	// recover from, so it comes first.
-	slugFromFlag := f.slugSet
+	// any mutation. The check runs inside the interactive field, so an invalid
+	// name or a collision is shown in-frame and replaced on the next attempt
+	// without restarting the journey (FR-005, S5, S6). Asked before the base
+	// branch: a rejected slug is the cheapest failure to recover from.
 	var slug, branch string
-	for {
-		switch {
-		case slugFromFlag:
-			slug = strings.TrimSpace(f.slug)
-		case interactive:
-			slug, err = tui.InputSlug()
-			if err != nil {
-				return err
-			}
-		default:
-			return diag.New(diag.Usage, "missing --slug: name the Work")
-		}
-
-		branch, err = catalog.DeriveName(convention.Freeform, prefix, slug)
-		if err == nil {
-			err = branchname.Validate(branch)
-		}
-		if err == nil {
-			err = branchname.DetectCollision(repo, branch)
-		}
-		if err != nil {
-			if interactive && retryable(err, diag.InvalidBranchName, diag.BranchCollision) {
-				fmt.Fprintln(errOut, diag.Format(err))
-				slugFromFlag = false
-				continue
-			}
+	validateSlug := func(_ context.Context, s string) error {
+		s = strings.TrimSpace(s)
+		if err := branchname.ValidateSlug(s); err != nil {
 			return err
 		}
-		break
+		derived, err := catalog.DeriveName(convention.Freeform, prefix, s)
+		if err == nil {
+			err = branchname.Validate(derived)
+		}
+		if err == nil {
+			err = branchname.DetectCollision(repo, derived)
+		}
+		if err != nil {
+			if retryable(err, diag.InvalidBranchName, diag.BranchCollision) {
+				return err
+			}
+			return present.Fatal(err)
+		}
+		slug, branch = s, derived
+		return nil
+	}
+	if f.slugSet {
+		if err := validateSlug(ctx, f.slug); err != nil {
+			if underlying, fatal := present.IsFatal(err); fatal {
+				return underlying
+			}
+			if !interactive {
+				return err
+			}
+		}
+	}
+	if branch == "" {
+		if !interactive {
+			return diag.New(diag.Usage, "missing --slug: name the Work")
+		}
+		if _, err := present.Input(ctx, pio, present.InputSpec{
+			Title:       "Slug",
+			Description: "a short identifier for this Work",
+			Initial:     strings.TrimSpace(f.slug),
+			Validate:    validateSlug,
+			Receipt:     func(string) string { return slug },
+		}); err != nil {
+			return err
+		}
 	}
 
 	// 6. Base branch.
@@ -230,7 +267,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	if f.baseSet {
 		base, err = basebranch.Resolve(choices, f.base)
 	} else if interactive {
-		base, err = selectBase(ctx, choices)
+		base, err = selectBase(ctx, pio, choices)
 	} else {
 		return diag.New(diag.Usage, "missing --base: name a base branch")
 	}
@@ -241,7 +278,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	// 7. Workspace root. Resolved only once every source- and name-level check
 	// has passed, so a rejected run never persists a root or creates its dirs
 	// (SC-004).
-	workspaceRoot, err := resolveWorkspace(home, cfg, f, interactive)
+	workspaceRoot, err := resolveWorkspace(ctx, pio, home, cfg, f, interactive)
 	if err != nil {
 		return err
 	}
@@ -249,13 +286,18 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	// 8. Confirm.
 	dirPath := filepath.Join(workspaceRoot, "in-progress", repoName+"_"+strings.ReplaceAll(branch, "/", "-"))
 	summary := fmt.Sprintf(
-		"Create Work\n  repository: %s\n  base:       %s\n  branch:     %s\n  workspace:  %s\n  directory:  %s",
+		"  repository: %s\n  base:       %s\n  branch:     %s\n  workspace:  %s\n  directory:  %s",
 		repoPath, base.Format(), branch, workspaceRoot, dirPath)
 	if !f.yes {
 		if !interactive {
 			return diag.New(diag.Usage, "missing --yes: confirm the creation non-interactively with --yes")
 		}
-		ok, err := tui.ConfirmCreate(summary)
+		ok, err := present.Confirm(ctx, pio, present.ConfirmSpec{
+			Title:  "Create Work",
+			Impact: summary,
+			Accept: "Create",
+			Reject: "Cancel",
+		})
 		if err != nil {
 			return err
 		}
@@ -325,8 +367,10 @@ func requireNonInteractiveFlags(source string, cfg *config.Config, f startFlags)
 }
 
 // resolveWorkspace applies the F1 workspace-root rule: reuse a configured root
-// silently; on a machine with none, persist the supplied/prompted value.
-func resolveWorkspace(home workhome.Home, cfg *config.Config, f startFlags, interactive bool) (string, error) {
+// silently; on a machine with none, persist the supplied/prompted value. When
+// prompted, workspace.Validate runs inside the field so a bad path is shown
+// in-frame and replaced on retry.
+func resolveWorkspace(ctx context.Context, pio present.IO, home workhome.Home, cfg *config.Config, f startFlags, interactive bool) (string, error) {
 	if strings.TrimSpace(cfg.Workspace) != "" {
 		if f.workspaceSet {
 			return "", diag.New(diag.Usage,
@@ -335,27 +379,38 @@ func resolveWorkspace(home workhome.Home, cfg *config.Config, f startFlags, inte
 		return cfg.Workspace, nil
 	}
 
-	var raw string
+	var abs string
 	switch {
 	case f.workspaceSet:
-		raw = f.workspace
+		var err error
+		if abs, err = workspace.Validate(f.workspace, cfg.RepositoryRoots); err != nil {
+			return "", err
+		}
 	case interactive:
 		suggested, err := workspace.SuggestDefault()
 		if err != nil {
 			return "", diag.Wrap(diag.Usage, err, "cannot suggest a workspace root")
 		}
-		raw, err = tui.EditWorkspaceRoot(suggested)
-		if err != nil {
+		if _, err := present.Input(ctx, pio, present.InputSpec{
+			Title:       "Workspace root",
+			Description: "where materialized Works are kept",
+			Initial:     suggested,
+			Validate: func(_ context.Context, raw string) error {
+				a, verr := workspace.Validate(raw, cfg.RepositoryRoots)
+				if verr != nil {
+					return verr // a path typo the user can correct in-frame
+				}
+				abs = a
+				return nil
+			},
+			Receipt: func(string) string { return abs },
+		}); err != nil {
 			return "", err
 		}
 	default:
 		return "", diag.New(diag.Usage, "missing --workspace: no workspace root is configured yet")
 	}
 
-	abs, err := workspace.Validate(raw, cfg.RepositoryRoots)
-	if err != nil {
-		return "", err
-	}
 	if err := workspace.Persist(home, abs); err != nil {
 		return "", err
 	}
@@ -372,17 +427,38 @@ func retryable(err error, cats ...diag.Category) bool {
 	return slices.Contains(cats, d.Category)
 }
 
-func selectBase(ctx context.Context, choices []basebranch.Choice) (basebranch.Choice, error) {
-	items := make([]tui.BaseBranchItem, len(choices))
+// stringOptions wraps plain strings as single-line select options.
+func stringOptions(vals []string) []present.Option[string] {
+	opts := make([]present.Option[string], len(vals))
+	for i, v := range vals {
+		opts[i] = present.Option[string]{Value: v, Primary: v}
+	}
+	return opts
+}
+
+// selectBase presents the base-branch choices grouped into Local / Remote tabs
+// (the tab bar is hidden when only one scope is present) and returns the chosen
+// ref. The list stays a scrolling viewport while active and collapses to its
+// "<short> @ <object>" receipt on accept (FR-007, FR-008).
+func selectBase(ctx context.Context, pio present.IO, choices []basebranch.Choice) (basebranch.Choice, error) {
+	opts := make([]present.Option[basebranch.Choice], len(choices))
 	for i, c := range choices {
-		items[i] = tui.BaseBranchItem{
-			Label:  fmt.Sprintf("%-24s %s", c.Short, c.ObjectShort),
-			Remote: c.Scope == basebranch.ScopeRemoteTracking,
+		group := "Local"
+		if c.Scope == basebranch.ScopeRemoteTracking {
+			group = "Remote"
+		}
+		opts[i] = present.Option[basebranch.Choice]{
+			Value:     c,
+			Primary:   c.Short,
+			Secondary: c.ObjectShort,
+			Group:     group,
 		}
 	}
-	idx, err := tui.SelectBaseBranch(ctx, items)
-	if err != nil {
-		return basebranch.Choice{}, err
-	}
-	return choices[idx], nil
+	return present.Select(ctx, pio, present.SelectSpec[basebranch.Choice]{
+		Title:      "Base branch",
+		Grouped:    true,
+		Filterable: true,
+		Options:    opts,
+		Receipt:    func(o present.Option[basebranch.Choice]) string { return o.Value.Format() },
+	})
 }
