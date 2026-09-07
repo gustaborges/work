@@ -16,7 +16,7 @@ func TestValidate(t *testing.T) {
 		}
 	}
 	// git's own rules are authoritative here; the leading-dash rule is enforced
-	// only at the slug prompt (tui.ValidateSlug), not by check-ref-format.
+	// only at the slug prompt (ValidateSlug), not by check-ref-format.
 	bad := []string{"", "has space", "..", "trailing.lock", "back\\slash", "end/", "a~b", "a^b", "a:b"}
 	for _, n := range bad {
 		if err := Validate(n); diag.Token(err) != diag.InvalidBranchName.Token {

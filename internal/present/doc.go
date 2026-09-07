@@ -11,4 +11,11 @@
 // content. present imports no Work domain package; its only internal dependency
 // is internal/diag, the shared domain-free error vocabulary. An import-boundary
 // test (tests/contract/present_boundary_test.go) enforces this mechanically.
+//
+// Text editing, selection, and confirmation are implemented directly on
+// charm.land/bubbletea/v2 and charm.land/lipgloss/v2. The design (research R19)
+// allowed charm.land/huh/v2 to back Input/Confirm during migration; it was never
+// needed — the per-step lifecycle here (one bounded program, explicit final
+// View before Quit, caller-supplied validation) does not match huh's standalone
+// form model — so huh was dropped from the module in the final F2.5 slice.
 package present
