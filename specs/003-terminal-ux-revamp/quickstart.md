@@ -42,9 +42,11 @@ the valid `$src`. At the slug prompt enter an invalid slug (`bad slug`), a colli
 slug, then `my-work`.
 
 **Expect:**
-- While editing, each `✘ …` error **replaces** the previous one — never stacks.
-- After the whole journey, terminal history contains **one** receipt per accepted
-  step and **zero** rejected values or obsolete errors:
+- The journey runs full-screen (alternate buffer); each accepted receipt stays
+  visible above the active step, and each `✘ …` error **replaces** the previous
+  one — never stacks. Resize the terminal mid-selector → **no** duplicated headers.
+- On exit the primary buffer is restored and the receipt trail is reprinted there —
+  **one** receipt per accepted step and **zero** rejected values or obsolete errors:
   ```
   Local repository path
     ✔ <src>
@@ -53,19 +55,23 @@ slug, then `my-work`.
     ✔ my-work
 
   Base branch
-    ✔ main …
+    ✔ main
+
+  ✔ Create Work confirmed
   ```
-- The stable stdout lines (`work: created …`, `work: branch …`, `work: path …`) are
-  unchanged from F1.
+- The stable stdout lines (`work: created …`, `work: branch …`, `work: path …`),
+  printed after the reprint, are unchanged from F1.
 
 ## Q2 — Selectors collapse to a compact receipt (US1, US3; FR-003, FR-007, SC-002)
 
 **PTY, 80×24 and 160×50.** In the `work start` journey, open the base-branch
-selector; confirm it renders a generous scrolling list while active. Press `Enter`.
+selector; confirm it renders a generous scrolling list while active with **no**
+per-row SHA. Press `Enter`.
 
-**Expect:** the list is immediately replaced by `Base branch` / `  ✔ <ref> <sha>` and
-one blank line — **no** list rows, **no** blank padding before the next step. Same at
-160×50 (no wasted rows survive).
+**Expect:** the list is immediately replaced by `Base branch` / `  ✔ <short-name>`
+and one blank line — **no** list rows, **no** blank padding before the next step,
+**no** SHA. Same at 160×50 (no wasted rows survive). In the reprinted history after
+exit the receipt reads the same.
 
 ## Q3 — Confirmation shows impact, then collapses (US1; FR-030, SC-002)
 
@@ -89,7 +95,8 @@ substring of the input.
 some with long branch names and wide-Unicode slugs (`日本語-ブランチ`, combining
 marks).
 
-**Expect at every size:** no frame taller than the viewport; no stray scrollback
+**Expect at every size:** the picker fills the alternate screen but never emits a
+frame taller than the viewport; on exit the primary buffer comes back with no stray
 lines; primary identity stays visible; secondary metadata truncates with `…` first;
 column starts identical across all visible rows.
 

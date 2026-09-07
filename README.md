@@ -134,12 +134,15 @@ opens a menu: in a terminal it prints the `WORK` brand and a `work --help`
 pointer, then exits 0; piped or scripted it prints the usage line and exits 2.)
 
 ```
-work start ~/src/acme-api
-  → slug?          add-retry-logic
-  → base branch?   (Remote / Local tabs, each row with a short SHA)
+work start ~/src/acme-api        (full-screen; each accepted step stays on
+  → slug?          add-retry-logic  screen as a receipt above the next one)
+  → base branch?   (Remote / Local tabs)
   → workspace root? (~/work — accept or edit; asked only once per machine)
   → Create Work … ?  [y/N]
 ```
+
+On exit the terminal returns to where it was, with the receipt trail reprinted
+above the `work:` result lines.
 
 `freeform`'s single `{slug}` prefix is applied without asking.
 
@@ -286,8 +289,8 @@ survive a failed creation.
 ```
 cmd/work/            entry point → internal/cli
 internal/            role-focused packages mirroring the start pipeline
-internal/present/    the generic inline-interaction boundary (input/select/confirm,
-                     theme, WORK wordmark, interactive diagnostic renderer)
+internal/present/    the generic interaction boundary (input/select/confirm,
+                     the full-screen wizard, theme, WORK wordmark, diagnostics)
 seed/                two standalone binaries (starter + locator), embedded via //go:embed
 tests/contract/      golden stdin/stdout JSON against the built seed binaries
 tests/integration/   testscript scenarios driving the built work binary
@@ -301,12 +304,15 @@ scenarios.
 
 ### Presentation (F2.5)
 
-Every interactive step (`work start`, the resume/archive selectors, confirmations)
-runs through `internal/present`: one bounded Bubble Tea program per step, rendered
-inline in the current screen buffer, that collapses to a one-line receipt on
-acceptance and leaves no rejected input or stale error in scrollback. `present`
-imports no Work domain package — the CLI supplies titles, options, and
-side-effect-free validation closures — and an import-boundary test
+Every interactive flow (`work start`, the resume/archive selectors) runs through
+`internal/present` as one full-screen `Wizard` over ordered steps: a Primary rule,
+the flow title, the trail of accepted-step receipts, and the current step. A full
+clear+repaint every frame makes the inline renderer's resize / back-nav ghosting
+impossible (ADR-0021). On exit the primary buffer is restored and the receipt
+trail is reprinted there, ahead of the stable `work:` stdout — so an accepted step
+leaves a one-line receipt and no rejected input or stale error. `present` imports
+no Work domain package — the CLI supplies titles, options, and side-effect-free
+validation closures — and an import-boundary test
 (`tests/contract/present_boundary_test.go`) enforces that mechanically.
 
 Colour is one semantic theme. It is disabled — and output then contains zero ANSI

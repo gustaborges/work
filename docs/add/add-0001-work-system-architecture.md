@@ -376,21 +376,21 @@ Conforme ADR-0020, a CLI/aplicação compõe a jornada e traduz domínio em espe
 
 A camada de apresentação mantém somente estado visual e de entrada: edição, cursor, filtro, viewport, seleção, confirmação e lifecycle da etapa. Ela não recebe DTOs de Work nem consulta domínio ou infraestrutura. As opções carregam valor opaco e textos de apresentação; significado de grupos, identidades e consequências permanece na CLI.
 
-Uma etapa roda como uma sessão inline delimitada. Seu estado segue:
+Conforme ADR-0021, cada jornada roda como **um programa full-screen** (buffer alternativo) — um `present.Wizard` sobre etapas ordenadas. As primitivas implementam um `stepModel` livre de domínio; o wizard compõe a régua, o título da jornada, o rastro de recibos aceitos e o corpo da etapa corrente, e faz um repaint completo a cada frame. Nenhuma etapa encerra o programa: ela reporta um estado terminal e o wizard conduz a transição. Seu estado segue:
 
 ```text
 ativa --erro recuperável--> ativa com o erro atual substituído
-ativa --aceita-----------> concluída com recibo compacto
-ativa --cancela----------> cancelada com aviso compacto
+ativa --aceita-----------> status "concluída"; wizard anexa o recibo e avança
+ativa --cancela----------> status "cancelada"; wizard encerra
 ```
 
-Em controles com confirmação, a sequência é `seleção → confirmação → concluída`; voltar da confirmação retorna à seleção sem mutar o domínio, e cancelamento encerra a etapa. A visão compacta é definida antes do encerramento normal, para que o frame final não retenha lista expandida nem padding.
+Em controles com confirmação, a sequência é `seleção → confirmação → concluída`; voltar da confirmação retorna à seleção sem mutar o domínio, e cancelamento encerra a etapa. Ao encerrar, o buffer primário é restaurado automaticamente e o rastro de recibos compactos é reimpresso no canal de UI, à frente das linhas estáveis de stdout — é essa reimpressão que entra no histórico do terminal.
 
 ### 12.3 Geometria, tema e capacidade
 
 O tema é semântico e injetado em todos os renderers. `Primary` (`#11A8CD`) e `Secondary` (`#8B7CF6`) expressam marca e foco; `Success`, `Warning` e `Danger` permanecem tokens próprios; texto de corpo usa o foreground do terminal; variantes claras e paletas limitadas preservam contraste. `NO_COLOR` não vazio, `TERM=dumb` e writers não TTY desabilitam cor. Negrito e marcas textuais mantêm significado sem cor.
 
-Todo modelo ativo calcula linhas e colunas disponíveis depois de reservar título, filtro, erro, ajuda e confirmação. Opções não focadas e focadas reservam a mesma coluna indicadora; caixas `[ ]`/`[x]` têm largura exibida igual; as duas linhas de uma opção movem-se e estilizam-se como uma unidade. Resize recalcula viewport e clamp de cursor. Metadados secundários são truncados antes da identidade primária. A medição ignora sequências de estilo e considera largura Unicode exibida.
+Todo modelo ativo calcula linhas e colunas disponíveis depois de reservar título, filtro, erro, ajuda e confirmação — e, sob o wizard, também a régua, o título da jornada e o rastro de recibos. Opções não focadas e focadas reservam a mesma coluna indicadora; caixas `[ ]`/`[x]` têm largura exibida igual; as duas linhas de uma opção movem-se como uma unidade — a linha primária recebe `Primary` quando focada, a secundária é sempre `Muted`. O marcador `❯ ` de largura fixa identifica o foco sem cor. Resize recalcula viewport e clamp de cursor. Metadados secundários são truncados antes da identidade primária. A medição ignora sequências de estilo e considera largura Unicode exibida.
 
 ### 12.4 Streams e diagnóstico
 
@@ -400,7 +400,7 @@ Validações recuperáveis retornam uma mensagem pública para o controle ativo,
 
 ### 12.5 Satisfação e decisões governantes
 
-Esta seção satisfaz `docs/prd.md` RF-50 a RF-64 e RNF-10 a RNF-11. ADR-0019 governa a superfície e a descoberta; ADR-0020 governa o boundary e lifecycle de apresentação; ADR-0009 continua governando a stack. Os contratos históricos F1/F2 continuam registrando o comportamento entregue naquelas fatias, mas a apresentação conflitante é substituída por `specs/003-terminal-ux-revamp/`.
+Esta seção satisfaz `docs/prd.md` RF-50 a RF-64 e RNF-10 a RNF-11. ADR-0019 governa a superfície e a descoberta; ADR-0020 governa o boundary e o lifecycle de apresentação; ADR-0021 governa a estrutura de renderização full-screen (wizard por jornada), substituindo a decisão da ADR-0020 sobre sessão inline por etapa; ADR-0009 continua governando a stack. Os contratos históricos F1/F2 continuam registrando o comportamento entregue naquelas fatias, mas a apresentação conflitante é substituída por `specs/003-terminal-ux-revamp/`.
 
 A API administrativa direta é:
 

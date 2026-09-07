@@ -8,28 +8,37 @@ start` path / slug / prefix / base-branch / workspace / confirmation steps, the
 `work resume` recency picker, and the `work archive` multi-select + confirmation +
 dirty-worktree acknowledgement.
 
-## 1. Inline operation (FR-001)
+## 1. Full-screen operation (FR-001, ADR-0021)
 
-- All collection and selection happens in the **current** terminal screen buffer.
-- No alternate / full-screen buffer is ever entered.
-- Each step is one bounded Bubble Tea program created with explicit
-  `WithInput` / `WithOutput` bound to the CLI's injected streams (`diagnostics.md`,
-  research R14).
+- Each flow runs as **one** alternate-screen Bubble Tea program (a `present.Wizard`
+  over ordered steps) created with explicit `WithInput` / `WithOutput` bound to the
+  CLI's injected streams (`diagnostics.md`, research R14). Alt-screen is set through
+  `tea.View{AltScreen: true}` (there is no program option in Bubble Tea v2).
+- A full clear + repaint every frame makes the inline renderer's resize / back-nav
+  ghosting structurally impossible (research R21).
+- On exit the primary buffer is restored automatically and the compact
+  accepted-step receipts are reprinted to the UI channel, ahead of the command's
+  stable stdout (§2, FR-007).
+- The `work resume` and `work archive` single-step selectors are one-step wizards;
+  `work start` composes its path / slug / prefix / base / workspace / confirm steps
+  into a single wizard so earlier receipts stay visible above the active step.
 
 ## 2. Step states and final render (FR-003, FR-005, FR-007, SC-002)
 
 ```text
 editing/choosing ──invalid──▶ same state; the one current error is replaced in-frame
-editing/choosing ──accept───▶ completed → compact receipt set → tea.Quit
+editing/choosing ──accept───▶ step status.done; wizard appends the receipt, advances
 choosing ─────────Enter─────▶ confirming        (only when a confirmation is defined)
 confirming ───────Esc───────▶ choosing          (no mutation)
-confirming ───────accept────▶ completed → receipt → tea.Quit
-any ──────────────Ctrl-C────▶ cancelled → "✘ Operation cancelled" → tea.Quit
-input/select ─────q or Esc──▶ cancelled
+confirming ───────accept────▶ step status.done; wizard advances
+any ──────────────Ctrl-C────▶ step status.cancelled; wizard quits → "✘ Operation cancelled"
+input/select ─────q or Esc──▶ step status.cancelled
 ```
 
-- The `completed` / `cancelled` view is set **before** `tea.Quit`, so Bubble Tea's
-  graceful final render commits only the compact frame.
+- A step never calls `tea.Quit` itself: it reports a terminal `status()` and the
+  wizard drives the transition (append the receipt, record the answer, build the
+  next step, or quit on cancel / fatal). The alt buffer tears down on quit; the
+  wizard then reprints the receipt trail to the primary buffer.
 - **Receipt** (accepted step):
 
   ```text
@@ -37,8 +46,10 @@ input/select ─────q or Esc──▶ cancelled
     ✔ <displayValue>
   ```
 
-  then one blank separator line. A selector's receipt **replaces its whole expanded
-  list** — no rows, no blank padding remain in history (FR-007, SC-002).
+  then one blank separator line. While the wizard runs, every accepted receipt
+  stays visible above the active step; after exit the whole trail is reprinted to
+  terminal history. A selector's receipt **replaces its whole expanded list** — no
+  rows, no blank padding remain (FR-007, SC-002).
 - A journey may supply a redacted `displayValue` or omit it for a value it marks
   sensitive (FR-004).
 - **Cancellation notice**: the single line `✘ Operation cancelled`. No title echo, no
@@ -85,8 +96,9 @@ text.
 
 - Fixed 2-cell leading slot: `❯ ` focused, `  ` otherwise (equal display width;
   textual, not colour).
-- Focused row: **bold** (both lines of a two-line row), MAY also take `Primary`.
-  Bold identifies focus with colour off.
+- Focused row: the **primary line** takes `Primary` (bold, plus accent when colour
+  is on); the secondary line is always `Muted`. The fixed `❯ ` marker identifies
+  focus with colour off.
 - Fixed 4-cell checkbox slot: `[ ] ` / `[x] `. Checked state and focus state are
   independent.
 - A two-line option moves and styles as one unit; the second line's indent equals

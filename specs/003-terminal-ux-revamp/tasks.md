@@ -217,6 +217,26 @@ import-boundary test. No `internal/cli` command is migrated yet.
 
 ---
 
+## Phase 7: Follow-up — full-screen wizard per flow (R21, ADR-0021)
+
+**Branch**: `feature/003-terminal-ux-revamp-p7-follow-up`, cut from `feature/003-terminal-ux-revamp-p6-polish`; PR targets `feature/003-terminal-ux-revamp-p6-polish`. Spec/contract/research/ADR edits live on this branch alongside the code.
+
+**Goal**: The inline renderer ghosts on resize and on the `archive` confirm→list `Esc`-back. Move the three flows onto one alternate-screen `present.Wizard` per flow so a full clear+repaint every frame makes the ghost impossible; keep every non-interactive contract byte-for-byte.
+
+**Independent Test**: at 80×24 and 160×50, resize the terminal mid-`work start` selector → no duplicated headers; `work archive` check→Enter→confirm→`Esc` back → no stacked "Archive Works" headers; `work start … --yes | cat` and `work resume <id> | cat` emit zero `\x1b` with F1/F2-identical stdout lines and exit codes.
+
+- [X] T055 `internal/present`: add `stepModel` (`body`/`status`/`cursorPos`); migrate `input`/`select`/`multiselect`/`confirm` off standalone `tea.Model` + `tea.Quit`; migrate the model tests (`View().Content`→`body()`, `isQuit`+`finalFrame`→`status()`).
+- [X] T056 `internal/present`: add `wizard.go` (`Wizard`, `WizardSpec`, `Step`, `InputStep`/`SelectStep`/`MultiSelectStep`/`ConfirmStep`, `Answers`, `StepResolved`) + `wizard_test.go`; `present.go` `runWizard`/`classifyWizard` reprint the receipt trail to the UI channel after `?1049l`; `frame.go` drops `leave()`, adds `rule()`. `Input`/`Select`/`MultiSelect`/`Confirm` become one-step wizards (so `resume.go`/`archive.go` need no change).
+- [X] T057 Visual fold: real `❯` chevron in `Input` with a hardware text cursor at the edit position; the focused two-line row styles only its primary line (`Primary`), secondary always `Muted`.
+- [X] T058 `internal/cli/start.go`: restructure `runStart` around one `present.Wizard`; F1 validation closures reused verbatim; `baseBranchSpec` drops the per-row SHA and its receipt/confirm summary show the short name only; `workspace.Persist` moves to after the wizard.
+- [X] T059 `tests/integration/vt_test.go`: alt-screen support (DECSET 1049/1047/47 save/blank/restore, no scrollback in alt mode; VPA) + `TestVTAlternateScreen`; re-pin `interactive_test.go` (declined run no longer persists the workspace root).
+- [X] T060 Spec / contract / research / ADR: `spec.md` FR-001/FR-007/SC-001-002/Out of Scope; `contracts/interaction.md` §1/§2/§5; `research.md` R1/R2/R4/R18 + new R21; new `docs/adr/adr-0021`, ADR-0020 marked partially superseded; `docs/add/add-0001` §12.2/§12.3; `docs/prd.md` RF-53; `README.md`/`CLAUDE.md`; `internal/present/doc.go`.
+- [X] T061 `make lint` + `GIT_CONFIG_GLOBAL=/dev/null go test ./...` green; `git grep "leave()\|sessionModel" internal/present` empty; manual full-screen smoke of the three flows + `Ctrl-C` (exit 20) + `NO_COLOR=1 work resume`.
+
+**Checkpoint**: the three flows render full-screen with zero ghosting; base selector is hash-free; every F1/F2 stdout line / error token / exit code byte-for-byte unchanged; `go test ./...` green on all 3 OSes.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase dependencies
