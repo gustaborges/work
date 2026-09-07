@@ -23,6 +23,25 @@ func TestRootHasSubcommands(t *testing.T) {
 	}
 }
 
+func TestRootRegistersHelpGroups(t *testing.T) {
+	root := newRootCmd()
+	got := map[string]bool{}
+	for _, g := range root.Groups() {
+		got[g.ID] = true
+	}
+	for _, want := range []string{groupDaily, groupInWork, groupAdmin, groupSetup} {
+		if !got[want] {
+			t.Errorf("root is missing command group %q", want)
+		}
+	}
+}
+
+// Interactive bare `work` prints the brand to stdout and exits 0; that path is
+// gated on a real TTY, so its end-to-end coverage is the PTY test
+// tests/integration/brand_test.go. Here we only assert the non-interactive
+// contract is unchanged (TestBareWorkNonInteractiveIsUsage) and the renderer is
+// wired (brand.Render is unit-tested in internal/present/brand).
+
 func TestRootRejectsUnknownSubcommand(t *testing.T) {
 	root := newRootCmd()
 	root.SetArgs([]string{"frobnicate"})
