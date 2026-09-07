@@ -1,5 +1,10 @@
 package tui
 
+// The `work` home contract for this slice is
+// specs/002-daily-cycle/contracts/cli-work-home.md, which supersedes
+// specs/001-first-local-work/contracts/cli-work-home.md: the home now lists all
+// three daily journeys ("Start a Work", "Resume a Work", "Archive Works").
+
 import (
 	"context"
 	"errors"

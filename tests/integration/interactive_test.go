@@ -275,6 +275,62 @@ func TestHomeReachability(t *testing.T) {
 		t.Fatalf("archive with no Works exited %d, want 0", code)
 	}
 	c4.expect("no active Works to archive")
+
+	// Non-interactive `work` renders no TUI and exits 2 with the one-line
+	// summary naming all three verbs (contracts/cli-work-home.md, FR-030).
+	cmd := exec.Command(bin)
+	cmd.Env = env
+	out, err := cmd.CombinedOutput()
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || ee.ExitCode() != 2 {
+		t.Fatalf("non-interactive `work` exit = %v, want 2\n%s", err, out)
+	}
+	for _, want := range []string{"work start", "work resume", "work archive", "work --help"} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("non-interactive summary missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// T039 — with Works present, arrowing to "Resume a Work" opens the recency
+// picker and "Archive Works" opens the multi-select list; `q` leaves either
+// without a state change. (contracts/cli-work-home.md, FR-030.)
+func TestHomeReachesPopulatedPickers(t *testing.T) {
+	needSeed(t)
+	bin := buildWorkBin(t)
+	env, homeDir, _ := ptyEnv(t)
+
+	repo := filepath.Join(homeDir, "demo")
+	makeRepo(t, repo)
+	ws := filepath.Join(homeDir, "ws")
+	seedWorks(t, bin, env, repo, ws, "alpha", "bravo")
+
+	// Home -> Resume a Work -> the recency picker lists a Work row.
+	c := newConsole(t, bin, env)
+	c.expect("Resume a Work")
+	c.send("\x1b[B\r") // down to "Resume a Work", enter
+	c.expect("demo  bravo")
+	c.send("q")
+	if code := c.wait(); code != 20 {
+		t.Fatalf("q at the resume picker exited %d, want 20", code)
+	}
+
+	// Home -> Archive Works -> the multi-select list shows checkboxes.
+	c2 := newConsole(t, bin, env)
+	c2.expect("Archive Works")
+	c2.send("\x1b[B\x1b[B\r") // down twice to "Archive Works", enter
+	c2.expect("[ ]")
+	c2.send("\x03") // Ctrl-C: cancel
+	if code := c2.wait(); code != 20 {
+		t.Fatalf("Ctrl-C at the archive picker exited %d, want 20", code)
+	}
+
+	// Nothing was archived.
+	for _, slug := range []string{"alpha", "bravo"} {
+		if _, err := os.Stat(filepath.Join(ws, "in-progress", "demo_"+slug, "worktree")); err != nil {
+			t.Errorf("%s worktree gone after a cancelled archive: %v", slug, err)
+		}
+	}
 }
 
 // T044 — `work start` with no SOURCE prompts for the path, then converges to

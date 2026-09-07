@@ -34,6 +34,10 @@ jobs:
       # seed/dist back to the host platform.
       - run: make seed-all
       - run: make lint
+      # `go test ./...` is the cross-cutting exit gate (roadmap §4): it runs the
+      # portable F1/F2 unit + testscript integration suites across the 3-OS matrix.
+      # Note: unix-only pty tests (tests/integration/*_test.go with //go:build unix)
+      # run only on the ubuntu/macos runners.
       - run: go test ./...
       - name: Host build smoke test
         run: make build

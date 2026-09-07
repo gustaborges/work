@@ -24,6 +24,15 @@ import (
 // is a var only so tests can shorten it.
 var lockTimeout = 3 * time.Second
 
+// SetLockTimeoutForTest overrides the advisory-lock wait and returns a function
+// that restores the previous value. It exists for cross-package concurrency
+// tests (internal/resume) that need both orchestrators to give up quickly.
+func SetLockTimeoutForTest(d time.Duration) (restore func()) {
+	old := lockTimeout
+	lockTimeout = d
+	return func() { lockTimeout = old }
+}
+
 // OutcomeState is the terminal state of one Work after the batch runs.
 type OutcomeState int
 
