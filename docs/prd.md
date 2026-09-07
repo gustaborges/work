@@ -2,12 +2,12 @@
 
 **Um orquestrador de contexto para desenvolvimento agêntico local.**
 
-**Status:** Rascunho v2
+**Status:** Rascunho v3
 
 **Autor:** Gustavo Carvalho
 
-**Data:** 2026-08-31
-**Supersede:** `docs/prd.md` (v1)
+**Data:** 2026-09-07
+**Supersede:** `docs/prd.md` (v2)
 
 ***
 
@@ -34,7 +34,7 @@ Work reduz esse atrito com um ponto de entrada único e extensível. Um plugin p
 * Permitir que plugins acrescentem contexto e relações externas sem controlar o lifecycle do Work.
 * Manter o núcleo pequeno, auditável e independente de integrações específicas.
 * Oferecer extensibilidade por pacotes instaláveis, sem alterar o código do Work.
-* Permitir que qualquer jornada seja descoberta pela TUI, sem exigir memorização profunda da CLI.
+* Permitir que qualquer jornada seja descoberta por uma entrada de marca e uma ajuda completa, sem exigir memorização profunda da CLI.
 
 ***
 
@@ -187,9 +187,21 @@ O usuário entra em `work plugin` para instalar, listar, habilitar/desabilitar, 
 
 ### Superfície CLI/TUI
 
-* **RF-50.** `work` sem argumentos deve abrir uma home TUI da qual todas as jornadas públicas sejam alcançáveis; `work plugin`, `work repository` e `work convention` devem abrir os hubs de seus domínios.
+* **RF-50.** Em terminal interativo, `work` sem argumentos deve exibir uma entrada estática de marca com orientação para `work --help`, sem abrir um seletor. `work --help` deve apresentar uso, opções e exatamente os comandos públicos disponíveis, agrupados por contexto. `work plugin`, `work repository` e `work convention` devem continuar abrindo os hubs de seus domínios.
 * **RF-51.** Em terminal interativo, valores de seleção omitidos devem ser coletados por TUI e valores explícitos devem pular somente a seleção correspondente. Em stdin não interativo, valor obrigatório ausente deve falhar com uso acionável sem tentar abrir TUI.
 * **RF-52.** Comandos de leitura devem aceitar `--json` e não alterar estado; mutações devem ter saída e códigos de saída estáveis. `--yes` pode confirmar impactos já determinados, mas não escolher alvos ou valores.
+* **RF-53.** Toda coleta e seleção interativa deve ocorrer no buffer corrente do terminal. Ao aceitar uma etapa, o controle ativo deve ser substituído por um recibo compacto com título, marca de sucesso e valor aceito; valores sensíveis devem ser redigidos ou omitidos.
+* **RF-54.** Uma falha recuperável atribuível ao campo ativo deve aparecer dentro desse campo e ser substituída pela tentativa seguinte. No máximo um erro atual deve permanecer visível, e tentativas rejeitadas não devem se acumular no histórico do terminal.
+* **RF-55.** Controles ativos devem respeitar as dimensões disponíveis do terminal. Mover foco, marcar opções, filtrar ou trocar grupos não deve deslocar colunas nem alterar a altura das linhas que não mudaram.
+* **RF-56.** O foco de seletores deve ser identificável por negrito e por um indicador textual de largura reservada; cor pode reforçá-lo, mas não pode ser o único sinal. Seletores simples e múltiplos devem oferecer teclas consistentes de movimento, filtragem quando disponível, confirmação e cancelamento, com ajuda visível.
+* **RF-57.** O cancelamento interativo deve deixar um único resultado humano conciso e preservar a categoria e o código de saída programáticos já contratados. Cancelamento não pode executar nem confirmar uma mutação.
+* **RF-58.** Falhas não recuperáveis devem ser apresentadas uma única vez, em linguagem do usuário, com próximo passo quando conhecido. Causas técnicas devem permanecer disponíveis para diagnóstico explícito, sem compor a saída humana normal.
+* **RF-59.** A marca principal deve escrever `WORK` como arte de terminal e aplicar, quando houver cor verdadeira e contraste adequado, um degradê entre as cores primária `#11A8CD` e secundária `#8B7CF6`. Terminais estreitos ou sem cor devem receber a forma compacta `WORK` sem quebra defeituosa.
+* **RF-60.** A apresentação deve usar um tema semântico único: as cores de marca não substituem os significados de sucesso, aviso ou falha; texto de corpo usa a cor normal do terminal; fundos claros, paletas limitadas e modo monocromático recebem alternativas legíveis.
+* **RF-61.** Cor deve ser desativada em saída não interativa, quando `NO_COLOR` não estiver vazio ou quando `TERM=dumb`. A saída continua compreensível sem cor e não deve conter sequências de controle nesses casos.
+* **RF-62.** Apresentação interativa e diagnósticos humanos devem usar o canal de interface configurado; resultados estáveis de comandos permanecem no stdout. A renovação visual não pode alterar argumentos, flags, tokens de erro ou códigos de saída existentes sem contrato posterior explícito.
+* **RF-63.** `work` sem argumentos deve sair com sucesso depois da entrada de marca em terminal interativo. Em uso não interativo, deve preservar a falha de uso existente; `work --help` deve sair com sucesso em ambos os modos.
+* **RF-64.** Confirmações que antecedem mutações devem mostrar o impacto antes da aceitação e, quando aceitas, reduzir-se a um recibo compacto antes do resultado estável da operação. Voltar e editar etapas anteriores não faz parte desta entrega.
 
 ***
 
@@ -204,19 +216,22 @@ O usuário entra em `work plugin` para instalar, listar, habilitar/desabilitar, 
 * **RNF-7. Confiança mínima necessária.** A origem de plugin é escolhida explicitamente pelo usuário e o núcleo nunca carrega código de plugin no próprio processo.
 * **RNF-8. Componibilidade de extensões.** Starters e mecanismos de localização de repositório devem poder evoluir independentemente. A criação de um novo Starter não deve exigir implementação própria das estratégias locais de localização já disponíveis ao usuário.
 * **RNF-9. Política local explícita.** A precedência entre mecanismos de localização pertence à configuração do usuário e não deve depender de ordem de instalação, prioridade autodeclarada pelo plugin ou heurística oculta do core.
-* **RNF-10. CLI progressiva e consistente.** Toda jornada deve ser alcançável a partir de `work` sem argumentos; comandos cotidianos permanecem rasos, enquanto comandos diretos para automação seguem uma gramática regular, têm saída e códigos de saída estáveis e nunca dependem de TUI.
+* **RNF-10. CLI progressiva e consistente.** Toda jornada deve ser descobrível a partir de `work` e `work --help`; comandos cotidianos permanecem rasos, enquanto comandos diretos para automação seguem uma gramática regular, têm saída e códigos de saída estáveis e nunca dependem de TUI.
+* **RNF-11. Apresentação acessível e portátil.** Interações devem permanecer compreensíveis sem cor, adaptar-se ao espaço disponível e preservar geometria estável nos sistemas operacionais e terminais suportados.
 
 ***
 
 ## 10. Experiência do usuário
 
-`work` sem argumentos abre a home TUI, da qual todas as jornadas são alcançáveis. Os comandos cotidianos são `work start [source]`, `work resume [work]`, `work archive [work...]`, `work status [work]`, `work import [importer]` e `work link [linker] [value]`. Ausência de alvo usa TUI quando a operação exige escolha; alvo explícito pula essa seleção. Em stdin não interativo, valor obrigatório ausente falha com uso acionável em vez de tentar abrir TUI.
+Em terminal interativo, `work` sem argumentos mostra uma entrada estática: o wordmark `WORK` em arte de terminal, colorido por um degradê entre os acentos primário e secundário quando houver suporte, seguido da tagline e da indicação de `work --help`. A ajuda agrupa somente os comandos realmente disponíveis por contexto de uso e mantém todas as jornadas públicas descobríveis. O comando vazio não abre uma seleção. Em modo não interativo, preserva a falha de uso existente; `work --help` funciona nos dois modos.
+
+Os comandos cotidianos são `work start [source]`, `work resume [work]`, `work archive [work...]`, `work status [work]`, `work import [importer]` e `work link [linker] [value]`. Ausência de alvo usa TUI quando a operação exige escolha; alvo explícito pula essa seleção. Em stdin não interativo, valor obrigatório ausente falha com uso acionável em vez de tentar abrir TUI.
 
 No fluxo de `work start`, o Work resolve e apresenta escolhas necessárias, cria o Work, materializa seu estado canônico a partir da resposta do Starter e executa extensões pós-criação. Enquanto Linkers e Importers são executados, o Work indica qual extensão está em execução; erros automáticos são reportados como avisos com diagnóstico, pois o Work já está disponível.
 
-Todas as escolhas — Starters concorrentes, modo de início, convenção, prefixo, base branch, retomada, arquivamento, Importer e Linker manual — usam componentes de TUI consistentes e navegáveis por teclado. `work status` usa o Work atual quando não recebe um Work explícito; `work import` e `work link` operam sempre sobre o Work atual. Quando esse contexto não puder ser resolvido, falham com mensagem clara.
+Todas as escolhas — Starters concorrentes, modo de início, convenção, prefixo, base branch, retomada, arquivamento, Importer e Linker manual — usam controles consistentes, inline e navegáveis por teclado. Enquanto ativos, erros recuperáveis são substituídos no próprio campo e seletores respeitam o viewport sem saltos de geometria; quando aceitos, deixam recibos compactos com os valores escolhidos. Cancelamentos e falhas finais aparecem uma única vez, sem expor cadeias técnicas na saída humana normal. `work status` usa o Work atual quando não recebe um Work explícito; `work import` e `work link` operam sempre sobre o Work atual. Quando esse contexto não puder ser resolvido, falham com mensagem clara.
 
-`work plugin`, `work repository` e `work convention` são hubs TUI. Na API direta, o verbo vem após um caminho de recursos no singular: `plugin list|install|enable|disable|update|uninstall`, `repository policy list|add|remove|move|replace`, `repository locator list`, `repository root list|add|remove|replace` e `convention show|set`. Remover um Locator da policy apenas deixa de usá-lo na estratégia; desabilitar continua sendo uma operação exclusiva do plugin. A superfície completa e suas semânticas transversais são governadas pela ADR-0017.
+`work plugin`, `work repository` e `work convention` são hubs TUI. Na API direta, o verbo vem após um caminho de recursos no singular: `plugin list|install|enable|disable|update|uninstall`, `repository policy list|add|remove|move|replace`, `repository locator list`, `repository root list|add|remove|replace` e `convention show|set`. Remover um Locator da policy apenas deixa de usá-lo na estratégia; desabilitar continua sendo uma operação exclusiva do plugin. A superfície completa e suas semânticas transversais são governadas pela ADR-0019; a separação entre jornadas e apresentação interativa é governada pela ADR-0020.
 
 Comandos de leitura aceitam `--json` e não alteram acesso recente, configuração, checkout ou proveniência. `--yes` confirma impactos já determinados, mas nunca escolhe alvo, modo ou valor. Não existem aliases oficiais de comandos ou recursos.
 
@@ -229,6 +244,8 @@ Comandos de leitura aceitam `--json` e não alteram acesso recente, configuraç�
 * Redução de artefatos de IA/spec commitados acidentalmente.
 * Uso recorrente de `work resume`.
 * Taxa de extensões que se tornam elegíveis e concluem sem intervenção manual.
+* Taxa de conclusão das jornadas interativas sem resíduos de tentativas rejeitadas, erros antigos ou seletores expandidos no histórico do terminal.
+* Tempo para uma pessoa encontrar, pela entrada de marca e pela ajuda, o comando adequado a uma jornada pública.
 
 ***
 

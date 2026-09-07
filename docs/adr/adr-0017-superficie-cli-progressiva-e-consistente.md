@@ -1,6 +1,8 @@
 # ADR-0017: Superfície CLI Progressiva e Consistente
 
-**Status:** Aceito
+**Status:** Superseded by ADR-0019
+
+**Substituída por:** ADR-0019 — Superfície CLI Progressiva com Home Estática e Ajuda Agrupada
 
 **Data:** 2026-09-04
 
