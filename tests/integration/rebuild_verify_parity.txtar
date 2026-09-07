@@ -1,0 +1,23 @@
+# T037 — after the index is rebuilt from snapshots, every Work (active *and*
+# archived) still passes the verify coherence check and the recency order is
+# byte-identical to the capture taken before the DB was deleted. (SC-006.)
+
+gitrepo src
+env WS=$WORK/ws
+
+seedworks src alpha bravo charlie
+workid $WS/in-progress/src_bravo/work-state.json ID_BRAVO
+work archive $ID_BRAVO --yes
+
+# Baseline: the index is coherent and has a known order.
+verifycoherent
+dborder order-before
+
+rm $WORK_HOME/state/work.db
+! work resume
+stderr '^error: usage: '
+
+# Rebuilt index: still coherent for active and archived Works, same order.
+verifycoherent
+dborder order-after
+cmp order-before order-after

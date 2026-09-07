@@ -1,0 +1,27 @@
+# S13 — a rebuild skips an unreadable snapshot with a `note:` diagnostic on
+# stderr and still indexes every other Work; the rebuild does not abort.
+# Covers US3 #4; FR-024.
+
+gitrepo src
+env WS=$WORK/ws
+
+seedworks src alpha bravo charlie
+activeorder charlie bravo alpha
+
+# Clobber bravo's snapshot with junk, then drop the index.
+cp notjson $WS/in-progress/src_bravo/work-state.json
+rm $WORK_HOME/state/work.db
+
+# The next command rebuilds: bravo is named as unreadable, the command still
+# proceeds (and exits 2 here only because no resume target was given).
+! work resume
+stderr 'note: snapshot-unreadable: .*src_bravo.*work-state\.json: '
+stderr '^error: usage: '
+
+# Every other Work indexed; bravo did not abort the rebuild.
+dbcount 2
+dbuserversion 2
+activeorder charlie alpha
+
+-- notjson --
+this is not a valid work-state.json document
