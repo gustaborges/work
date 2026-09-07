@@ -54,10 +54,17 @@ var All = []Category{
 
 // Error is a failure tagged with a Category. Msg is shown to the user; Err, when
 // present, is an internal cause kept for wrapping and never displayed.
+//
+// Summary and Hint are optional and drive only the interactive diagnostic
+// renderer (contracts/diagnostics.md): Summary is a user-vocabulary statement of
+// what failed, Hint the known next action. They never affect the non-interactive
+// "error: <token>: <Msg>" line, the exit code, or the token.
 type Error struct {
 	Category Category
 	Msg      string
 	Err      error
+	Summary  string
+	Hint     string
 }
 
 func (e *Error) Error() string {
@@ -68,6 +75,24 @@ func (e *Error) Error() string {
 }
 
 func (e *Error) Unwrap() error { return e.Err }
+
+// Cause is an alias for Unwrap: the retained internal cause, or nil. It is
+// surfaced to the user only through the WORK_DEBUG affordance, never in normal
+// output (FR-016).
+func (e *Error) Cause() error { return e.Err }
+
+// WithSummary returns e with its interactive Summary set. It mutates and returns
+// the receiver for fluent construction: diag.New(cat, msg).WithSummary(...).
+func (e *Error) WithSummary(summary string) *Error {
+	e.Summary = summary
+	return e
+}
+
+// WithHint returns e with its interactive next-action Hint set.
+func (e *Error) WithHint(hint string) *Error {
+	e.Hint = hint
+	return e
+}
 
 // New builds an Error with a literal message.
 func New(c Category, msg string) *Error {

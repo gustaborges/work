@@ -36,7 +36,11 @@ type Capability struct {
 func Detect(ui io.Writer, in io.Reader) Capability {
 	uiTTY := isTerminal(ui)
 	c := compute(uiTTY, isTerminal(in), os.LookupEnv)
-	c.Profile = colorprofile.Detect(ui, os.Environ())
+	if ui != nil {
+		c.Profile = colorprofile.Detect(ui, os.Environ())
+	} else {
+		c.Profile = colorprofile.NoTTY
+	}
 	return c
 }
 

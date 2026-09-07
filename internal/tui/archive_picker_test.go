@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -111,6 +113,52 @@ func TestArchivePickerCancelKeys(t *testing.T) {
 		t.Error("Ctrl-C on the confirmation view did not cancel")
 	}
 }
+
+// TestArchivePickerUnselectedRowsStableAcrossFocusMove guards against the
+// double-render / column-jump class of defect described in research R6: an
+// unchanged (unselected) row must keep an identical rendered line count and
+// identical starting columns for its checkbox and text before and after the
+// cursor moves past it. internal/present.MultiSelect carries the same guard for
+// the migrated picker.
+func TestArchivePickerUnselectedRowsStableAcrossFocusMove(t *testing.T) {
+	m := newArchiveModel(apRows(), "/ws")
+
+	before := archiveRowShape(m.View().Content)
+	m, _ = apStep(m, "down", "down")
+	after := archiveRowShape(m.View().Content)
+
+	if len(before) != len(after) {
+		t.Fatalf("row-line count changed on focus move: %d -> %d", len(before), len(after))
+	}
+	for i := range before {
+		if before[i] != after[i] {
+			t.Errorf("row line %d shape changed on focus move: %q -> %q", i, before[i], after[i])
+		}
+	}
+}
+
+// archiveRowShape returns, for every rendered row line, the leading whitespace
+// width plus the first non-space token — enough to catch a column shift or a
+// duplicated line without pinning the exact styled bytes.
+func archiveRowShape(view string) []string {
+	var out []string
+	for _, line := range strings.Split(view, "\n") {
+		plain := stripANSI(line)
+		if strings.TrimSpace(plain) == "" {
+			continue
+		}
+		if !strings.Contains(plain, "demo") && !strings.Contains(plain, "[") {
+			continue
+		}
+		lead := len(plain) - len(strings.TrimLeft(plain, " "))
+		out = append(out, fmt.Sprintf("lead=%d %s", lead, strings.Fields(plain)[0]))
+	}
+	return out
+}
+
+var ansiSeq = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+func stripANSI(s string) string { return ansiSeq.ReplaceAllString(s, "") }
 
 func checkedIDs(m archiveModel) []string {
 	var ids []string
