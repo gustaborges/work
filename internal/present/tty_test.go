@@ -1,4 +1,4 @@
-package tui
+package present
 
 import (
 	"os"
@@ -7,7 +7,9 @@ import (
 	"github.com/gustaborges/work/internal/diag"
 )
 
-func TestInteractiveWithPipes(t *testing.T) {
+func TestIsInteractiveWithPipes(t *testing.T) {
+	// A pipe is never a terminal; the exported IsInteractive keys off the real
+	// process streams, so exercise the underlying predicate directly.
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -15,8 +17,8 @@ func TestInteractiveWithPipes(t *testing.T) {
 	defer r.Close()
 	defer w.Close()
 
-	if interactive(r, w) {
-		t.Errorf("interactive(pipe, pipe) = true, want false")
+	if isTTY(r) || isTTY(w) {
+		t.Errorf("isTTY(pipe) = true, want false")
 	}
 }
 

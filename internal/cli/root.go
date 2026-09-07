@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/gustaborges/work/internal/diag"
+	"github.com/gustaborges/work/internal/present"
 	"github.com/gustaborges/work/internal/tui"
 )
 
@@ -48,7 +49,7 @@ func newRootCmd() *cobra.Command {
 // one-line command summary and exits 2 without rendering any TUI (RF-51,
 // contracts/cli-work-home.md).
 func runHome(cmd *cobra.Command) error {
-	if !tui.IsInteractive() {
+	if !present.IsInteractive() {
 		return diag.New(diag.Usage,
 			"run `work start <path>` to create a Work, `work resume` to return to one, or `work archive` to close one; see `work --help` for all commands")
 	}
