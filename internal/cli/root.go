@@ -9,10 +9,12 @@ import (
 	"os/signal"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/present"
-	"github.com/gustaborges/work/internal/tui"
+	"github.com/gustaborges/work/internal/present/brand"
+	"github.com/gustaborges/work/internal/present/theme"
 )
 
 // newRootCmd builds the top-level `work` command with its subcommands
@@ -25,48 +27,56 @@ func newRootCmd() *cobra.Command {
 		SilenceUsage:  true,
 		Args:          cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runHome(cmd)
+			return runBareWork(cmd)
 		},
 	}
 
 	// Only read commands honor --json; mutating commands reject it. It stays
 	// hidden until F1's first read command needs it, so it never appears in the
-	// help for `work start` (a mutation) or the bare `work` home.
+	// help for `work start` (a mutation) or the bare `work` brand.
 	root.PersistentFlags().Bool("json", false, "emit machine-readable output (read commands only)")
 	_ = root.PersistentFlags().MarkHidden("json")
 
-	root.AddCommand(newStartCmd())
-	root.AddCommand(newResumeCmd())
-	root.AddCommand(newArchiveCmd())
-	root.AddCommand(newShellInitCmd())
+	start := newStartCmd()
+	resume := newResumeCmd()
+	archive := newArchiveCmd()
+	shellInit := newShellInitCmd()
+
+	start.GroupID = groupDaily
+	resume.GroupID = groupDaily
+	archive.GroupID = groupDaily
+	shellInit.GroupID = groupSetup
+
+	root.AddCommand(start, resume, archive, shellInit)
+
+	installHelp(root)
 
 	return root
 }
 
-// runHome handles `work` with no subcommand: in an interactive terminal it
-// opens the TUI home and dispatches the chosen journey; otherwise it prints a
-// one-line command summary and exits 2 without rendering any TUI (RF-51,
-// contracts/cli-work-home.md).
-func runHome(cmd *cobra.Command) error {
+// runBareWork handles `work` with no subcommand. In an interactive terminal it
+// prints the static WORK brand to stdout and exits 0 — no selector, no Bubble
+// Tea program (contracts/cli-work-home.md, ADR-0019). Non-interactively it keeps
+// the F1/F2 behaviour exactly: a one-line usage summary on stderr, exit 2.
+func runBareWork(cmd *cobra.Command) error {
 	if !present.IsInteractive() {
 		return diag.New(diag.Usage,
 			"run `work start <path>` to create a Work, `work resume` to return to one, or `work archive` to close one; see `work --help` for all commands")
 	}
-	choice, err := tui.RunHome(cmd.Context())
-	if err != nil {
-		return err
+
+	out := cmd.OutOrStdout()
+	probe := theme.Detect(out, cmd.InOrStdin())
+	cmd.Print(brand.Render(terminalWidth(), probe.Profile, probe.ColorEnabled))
+	return nil
+}
+
+// terminalWidth is the current stdout column count, or 80 when it cannot be
+// determined (the brand renderer's documented fallback).
+func terminalWidth() int {
+	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
+		return w
 	}
-	switch choice {
-	case tui.HomeStartWork:
-		return runStart(cmd, "", startFlags{})
-	case tui.HomeResumeWork:
-		return runResume(cmd, "", false)
-	case tui.HomeArchiveWork:
-		return runArchive(cmd, nil, archiveFlags{})
-	default:
-		// Left the home without choosing anything.
-		return nil
-	}
+	return 80
 }
 
 // Execute runs the root command and terminates the process with the exit code
