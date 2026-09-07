@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/gustaborges/work/internal/cli"
 	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/projection"
+	"github.com/gustaborges/work/internal/work"
 	"github.com/gustaborges/work/internal/work/verify"
 	"github.com/gustaborges/work/seed"
 )
@@ -121,12 +123,85 @@ func TestScripts(t *testing.T) {
 					if i > 0 {
 						time.Sleep(1100 * time.Millisecond)
 					}
-					err := ts.Exec("work", "start", src,
-						"--workspace", ws, "--base", "main",
-						"--slug", slug, "--prefix", "{slug}", "--yes")
-					if err != nil {
+					// --workspace is accepted only until the root is persisted;
+					// pass it on the first run and let the rest inherit it.
+					call := []string{"start", src, "--base", "main",
+						"--slug", slug, "--prefix", "{slug}", "--yes"}
+					if i == 0 {
+						call = append(call, "--workspace", ws)
+					}
+					if err := ts.Exec("work", call...); err != nil {
 						ts.Fatalf("seedworks %s: %v", slug, err)
 					}
+				}
+			},
+			// sleep <seconds> pauses the script. Resume ordering is keyed on
+			// second-precision timestamps (ties broken by creation order), so a
+			// scenario that needs a resume to out-sort a just-created Work waits
+			// a second first — the same `sleep 1` the quickstart uses.
+			"sleep": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 1 {
+					ts.Fatalf("usage: sleep <seconds>")
+				}
+				n, err := strconv.Atoi(args[0])
+				if err != nil {
+					ts.Fatalf("sleep: %v", err)
+				}
+				time.Sleep(time.Duration(n) * time.Second)
+			},
+			// workid <work-state.json> <envvar> reads work.id from the snapshot
+			// and binds it to the named script environment variable, so a later
+			// `work resume <id>` can target it.
+			"workid": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 2 {
+					ts.Fatalf("usage: workid <work-state.json> <envvar>")
+				}
+				st, err := work.Read(ts.MkAbs(args[0]))
+				if err != nil {
+					ts.Fatalf("workid: %v", err)
+				}
+				ts.Setenv(args[1], st.Work.ID)
+			},
+			// archivesnap <work-state.json> flips a snapshot to status=archived
+			// in place (status + archived_at + last_accessed_at = now). It stands
+			// in for `work archive` (Phase 4) so the resume-of-an-archived-Work
+			// refusal can be exercised now: the next `work` command reconciles
+			// the projection from the snapshot.
+			"archivesnap": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 1 {
+					ts.Fatalf("usage: archivesnap <work-state.json>")
+				}
+				p := ts.MkAbs(args[0])
+				st, err := work.Read(p)
+				if err != nil {
+					ts.Fatalf("archivesnap: %v", err)
+				}
+				st.Archive(time.Now().UTC())
+				if err := work.Write(p, st); err != nil {
+					ts.Fatalf("archivesnap: %v", err)
+				}
+			},
+			// activeorder <slug>... asserts projection.ListActive() returns rows
+			// whose slugs are exactly the given sequence (the recency order, most
+			// recent first). Backs SC-002.
+			"activeorder": func(ts *testscript.TestScript, neg bool, args []string) {
+				dbPath := filepath.Join(ts.Getenv("WORK_HOME"), "state", "work.db")
+				db, err := projection.Open(dbPath)
+				if err != nil {
+					ts.Fatalf("activeorder: open db: %v", err)
+				}
+				defer db.Close()
+				rows, err := db.ListActive()
+				if err != nil {
+					ts.Fatalf("activeorder: %v", err)
+				}
+				got := make([]string, len(rows))
+				for i, r := range rows {
+					got[i] = r.Slug
+				}
+				want := strings.Join(args, ",")
+				if strings.Join(got, ",") != want {
+					ts.Fatalf("active order = [%s], want [%s]", strings.Join(got, ","), want)
 				}
 			},
 			// dirty <worktree-dir> writes an untracked file into a Work's

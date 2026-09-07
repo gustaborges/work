@@ -217,8 +217,9 @@ func gitIn(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// T043 — `work` no-args opens the home listing only "Start a Work"; q exits 0
-// with no state change; selecting the entry reaches the path prompt.
+// `work` no-args opens the home listing the shipped journeys ("Start a Work",
+// "Resume a Work"); q exits 0 with no state change; selecting "Start a Work"
+// reaches the path prompt and "Resume a Work" reaches the recency picker.
 func TestHomeReachability(t *testing.T) {
 	needSeed(t)
 	bin := buildWorkBin(t)
@@ -227,8 +228,9 @@ func TestHomeReachability(t *testing.T) {
 	// Quit the home immediately: exit 0, nothing created.
 	c := newConsole(t, bin, env)
 	c.expect("Start a Work")
-	if s := c.snapshot(); strings.Contains(s, "Resume") || strings.Contains(s, "Archive") {
-		t.Fatalf("home exposes later-slice actions:\n%s", s)
+	c.expect("Resume a Work")
+	if s := c.snapshot(); strings.Contains(s, "Archive") {
+		t.Fatalf("home exposes a later-slice action:\n%s", s)
 	}
 	c.send("q")
 	if code := c.wait(); code != 0 {
@@ -247,6 +249,17 @@ func TestHomeReachability(t *testing.T) {
 	if code := c2.wait(); code != 20 {
 		t.Fatalf("Ctrl-C at the path prompt exited %d, want 20", code)
 	}
+
+	// Selecting "Resume a Work" enters the recency picker; with no Works it
+	// prints the empty-list note and exits 0.
+	c3 := newConsole(t, bin, env)
+	c3.expect("Resume a Work")
+	c3.send("\x1b[B") // arrow down to "Resume a Work"
+	c3.send("\r")
+	if code := c3.wait(); code != 0 {
+		t.Fatalf("resume with no Works exited %d, want 0", code)
+	}
+	c3.expect("no Works to resume")
 }
 
 // T044 — `work start` with no SOURCE prompts for the path, then converges to

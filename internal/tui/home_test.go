@@ -41,16 +41,18 @@ func isQuit(cmd tea.Cmd) bool {
 	return ok
 }
 
-func TestHomeListsOnlyStartAWork(t *testing.T) {
+func TestHomeListsShippedJourneys(t *testing.T) {
 	m := newHomeModel()
-	if len(m.items) != 1 || m.items[0].choice != HomeStartWork {
-		t.Fatalf("home items = %+v, want exactly [Start a Work]", m.items)
+	if len(m.items) != 2 || m.items[0].choice != HomeStartWork || m.items[1].choice != HomeResumeWork {
+		t.Fatalf("home items = %+v, want [Start a Work, Resume a Work]", m.items)
 	}
 	view := m.View().Content
-	if !strings.Contains(view, "Start a Work") {
-		t.Errorf("view missing the journey label:\n%s", view)
+	for _, want := range []string{"Start a Work", "Resume a Work"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view missing %q:\n%s", want, view)
+		}
 	}
-	for _, reserved := range []string{"resume", "archive", "status", "import", "link", "plugin", "repository", "convention"} {
+	for _, reserved := range []string{"archive", "status", "import", "link", "plugin", "repository", "convention"} {
 		if strings.Contains(strings.ToLower(view), reserved) {
 			t.Errorf("view exposes a later-slice action %q:\n%s", reserved, view)
 		}
@@ -61,6 +63,16 @@ func TestHomeEnterSelectsStartWork(t *testing.T) {
 	m, cmd := step(newHomeModel(), "enter")
 	if m.choice != HomeStartWork {
 		t.Errorf("choice = %d, want HomeStartWork", m.choice)
+	}
+	if !isQuit(cmd) {
+		t.Error("Enter did not quit the program")
+	}
+}
+
+func TestHomeEnterSelectsResumeWork(t *testing.T) {
+	m, cmd := step(newHomeModel(), "down", "enter")
+	if m.choice != HomeResumeWork {
+		t.Errorf("choice = %d, want HomeResumeWork", m.choice)
 	}
 	if !isQuit(cmd) {
 		t.Error("Enter did not quit the program")
@@ -80,10 +92,11 @@ func TestHomeQuitKeysLeaveNoChoice(t *testing.T) {
 }
 
 func TestHomeCursorStaysInBounds(t *testing.T) {
-	// Single item: up and down are no-ops and never move off the list.
+	last := len(newHomeModel().items) - 1
+	// Moving down past the end stops on the last row, never beyond it.
 	m, _ := step(newHomeModel(), "down", "down", "j")
-	if m.cursor != 0 {
-		t.Errorf("cursor = %d after moving down past the end, want 0", m.cursor)
+	if m.cursor != last {
+		t.Errorf("cursor = %d after moving down past the end, want %d", m.cursor, last)
 	}
 	m, _ = step(newHomeModel(), "up", "k")
 	if m.cursor != 0 {
