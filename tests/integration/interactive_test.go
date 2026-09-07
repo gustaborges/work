@@ -174,6 +174,13 @@ func (c *console) wait() int {
 func ptyEnv(t *testing.T) (env []string, home, workHome string) {
 	t.Helper()
 	base := t.TempDir()
+	// macOS puts TempDir under /var/folders, a symlink to /private/var/folders.
+	// `work` normalizes the repo path (EvalSymlinks) before it reaches a receipt,
+	// so resolve here too or the pty screen assertions compare unequal spellings
+	// of the same directory.
+	if resolved, err := filepath.EvalSymlinks(base); err == nil {
+		base = resolved
+	}
 	home = filepath.Join(base, "home")
 	workHome = filepath.Join(base, "dothome")
 	if err := os.MkdirAll(home, 0o755); err != nil {

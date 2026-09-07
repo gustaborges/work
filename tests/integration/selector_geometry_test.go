@@ -59,28 +59,31 @@ func TestSelectorGeometryIsStable(t *testing.T) {
 		})
 	}
 
-	t.Run("archive/checkbox-and-focus-independent", func(t *testing.T) {
-		c := newConsoleSize(t, pty.Winsize{Rows: 24, Cols: 80}, bin, env, "archive")
-		c.expect("Archive Works")
-		c.expect("demo  ")
-		settle()
-		if !strings.Contains(c.screen(), "[ ] ") {
-			t.Errorf("archive rows missing the fixed checkbox slot:\n%s", c.screen())
-		}
-		assertRowsShareAColumn(t, c.screen(), "archive initial")
+	for _, sz := range []pty.Winsize{{Rows: 10, Cols: 40}, {Rows: 24, Cols: 80}, {Rows: 50, Cols: 160}} {
+		t.Run(fmt.Sprintf("archive/%dx%d", sz.Cols, sz.Rows), func(t *testing.T) {
+			c := newConsoleSize(t, sz, bin, env, "archive")
+			c.expect("Archive Works")
+			c.expect("demo  ")
+			settle()
+			if !strings.Contains(c.screen(), "[ ] ") {
+				t.Errorf("archive rows missing the fixed checkbox slot:\n%s", c.screen())
+			}
+			assertNoLineExceeds(t, c.screen(), int(sz.Cols))
+			assertRowsShareAColumn(t, c.screen(), "archive initial")
 
-		c.send(" ")            // check the focused row
-		c.send("\x1b[B\x1b[B") // move focus two rows down
-		settle()
-		// A checked row and a moved focus must not shift any primary column.
-		assertRowsShareAColumn(t, c.screen(), "after check + focus move")
-		assertNoLineExceeds(t, c.screen(), 80)
+			c.send(" ")            // check the focused row
+			c.send("\x1b[B\x1b[B") // move focus two rows down
+			settle()
+			// A checked row and a moved focus must not shift any primary column.
+			assertRowsShareAColumn(t, c.screen(), "after check + focus move")
+			assertNoLineExceeds(t, c.screen(), int(sz.Cols))
 
-		c.send("\x03")
-		if code := c.wait(); code != 20 {
-			t.Fatalf("archive cancel exited %d, want 20", code)
-		}
-	})
+			c.send("\x03")
+			if code := c.wait(); code != 20 {
+				t.Fatalf("archive cancel exited %d, want 20", code)
+			}
+		})
+	}
 
 	t.Run("resume/focus-visible-without-colour", func(t *testing.T) {
 		c := newConsoleSize(t, pty.Winsize{Rows: 24, Cols: 80}, bin,
