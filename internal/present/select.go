@@ -205,14 +205,12 @@ func (m selectModel[T]) outcome() outcome {
 }
 
 func (m selectModel[T]) finalFrame() string {
-	switch m.state {
-	case listCompleted:
+	if m.state == listCompleted {
 		return m.receipt
-	case listCancelled:
-		return CancelNotice(m.th)
-	default:
-		return ""
 	}
+	// A cancelled selector leaves nothing in history; the "✘ Operation
+	// cancelled" line is the CLI diagnostic border's (contracts/diagnostics.md).
+	return ""
 }
 
 func (m selectModel[T]) View() tea.View {

@@ -16,7 +16,6 @@ import (
 	"github.com/gustaborges/work/internal/projection"
 	"github.com/gustaborges/work/internal/reconcile"
 	"github.com/gustaborges/work/internal/shellintegration"
-	"github.com/gustaborges/work/internal/tui"
 	"github.com/gustaborges/work/internal/workhome"
 	"github.com/gustaborges/work/internal/worklist"
 )
@@ -57,6 +56,7 @@ func runArchive(cmd *cobra.Command, args []string, f archiveFlags) error {
 	out := cmd.OutOrStdout()
 	errOut := cmd.ErrOrStderr()
 	interactive := present.IsInteractive()
+	pio := present.IO{In: cmd.InOrStdin(), UI: errOut}
 
 	if f.jsonSet {
 		return diag.New(diag.Usage, "--json is not accepted on `work archive` (it is a mutation)")
@@ -151,18 +151,46 @@ func runArchive(cmd *cobra.Command, args []string, f archiveFlags) error {
 			fmt.Fprintln(errOut, "note: no active Works to archive")
 			return nil
 		}
-		ids, err := tui.SelectArchive(ctx, active, workspaceRoot)
+		opts := make([]present.Option[worklist.WorkRow], len(active))
+		for i, r := range active {
+			opts[i] = present.Option[worklist.WorkRow]{
+				Value:     r,
+				Primary:   r.DisplayName,
+				Secondary: r.RelativeTime + " • " + r.Branch,
+			}
+		}
+		picked, err := present.MultiSelect(ctx, pio, present.MultiSelectSpec[worklist.WorkRow]{
+			Title:      "Archive Works",
+			Filterable: true,
+			Options:    opts,
+			Confirm: &present.ConfirmSpec{
+				Title:  "Archive Works",
+				Accept: "Archive",
+				Reject: "Cancel",
+			},
+			ConfirmImpact: func(p []present.Option[worklist.WorkRow]) string {
+				return archiveConsequences(len(p), workspaceRoot)
+			},
+		})
 		if err != nil {
 			return err
 		}
-		rows = rowsByIDs(active, ids)
+		if len(picked) == 0 {
+			return diag.New(diag.Cancelled, "cancelled")
+		}
+		rows = picked
 	}
 
-	// Confirmation (FR-010): the picker already carries it for the interactive
-	// no-target path; every other path needs it here.
+	// Confirmation (FR-010): the multi-select picker carries its own for the
+	// interactive no-target path; every other path needs it here.
 	if explicit {
 		if interactive {
-			ok, err := tui.ConfirmArchive(rows, workspaceRoot)
+			ok, err := present.Confirm(ctx, pio, present.ConfirmSpec{
+				Title:  "Archive Works",
+				Impact: archiveConfirmImpact(rows, workspaceRoot),
+				Accept: "Archive",
+				Reject: "Cancel",
+			})
 			if err != nil {
 				return err
 			}
@@ -189,7 +217,14 @@ func runArchive(cmd *cobra.Command, args []string, f archiveFlags) error {
 	var ackDirty func(projection.Work) (bool, error)
 	if interactive && !f.forceDirty {
 		ackDirty = func(w projection.Work) (bool, error) {
-			return tui.AckDirtyWork(rowFor(rows, w.ID))
+			r := rowFor(rows, w.ID)
+			return present.Confirm(ctx, pio, present.ConfirmSpec{
+				Title: r.DisplayName + "  (" + r.Branch + ")",
+				Impact: "This worktree has uncommitted or untracked changes.\n" +
+					"Archiving it anyway will lose those changes.",
+				Accept: "Archive anyway",
+				Reject: "Keep active",
+			})
 		}
 	}
 
@@ -257,18 +292,6 @@ func projectionRows(db *projection.DB, rows []worklist.WorkRow) []projection.Wor
 	return out
 }
 
-func rowsByIDs(rows []worklist.WorkRow, ids []string) []worklist.WorkRow {
-	out := make([]worklist.WorkRow, 0, len(ids))
-	for _, id := range ids {
-		for _, r := range rows {
-			if r.ID == id {
-				out = append(out, r)
-			}
-		}
-	}
-	return out
-}
-
 func rowFor(rows []worklist.WorkRow, id string) worklist.WorkRow {
 	for _, r := range rows {
 		if r.ID == id {
@@ -276,4 +299,29 @@ func rowFor(rows []worklist.WorkRow, id string) worklist.WorkRow {
 		}
 	}
 	return worklist.WorkRow{ID: id}
+}
+
+// archiveConsequences is the destructive-effects block every archive
+// confirmation states (F2 contract cli-work-archive.md §3): the worktrees are
+// removed, the snapshots relocate, the branches survive.
+func archiveConsequences(n int, workspaceRoot string) string {
+	dir := "the archived area"
+	if workspaceRoot != "" {
+		dir = workspaceRoot + "/archived/"
+	}
+	return fmt.Sprintf(
+		"%d worktree(s) will be destroyed.\nSnapshots move to %s\nBranches are kept.",
+		n, dir)
+}
+
+// archiveConfirmImpact is the preview for the explicit-target confirmation: the
+// Works about to be archived, then the shared consequences block.
+func archiveConfirmImpact(rows []worklist.WorkRow, workspaceRoot string) string {
+	var b strings.Builder
+	for _, r := range rows {
+		fmt.Fprintf(&b, "  %s  (%s)\n", r.DisplayName, r.Branch)
+	}
+	b.WriteString("\n")
+	b.WriteString(archiveConsequences(len(rows), workspaceRoot))
+	return b.String()
 }

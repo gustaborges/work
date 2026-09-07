@@ -63,8 +63,9 @@ func TestConfirmCancel(t *testing.T) {
 		if !isQuit(cmd) || !cm.outcome().cancelled {
 			t.Fatalf("%s: quit=%v cancelled=%v", key, isQuit(cmd), cm.outcome().cancelled)
 		}
-		if cm.finalFrame() != "✘ Operation cancelled\n" {
-			t.Errorf("%s: cancel finalFrame = %q", key, cm.finalFrame())
+		// A cancelled confirmation leaves no frame; the border prints the notice.
+		if cm.finalFrame() != "" {
+			t.Errorf("%s: cancel finalFrame = %q, want empty", key, cm.finalFrame())
 		}
 	}
 }

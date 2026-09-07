@@ -37,16 +37,6 @@ func TestReceiptColourOn(t *testing.T) {
 	}
 }
 
-func TestCancelNotice(t *testing.T) {
-	if got := CancelNotice(offTheme()); got != "✘ Operation cancelled\n" {
-		t.Errorf("CancelNotice = %q", got)
-	}
-	on := CancelNotice(onTheme())
-	if !strings.Contains(on, "\x1b[38;2;255;92;122m✘\x1b[m Operation cancelled\n") {
-		t.Errorf("CancelNotice colour-on = %q", on)
-	}
-}
-
 func TestConfirmReceipt(t *testing.T) {
 	if got := ConfirmReceipt(offTheme(), "Create Work"); got != "✔ Create Work confirmed\n" {
 		t.Errorf("ConfirmReceipt = %q", got)
@@ -57,7 +47,7 @@ func TestAsciiMarkFallback(t *testing.T) {
 	if got := Receipt(asciiTheme(), "T", MarkSuccess, "v"); got != "T\n  ok v\n\n" {
 		t.Errorf("ascii receipt = %q", got)
 	}
-	if got := CancelNotice(asciiTheme()); got != "x Operation cancelled\n" {
-		t.Errorf("ascii cancel = %q", got)
+	if got := ConfirmReceipt(asciiTheme(), "T"); got != "ok T confirmed\n" {
+		t.Errorf("ascii confirm receipt = %q", got)
 	}
 }

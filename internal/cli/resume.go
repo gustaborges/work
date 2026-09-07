@@ -15,7 +15,6 @@ import (
 	"github.com/gustaborges/work/internal/reconcile"
 	"github.com/gustaborges/work/internal/resume"
 	"github.com/gustaborges/work/internal/shellintegration"
-	"github.com/gustaborges/work/internal/tui"
 	"github.com/gustaborges/work/internal/workhome"
 	"github.com/gustaborges/work/internal/worklist"
 )
@@ -46,6 +45,7 @@ func runResume(cmd *cobra.Command, target string, jsonSet bool) error {
 	out := cmd.OutOrStdout()
 	errOut := cmd.ErrOrStderr()
 	interactive := present.IsInteractive()
+	pio := present.IO{In: cmd.InOrStdin(), UI: errOut}
 	target = strings.TrimSpace(target)
 
 	// --json is a read-only flag; resume is a mutation (ADR-0017).
@@ -90,9 +90,11 @@ func runResume(cmd *cobra.Command, target string, jsonSet bool) error {
 		r, outcome := worklist.Resolve(rows, target)
 		switch outcome {
 		case worklist.NotFound:
-			return diag.New(diag.TargetNotFound, "no Work has that id")
+			return diag.New(diag.TargetNotFound, "no Work has that id").
+				WithHint("run `work resume` with no id to pick from the active Works")
 		case worklist.Archived:
-			return diag.New(diag.TargetArchived, "that Work is archived and cannot be resumed")
+			return diag.New(diag.TargetArchived, "that Work is archived and cannot be resumed").
+				WithHint("run `work resume` with no id to pick from the active Works")
 		}
 		row = r
 	} else {
@@ -108,11 +110,23 @@ func runResume(cmd *cobra.Command, target string, jsonSet bool) error {
 			return diag.New(diag.Usage,
 				"pass a Work id to resume; run `work resume` in a terminal to pick from the list")
 		}
-		id, err := tui.SelectResume(ctx, rows)
+		opts := make([]present.Option[worklist.WorkRow], len(rows))
+		for i, r := range rows {
+			opts[i] = present.Option[worklist.WorkRow]{
+				Value:     r,
+				Primary:   r.DisplayName,
+				Secondary: r.RelativeTime + " • " + r.Branch,
+			}
+		}
+		row, err = present.Select(ctx, pio, present.SelectSpec[worklist.WorkRow]{
+			Title:      "Resume a Work",
+			Filterable: true,
+			Options:    opts,
+			Receipt:    func(o present.Option[worklist.WorkRow]) string { return o.Value.DisplayName },
+		})
 		if err != nil {
 			return err
 		}
-		row = rowByID(rows, id)
 	}
 
 	res, err := resume.Run(ctx, resume.Params{
@@ -146,7 +160,8 @@ func runResume(cmd *cobra.Command, target string, jsonSet bool) error {
 // therefore no Work can exist.
 func resumeNoWorks(errOut io.Writer, target string, interactive bool) error {
 	if target != "" {
-		return diag.New(diag.TargetNotFound, "no Work has that id")
+		return diag.New(diag.TargetNotFound, "no Work has that id").
+			WithHint("run `work resume` with no id to pick from the active Works")
 	}
 	if !interactive {
 		return diag.New(diag.Usage,
@@ -163,13 +178,4 @@ func printSkipped(errOut io.Writer, r reconcile.Report) {
 	for _, s := range r.Skipped {
 		fmt.Fprintf(errOut, "note: %s: %s: %s\n", diag.SnapshotUnreadable.Token, s.Path, s.Reason)
 	}
-}
-
-func rowByID(rows []worklist.WorkRow, id string) worklist.WorkRow {
-	for _, r := range rows {
-		if r.ID == id {
-			return r
-		}
-	}
-	return worklist.WorkRow{}
 }

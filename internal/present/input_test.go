@@ -156,7 +156,9 @@ func TestInputSecretRedaction(t *testing.T) {
 	}
 }
 
-func TestInputCancelledViewIsExactNotice(t *testing.T) {
+func TestInputCancelledLeavesNoFrame(t *testing.T) {
+	// A cancelled input collapses to nothing; the single "✘ Operation
+	// cancelled" line is the CLI diagnostic border's to print.
 	for _, key := range []string{"esc", "ctrl+c"} {
 		m := typeText(newTestInput(InputSpec{Title: "Slug"}), "wip").(inputModel)
 		next, cmd := m.Update(press(key))
@@ -164,8 +166,11 @@ func TestInputCancelledViewIsExactNotice(t *testing.T) {
 		if !isQuit(cmd) || nm.state != inputCancelled {
 			t.Errorf("%s did not cancel: quit=%v state=%d", key, isQuit(cmd), nm.state)
 		}
-		if got := nm.finalFrame(); got != "✘ Operation cancelled\n" {
-			t.Errorf("%s cancelled finalFrame = %q", key, got)
+		if got := nm.finalFrame(); got != "" {
+			t.Errorf("%s cancelled finalFrame = %q, want empty", key, got)
+		}
+		if nm.View().Content != "" {
+			t.Errorf("%s cancelled View = %q, want empty", key, nm.View().Content)
 		}
 		if !nm.outcome().cancelled {
 			t.Errorf("%s outcome not cancelled", key)

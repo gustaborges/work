@@ -195,17 +195,14 @@ func (m inputModel) outcome() outcome {
 }
 
 // finalFrame is the compact string run prints once the program has cleared its
-// active frame: the receipt on accept, the cancellation notice on cancel, and
-// nothing on a Fatal abort.
+// active frame: the receipt on accept, and nothing otherwise. A cancelled step
+// leaves no frame — the single "✘ Operation cancelled" line is the CLI
+// diagnostic border's to print (contracts/diagnostics.md).
 func (m inputModel) finalFrame() string {
-	switch m.state {
-	case inputCompleted:
+	if m.state == inputCompleted {
 		return m.receipt
-	case inputCancelled:
-		return CancelNotice(m.th)
-	default:
-		return ""
 	}
+	return ""
 }
 
 func (m inputModel) View() tea.View {
