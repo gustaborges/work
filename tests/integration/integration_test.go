@@ -215,6 +215,14 @@ func TestScripts(t *testing.T) {
 					ts.Fatalf("dirty: %v", err)
 				}
 			},
+			// today <envvar> binds today's local date as yyyymmdd, so a scenario
+			// can name the archived directory `<WS>/archived/<TODAY>-<repo>_<slug>`.
+			"today": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 1 {
+					ts.Fatalf("usage: today <envvar>")
+				}
+				ts.Setenv(args[0], time.Now().Format("20060102"))
+			},
 			// prearchivedir <archived-root> <name> pre-creates
 			// <archived-root>/<yyyymmdd>-<name>/ (today's date) so the archive
 			// pathing collision-suffix path (-2, -3, ...) is exercised.

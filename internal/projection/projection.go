@@ -251,15 +251,18 @@ func (d *DB) SetAccessed(id, ts string) error {
 	return nil
 }
 
-// MarkArchived flips a Work's row to archived: status, archived_at, the new
-// archived-area dir_path / snapshot_path, and an empty worktree_path. It is the
-// post-commit projection trailer of `work archive`. The caller supplies the
-// already-relocated paths and the archival timestamp on row.
+// MarkArchived flips a Work's row to archived: status, archived_at,
+// last_accessed_at (bumped to the archival time, mirroring the snapshot), the
+// new archived-area dir_path / snapshot_path, and an empty worktree_path. It is
+// the post-commit projection trailer of `work archive`. The caller supplies the
+// already-relocated paths and the archival timestamps on row.
 func (d *DB) MarkArchived(id string, row Work) error {
 	const q = `UPDATE works
-	SET status = 'archived', archived_at = ?, dir_path = ?, snapshot_path = ?, worktree_path = ''
+	SET status = 'archived', archived_at = ?, last_accessed_at = ?,
+		dir_path = ?, snapshot_path = ?, worktree_path = ''
 	WHERE id = ?`
-	if _, err := d.sql.Exec(q, nullIfEmpty(row.ArchivedAt), row.DirPath, row.SnapshotPath, id); err != nil {
+	if _, err := d.sql.Exec(q, nullIfEmpty(row.ArchivedAt), row.LastAccessedAt,
+		row.DirPath, row.SnapshotPath, id); err != nil {
 		return fmt.Errorf("projection: mark-archived %s: %w", id, err)
 	}
 	return nil

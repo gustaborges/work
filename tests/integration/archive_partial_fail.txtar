@@ -1,0 +1,43 @@
+# S10 — per-Work transactionality under fault injection. A failure on one batch
+# member never rolls back a Work already archived; every Work ends fully active
+# or fully archived, and the projection matches disk after the run.
+# Covers US2 #6; SC-005; FR-017, FR-018.
+
+gitrepo src
+env WS=$WORK/ws
+
+seedworks src x y
+today TODAY
+workid $WS/in-progress/src_x/work-state.json ID_X
+workid $WS/in-progress/src_y/work-state.json ID_Y
+
+# WORK_FAIL_AT forces the named step to error on the LAST Work of the batch.
+# x is archived fully; y fails before its commit point and stays fully active.
+env WORK_FAIL_AT=worktree
+work archive $ID_X $ID_Y --yes
+stdout '^work: archived 1 of 2$'
+! exists $WS/in-progress/src_x
+exists $WS/archived/${TODAY}-src_x/work-state.json
+grep '"status": "archived"' $WS/archived/${TODAY}-src_x/work-state.json
+exists $WS/in-progress/src_y/worktree
+grep '"status": "in-progress"' $WS/in-progress/src_y/work-state.json
+activeorder y
+verifycoherent
+
+# A move failure also leaves the remaining Work fully active.
+env WORK_FAIL_AT=move
+work archive $ID_Y --yes
+stdout '^work: archived 0 of 1$'
+exists $WS/in-progress/src_y/worktree
+grep '"status": "in-progress"' $WS/in-progress/src_y/work-state.json
+activeorder y
+
+# A projection failure after the canonical commit: y is archived on disk and the
+# run self-heals the row (no rollback of a physically-moved Work).
+env WORK_FAIL_AT=projection
+work archive $ID_Y --yes
+stdout '^work: archived 1 of 1$'
+exists $WS/archived/${TODAY}-src_y/work-state.json
+grep '"status": "archived"' $WS/archived/${TODAY}-src_y/work-state.json
+activeorder
+verifycoherent

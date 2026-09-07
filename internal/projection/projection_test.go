@@ -266,6 +266,7 @@ func TestMarkArchived(t *testing.T) {
 	}
 	row := w
 	row.ArchivedAt = "2026-09-06T18:22:00Z"
+	row.LastAccessedAt = "2026-09-06T18:22:00Z"
 	row.DirPath = "/ws/archived/20260906-demo_add-retry-a"
 	row.SnapshotPath = row.DirPath + "/work-state.json"
 	if err := db.MarkArchived("a", row); err != nil {
@@ -274,6 +275,9 @@ func TestMarkArchived(t *testing.T) {
 	got, _, _ := db.Get("a")
 	if got.Status != "archived" || got.WorktreePath != "" || got.ArchivedAt != "2026-09-06T18:22:00Z" {
 		t.Errorf("archived row: %+v", got)
+	}
+	if got.LastAccessedAt != "2026-09-06T18:22:00Z" {
+		t.Errorf("archived row last_accessed_at = %q, want the archival time", got.LastAccessedAt)
 	}
 	if got.DirPath != row.DirPath || got.SnapshotPath != row.SnapshotPath {
 		t.Errorf("archived paths: dir %q snap %q", got.DirPath, got.SnapshotPath)

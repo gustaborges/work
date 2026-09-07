@@ -218,8 +218,9 @@ func gitIn(t *testing.T, dir string, args ...string) string {
 }
 
 // `work` no-args opens the home listing the shipped journeys ("Start a Work",
-// "Resume a Work"); q exits 0 with no state change; selecting "Start a Work"
-// reaches the path prompt and "Resume a Work" reaches the recency picker.
+// "Resume a Work", "Archive Works"); q exits 0 with no state change; selecting
+// "Start a Work" reaches the path prompt, "Resume a Work" reaches the recency
+// picker, and "Archive Works" reaches the archive flow.
 func TestHomeReachability(t *testing.T) {
 	needSeed(t)
 	bin := buildWorkBin(t)
@@ -229,8 +230,11 @@ func TestHomeReachability(t *testing.T) {
 	c := newConsole(t, bin, env)
 	c.expect("Start a Work")
 	c.expect("Resume a Work")
-	if s := c.snapshot(); strings.Contains(s, "Archive") {
-		t.Fatalf("home exposes a later-slice action:\n%s", s)
+	c.expect("Archive Works")
+	for _, reserved := range []string{"status", "import", "link", "plugin", "repository", "convention"} {
+		if strings.Contains(strings.ToLower(c.snapshot()), reserved) {
+			t.Fatalf("home exposes a later-slice action %q:\n%s", reserved, c.snapshot())
+		}
 	}
 	c.send("q")
 	if code := c.wait(); code != 0 {
@@ -260,6 +264,17 @@ func TestHomeReachability(t *testing.T) {
 		t.Fatalf("resume with no Works exited %d, want 0", code)
 	}
 	c3.expect("no Works to resume")
+
+	// Selecting "Archive Works" enters the archive flow; with no Works it prints
+	// the empty-list note and exits 0.
+	c4 := newConsole(t, bin, env)
+	c4.expect("Archive Works")
+	c4.send("\x1b[B\x1b[B") // arrow down to "Archive Works"
+	c4.send("\r")
+	if code := c4.wait(); code != 0 {
+		t.Fatalf("archive with no Works exited %d, want 0", code)
+	}
+	c4.expect("no active Works to archive")
 }
 
 // T044 — `work start` with no SOURCE prompts for the path, then converges to
