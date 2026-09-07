@@ -1,0 +1,46 @@
+# Q7 — the key commands stay plain and legible under NO_COLOR=1 and TERM=dumb,
+# emitting no control sequences. The complementary edge case (an *empty* NO_COLOR
+# must NOT disable colour) is a capability-probe unit test:
+# internal/present/theme/capability_test.go "NO_COLOR set empty does not disable".
+# Covers US5; FR-025; SC-008.
+
+gitrepo src
+env WS=$WORK/ws
+
+# --- NO_COLOR=1 -------------------------------------------------------------
+env NO_COLOR=1
+
+work start $WORK/src --workspace $WS --base main --slug nc-one --prefix {slug} --yes
+stdout 'work: created [0-9A-HJKMNP-TV-Z]{26}'
+! stdout '\x1b'
+! stderr '\x1b'
+
+workid $WS/in-progress/src_nc-one/work-state.json ID1
+work resume $ID1
+! stdout '\x1b'
+! stderr '\x1b'
+
+work --help
+stdout '(?m)^Daily Commands:$'
+stdout 'WORK'
+! stdout '\x1b'
+
+# --- TERM=dumb ------------------------------------------------------------------
+env NO_COLOR=
+env TERM=dumb
+
+work start $WORK/src --base main --slug nc-two --prefix {slug} --yes
+stdout 'work: created [0-9A-HJKMNP-TV-Z]{26}'
+! stdout '\x1b'
+! stderr '\x1b'
+
+work --help
+stdout '(?m)^Daily Commands:$'
+! stdout '\x1b'
+
+! work
+stderr 'work start'
+! stdout '\x1b'
+! stderr '\x1b'
+
+verifycoherent

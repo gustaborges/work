@@ -1,0 +1,47 @@
+# Q7, Q13, Q14 — every affected command, run with redirected (non-TTY) streams,
+# emits zero ANSI escape bytes on stdout or stderr and opens no interactive
+# control. testscript always drives `work` with non-TTY stdin/stdout/stderr, so
+# each invocation here is the piped form a script would see.
+# Covers US5 #1, #2; FR-025, FR-027; SC-007, SC-008.
+
+gitrepo src
+env WS=$WORK/ws
+
+# work start (fully flagged) — three stable stdout lines, no escapes, no prompt.
+work start $WORK/src --workspace $WS --base main --slug piped-run --prefix {slug} --yes
+stdout 'work: created [0-9A-HJKMNP-TV-Z]{26}'
+! stdout '\x1b'
+! stderr '\x1b'
+! stderr 'Local repository path'
+! stderr 'Create Work'
+
+workid $WS/in-progress/src_piped-run/work-state.json ID
+
+# work resume <id> — no picker, no escapes.
+work resume $ID
+stdout '^work: resumed [0-9A-HJKMNP-TV-Z]{26}$'
+! stdout '\x1b'
+! stderr '\x1b'
+! stdout 'Resume a Work'
+
+# work --help — grouped inventory, exit 0, no escapes.
+work --help
+stdout '(?m)^Daily Commands:$'
+! stdout '\x1b'
+! stderr '\x1b'
+
+# bare work, non-interactive — exit 2 usage, no escapes, no brand art, no TUI.
+! work
+stderr 'work start'
+! stdout '\x1b'
+! stderr '\x1b'
+! stdout .
+
+# work archive <id> --yes — batch archive with no prompt, no escapes.
+work archive $ID --yes
+stdout '^work: archived 1 of 1$'
+! stdout '\x1b'
+! stderr '\x1b'
+! stderr 'Archive Works'
+
+verifycoherent

@@ -69,7 +69,9 @@ func TestStartReceiptsLeaveNoDebris(t *testing.T) {
 		t.Fatalf("guided start exited %d, want 0\n%s", code, c.screen())
 	}
 
-	screen := c.screen()
+	// A long temp path (macOS /private/var/folders/…) wraps at the 80-column
+	// margin; rejoin those hard wraps so a receipt path is one string again.
+	screen := deSoftWrap(c.screen(), c.cols)
 
 	// One receipt per accepted step.
 	for _, want := range []string{
