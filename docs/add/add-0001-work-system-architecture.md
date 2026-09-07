@@ -14,7 +14,7 @@
 
 O sistema possui três tipos de processo:
 
-* **Binário core do Work** — interpreta comandos, exibe TUI, mantém estado local e controla o lifecycle.
+* **Binário core do Work** — interpreta comandos, coordena apresentação estática e interativa, mantém estado local e controla o lifecycle.
 * **`git`** — ferramenta invocada pelo core para worktrees e resolução de branches.
 * **Processos de plugin** — subprocessos de curta duração, um por operação executável; o core nunca carrega seu código no próprio processo.
 
@@ -28,7 +28,7 @@ Conforme ADR-0009:
 
 * **Linguagem:** Go, em binário único e portável.
 * **CLI:** Cobra.
-* **TUI:** Bubble Tea, para seleções interativas.
+* **Apresentação interativa:** Bubble Tea e Lip Gloss atrás da fronteira genérica definida na ADR-0020; Huh pode ser usado internamente para campos simples sem definir a fronteira da jornada.
 * **Persistência:** `work-state.json` é o snapshot canônico de cada Work; SQLite embutido com driver Go puro, em `~/.work/state/work.db`, é sua projeção global de consulta.
 
 ***
@@ -354,7 +354,7 @@ Falhas de Linker ou Importer automáticos são registradas e exibidas como aviso
 
 ***
 
-## 12. Atualização, TUI e integridade
+## 12. Atualização, apresentação e integridade
 
 `work status [work]` é uma operação somente leitura. O core lê o snapshot canônico e apresenta identidade, estado, branch, localização aplicável — worktree ativa ou diretório arquivado — e links persistidos; não executa extensões, não dispara descoberta e não atualiza acesso recente, proveniência ou timestamps de links. Sem alvo, resolve o Work associado ao diretório corrente; se não houver um, falha com mensagem acionável.
 
@@ -362,7 +362,45 @@ A apresentação utiliza a chave semântica e o valor persistido. Comportamentos
 
 `work plugin update --check [plugin...]` consulta atualizações sem mudar checkout; sem nomes, verifica todos os plugins instalados. `work plugin update <plugin...>` e `work plugin update --all` alteram versões somente mediante ação explícita; `--check` e `--all` são mutuamente exclusivos. `work plugin update` sem alvo abre a seleção TUI. A atualização lê e valida o novo manifesto antes de trocar a versão registrada.
 
-`work` sem argumentos abre uma home TUI que alcança todas as jornadas. `work plugin`, `work repository` e `work convention` são hubs TUI e exibem, após uma operação, seu comando direto equivalente. `work resume`, `work archive`, `work import` e `work link` usam TUI somente para valores omitidos; alvos explícitos pulam a seleção correspondente, mas não validações ou confirmações. Em stdin não interativo, valores obrigatórios ausentes falham sem abrir TUI.
+### 12.1 Superfície de descoberta
+
+Conforme ADR-0019, `work` sem argumentos não abre um modelo interativo. Em terminal interativo, o renderer estático produz o wordmark `WORK` em arte de terminal, tagline e orientação para `work --help`, então sai 0. O wordmark distribui os acentos do tema em degradê do primário `#11A8CD` ao secundário `#8B7CF6` quando a capacidade e o contraste permitem; o renderer escolhe `WORK` compacto e sem escapes para terminal estreito, sem cor ou não interativo.
+
+`work --help` usa a árvore de comandos registrada como inventário único e agrupa somente os comandos presentes por contexto: cotidiano/global, dentro de um Work, administração e setup/plumbing. Marca, uso, opções e grupos são renderizados pela mesma política de capacidade. A home não mantém uma segunda lista de comandos.
+
+`work plugin`, `work repository` e `work convention` continuam como hubs interativos e exibem, após uma operação, seu comando direto equivalente. `work resume`, `work archive`, `work import` e `work link` usam apresentação interativa somente para valores omitidos; alvos explícitos pulam a seleção correspondente, mas não validações ou confirmações. Em stdin não interativo, valores obrigatórios ausentes falham sem abrir controles interativos.
+
+### 12.2 Fronteira de apresentação interativa
+
+Conforme ADR-0020, a CLI/aplicação compõe a jornada e traduz domínio em especificações de apresentação genéricas. Ela fornece títulos, descrições, opções, grupos, validadores repetíveis e sem mutação, formatadores de recibo e conteúdo de confirmação. Também retém toda operação sobre Work, Git, snapshot, projeção, plugins e configuração.
+
+A camada de apresentação mantém somente estado visual e de entrada: edição, cursor, filtro, viewport, seleção, confirmação e lifecycle da etapa. Ela não recebe DTOs de Work nem consulta domínio ou infraestrutura. As opções carregam valor opaco e textos de apresentação; significado de grupos, identidades e consequências permanece na CLI.
+
+Uma etapa roda como uma sessão inline delimitada. Seu estado segue:
+
+```text
+ativa --erro recuperável--> ativa com o erro atual substituído
+ativa --aceita-----------> concluída com recibo compacto
+ativa --cancela----------> cancelada com aviso compacto
+```
+
+Em controles com confirmação, a sequência é `seleção → confirmação → concluída`; voltar da confirmação retorna à seleção sem mutar o domínio, e cancelamento encerra a etapa. A visão compacta é definida antes do encerramento normal, para que o frame final não retenha lista expandida nem padding.
+
+### 12.3 Geometria, tema e capacidade
+
+O tema é semântico e injetado em todos os renderers. `Primary` (`#11A8CD`) e `Secondary` (`#8B7CF6`) expressam marca e foco; `Success`, `Warning` e `Danger` permanecem tokens próprios; texto de corpo usa o foreground do terminal; variantes claras e paletas limitadas preservam contraste. `NO_COLOR` não vazio, `TERM=dumb` e writers não TTY desabilitam cor. Negrito e marcas textuais mantêm significado sem cor.
+
+Todo modelo ativo calcula linhas e colunas disponíveis depois de reservar título, filtro, erro, ajuda e confirmação. Opções não focadas e focadas reservam a mesma coluna indicadora; caixas `[ ]`/`[x]` têm largura exibida igual; as duas linhas de uma opção movem-se e estilizam-se como uma unidade. Resize recalcula viewport e clamp de cursor. Metadados secundários são truncados antes da identidade primária. A medição ignora sequências de estilo e considera largura Unicode exibida.
+
+### 12.4 Streams e diagnóstico
+
+Cada sessão recebe input e writer de UI explicitamente da CLI. Frames, ajuda contextual e diagnósticos humanos são escritos no canal configurado de stderr/UI. Stdout recebe apenas resultados estáveis definidos nos contratos dos comandos.
+
+Validações recuperáveis retornam uma mensagem pública para o controle ativo, sem imprimir. Erros terminais sobem estruturados até a fronteira CLI/processo, que escolhe exatamente um renderer: humano interativo ou estável não interativo. Categoria, token, código e causa continuam separados; a forma humana usa resumo e hint acionáveis, enquanto cadeias técnicas só aparecem em modo diagnóstico explícito.
+
+### 12.5 Satisfação e decisões governantes
+
+Esta seção satisfaz `docs/prd.md` RF-50 a RF-64 e RNF-10 a RNF-11. ADR-0019 governa a superfície e a descoberta; ADR-0020 governa o boundary e lifecycle de apresentação; ADR-0009 continua governando a stack. Os contratos históricos F1/F2 continuam registrando o comportamento entregue naquelas fatias, mas a apresentação conflitante é substituída por `specs/003-terminal-ux-revamp/`.
 
 A API administrativa direta é:
 
@@ -392,4 +430,4 @@ work convention show
 work convention set <CONVENTION>
 ```
 
-Comandos de leitura (`status`, `list`, `show` e `plugin update --check`) aceitam `--json` e são puros. `--yes` confirma impactos já determinados, nunca escolhe alvos ou valores. Não há aliases oficiais. A origem de todos os plugins é explicitamente escolhida pelo usuário e a referência instalada é fixada; assinatura formal fica adiada conforme ADR-0008. A ADR-0017 governa a gramática e a semântica transversal dessa superfície.
+Comandos de leitura (`status`, `list`, `show` e `plugin update --check`) aceitam `--json` e são puros. `--yes` confirma impactos já determinados, nunca escolhe alvos ou valores. Não há aliases oficiais. A origem de todos os plugins é explicitamente escolhida pelo usuário e a referência instalada é fixada; assinatura formal fica adiada conforme ADR-0008. A ADR-0019 governa a gramática e a semântica transversal dessa superfície.

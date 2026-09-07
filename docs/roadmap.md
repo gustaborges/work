@@ -22,6 +22,7 @@ O roadmap define ordem e critérios de saída, não datas. Datas dependem de cap
 | --- | --- | --- |
 | F1 — Primeiro Work local | Criar e entrar em um Work a partir de um caminho Git local | Walking skeleton |
 | F2 — Ciclo diário | Retomar e arquivar Works sem perder o snapshot | Alpha local |
+| F2.5 — Experiência de terminal | Concluir jornadas interativas com histórico limpo e descobrir comandos por uma entrada de marca e ajuda completa | Alpha consolidado |
 | F3 — Encontrar o clone | Iniciar por nome ou referência usando roots e policy de Locators | Beta local |
 | F4 — Novas origens por plugin | Instalar um plugin e iniciar Works por uma nova sintaxe/origem | Beta extensível |
 | F5 — Contexto automático | Descobrir links e importar artefatos ao finalizar `work start` | v1 feature preview |
@@ -71,6 +72,26 @@ As fatias são cumulativas. Nenhuma fatia pode quebrar as jornadas demonstrávei
 **Requisitos cobertos:** RF-11 a RF-15 e RF-34.
 
 **Marco:** ao final de F2 existe um **alpha local** útil sem plugins de terceiros.
+
+### F2.5 — Experiência de terminal coerente
+
+**Resultado para o usuário:** as jornadas já entregues operam inline, preservam somente recibos compactos de escolhas aceitas, apresentam erros e cancelamentos uma vez e oferecem uma entrada de marca responsiva que encaminha para ajuda completa.
+
+**Demonstração de ponta a ponta:**
+
+1. Executar `work start`, errar caminho e slug repetidas vezes e concluir vendo apenas os valores aceitos no histórico.
+2. Selecionar base branch, retomar e arquivar Works sem saltos de linhas ou colunas; confirmar que controles expandidos colapsam ao terminar.
+3. Cancelar seleção e confirmação e observar um único resultado conciso, sem mutação e com código de saída preservado.
+4. Executar `work` em terminal amplo e ver o wordmark `WORK` em arte de terminal com degradê entre os acentos primário e secundário; repetir em terminal estreito ou sem cor e ver a forma compacta legível.
+5. Executar `work --help` e localizar todos os comandos disponíveis agrupados por contexto; repetir com streams redirecionadas e confirmar saída plana e contratos estáveis.
+
+**Inclui:** lifecycle inline com recibos finais; validação recuperável no controle ativo; seletores limitados pelo viewport e com geometria estável; foco perceptível sem depender de cor; cancelamento e diagnóstico humanos concisos; tema semântico e opt-out de cor; home estática de marca; ajuda agrupada pelo inventário real de comandos; fronteira genérica entre jornada e apresentação; compatibilidade não interativa.
+
+**Critério de saída:** as jornadas F1/F2 preservam seus contratos e mutações, nenhum teste de automação regride, controles ativos cabem nos viewports suportados e o histórico terminal após conclusão contém somente recibos e resultados duráveis.
+
+**Requisitos cobertos:** RF-50 a RF-64; RNF-10 e RNF-11.
+
+**Marco:** ao final de F2.5 existe um **alpha consolidado** com a experiência de terminal estabilizada antes da ampliação do domínio em F3.
 
 ### F3 — Encontrar o clone local
 
@@ -181,7 +202,7 @@ Estes itens não formam uma fatia horizontal separada. Entram no critério de pr
 * **Contrato de processo:** stdin/stdout, códigos de saída, stderr e respostas inválidas têm testes de contrato com fixtures autocontidas.
 * **Portabilidade:** paths, execução de runtimes, rename atômico e integração de shell são testados nos sistemas operacionais oficialmente suportados.
 * **Auditabilidade:** decisões e diagnósticos importantes identificam Work, componente e operação sem gravar segredos ou conteúdo desnecessário.
-* **UX:** toda jornada é alcançável pela home TUI; hubs mostram o comando direto equivalente; caminhos interativos são navegáveis por teclado; comandos destinados à automação possuem `--json` nas leituras, saída e exit codes estáveis e nunca tentam abrir TUI.
+* **UX:** toda jornada é descobrível pela entrada de marca e pela ajuda agrupada; hubs mostram o comando direto equivalente; caminhos interativos são inline, limitados pelo viewport e navegáveis por teclado; comandos destinados à automação possuem `--json` nas leituras, saída e exit codes estáveis e nunca tentam abrir TUI.
 * **Regressão:** a demonstração automatizada de cada fatia anterior permanece verde.
 
 O release candidate passa ainda por instalação limpa, upgrade entre versões suportadas, interrupção/cancelamento nos pontos de mutação, reindexação a partir de snapshots e testes com repositórios Git reais contendo branches locais/remotas ambíguas.
@@ -208,4 +229,4 @@ Assinatura formal de plugins, telemetria, sincronização entre máquinas, inter
 
 ## 7. Próximo passo
 
-Detalhar somente F1 em plano de implementação e tarefas pequenas, mantendo F2–F7 como outcomes. Ao final de F1, revisar o roadmap com dados reais de complexidade, portabilidade e transações Git/filesystem antes de estimar datas para os marcos seguintes.
+Planejar e implementar F2.5 a partir de `specs/003-terminal-ux-revamp/` antes de iniciar F3. A ampliação para localização de clones só começa depois que os contratos interativos e não interativos de F1/F2 estiverem preservados pela nova fronteira de apresentação.
