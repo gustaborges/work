@@ -93,6 +93,42 @@ func TestFormatAndToken(t *testing.T) {
 	}
 }
 
+func TestSummaryAndHintDoNotChangeStableOutput(t *testing.T) {
+	// An Error with no Summary/Hint formats and codes exactly as before.
+	plain := New(InvalidPath, "no such path: /x")
+	if got, want := Format(plain), "error: invalid-path: no such path: /x"; got != want {
+		t.Errorf("Format(plain) = %q, want %q", got, want)
+	}
+
+	// Adding Summary/Hint leaves Format, Token, and ExitCode untouched.
+	rich := New(InvalidPath, "no such path: /x").
+		WithSummary("that path does not exist").
+		WithHint("pass a path to a local git repository")
+	if got := Format(rich); got != Format(plain) {
+		t.Errorf("Format changed with Summary/Hint: %q", got)
+	}
+	if Token(rich) != "invalid-path" {
+		t.Errorf("Token changed: %q", Token(rich))
+	}
+	if ExitCode(rich) != 10 {
+		t.Errorf("ExitCode changed: %d", ExitCode(rich))
+	}
+	if rich.Summary != "that path does not exist" || rich.Hint != "pass a path to a local git repository" {
+		t.Errorf("Summary/Hint not stored: %+v", rich)
+	}
+}
+
+func TestCauseAliasesUnwrap(t *testing.T) {
+	cause := errors.New("boom")
+	err := Wrap(BootstrapFailed, cause, "cannot start")
+	if err.Cause() != cause || err.Cause() != err.Unwrap() {
+		t.Errorf("Cause() = %v, want %v (== Unwrap)", err.Cause(), cause)
+	}
+	if New(Usage, "x").Cause() != nil {
+		t.Errorf("Cause() on a causeless Error should be nil")
+	}
+}
+
 func TestWrapKeepsCauseHidden(t *testing.T) {
 	cause := errors.New("permission denied: /etc/shadow")
 	err := Wrap(BootstrapFailed, cause, "cannot read config file work.json")
