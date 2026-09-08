@@ -6,9 +6,11 @@ a canonical `work-state.json` snapshot, and a lookup record in a local SQLite
 projection. One command takes you from a local clone to a ready checkout — offline,
 with no network and no AI on the path.
 
-This repository now carries the **F1 — First Local Work** slice and the
-**F2 — Daily Cycle** slice on top of it. The commands are `work start`,
-`work resume`, `work archive`, the guided `work` home, and `work shell-init`.
+This repository now carries the **F1 — First Local Work** slice, the
+**F2 — Daily Cycle** slice, and the **F2.5 — Terminal UX Revamp** presentation
+slice on top of them. The commands are `work start`, `work resume`,
+`work archive`, and `work shell-init`; bare `work` in a terminal prints a
+branded splash and exits.
 
 `work resume` returns you to an existing Work (most recently accessed first);
 `work archive` closes one or more Works, preserving each snapshot under
@@ -126,17 +128,21 @@ The result:
 
 ### Interactive (guided)
 
-Run `work` with no arguments to open the home, choose **Start a Work**, then follow
-the prompts; or run `work start` with no source. Each flag you *do* pass skips only
-its own prompt — every validation still runs.
+Run `work start` with no source to be guided through it. Each flag you *do* pass
+skips only its own prompt — every validation still runs. (Bare `work` no longer
+opens a menu: in a terminal it prints the `WORK` brand and a `work --help`
+pointer, then exits 0; piped or scripted it prints the usage line and exits 2.)
 
 ```
-work start ~/src/acme-api
-  → slug?          add-retry-logic
-  → base branch?   (Remote / Local tabs, each row with a short SHA)
+work start ~/src/acme-api        (full-screen; each accepted step stays on
+  → slug?          add-retry-logic  screen as a receipt above the next one)
+  → base branch?   (Remote / Local tabs)
   → workspace root? (~/work — accept or edit; asked only once per machine)
   → Create Work … ?  [y/N]
 ```
+
+On exit the terminal returns to where it was, with the receipt trail reprinted
+above the `work:` result lines.
 
 `freeform`'s single `{slug}` prefix is applied without asking.
 
@@ -283,12 +289,34 @@ survive a failed creation.
 ```
 cmd/work/            entry point → internal/cli
 internal/            role-focused packages mirroring the start pipeline
+internal/present/    the generic interaction boundary (input/select/confirm,
+                     the full-screen wizard, theme, WORK wordmark, diagnostics)
 seed/                two standalone binaries (starter + locator), embedded via //go:embed
 tests/contract/      golden stdin/stdout JSON against the built seed binaries
 tests/integration/   testscript scenarios driving the built work binary
 specs/001-first-local-work/   F1 spec, plan, research, data model, contracts, quickstart
 specs/002-daily-cycle/        F2 spec, plan, research, data model, contracts, quickstart
+specs/003-terminal-ux-revamp/ F2.5 presentation slice — spec, plan, contracts, quickstart
 ```
 
-See `specs/001-first-local-work/quickstart.md` and
-`specs/002-daily-cycle/quickstart.md` for the full validation scenarios.
+See the `quickstart.md` under each `specs/*/` directory for the full validation
+scenarios.
+
+### Presentation (F2.5)
+
+Every interactive flow (`work start`, the resume/archive selectors) runs through
+`internal/present` as one full-screen `Wizard` over ordered steps: a Primary rule,
+the flow title, the trail of accepted-step receipts, and the current step. A full
+clear+repaint every frame makes the inline renderer's resize / back-nav ghosting
+impossible (ADR-0021). On exit the primary buffer is restored and the receipt
+trail is reprinted there, ahead of the stable `work:` stdout — so an accepted step
+leaves a one-line receipt and no rejected input or stale error. `present` imports
+no Work domain package — the CLI supplies titles, options, and side-effect-free
+validation closures — and an import-boundary test
+(`tests/contract/present_boundary_test.go`) enforces that mechanically.
+
+Colour is one semantic theme. It is disabled — and output then contains zero ANSI
+bytes — whenever the stream is not a TTY, `NO_COLOR` is set to any non-empty value,
+or `TERM=dumb`. Human diagnostics are rendered exactly once at the process border
+(`internal/cli/diagnostics_border.go`); lower layers return structured errors and
+never print. Set `WORK_DEBUG=1` to append the underlying cause chain.

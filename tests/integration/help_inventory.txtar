@@ -1,0 +1,34 @@
+# Q9, Q10 — `work --help` is grouped, inventory-driven, plain when piped, and
+# exits 0 in every mode. testscript drives `work` with non-TTY streams, so this
+# is the piped form. Covers US2; FR-020, FR-021; SC-005, SC-007.
+
+# Exit 0, brand header + tagline, no ANSI escapes.
+work --help
+stdout 'WORK'
+stdout 'Isolated work, ready when you are\.'
+! stdout '\x1b'
+
+# The Daily Commands group lists exactly start, resume, archive.
+stdout '(?m)^Daily Commands:$'
+stdout '(?m)^  archive '
+stdout '(?m)^  resume '
+stdout '(?m)^  start '
+
+# The Setup group lists shell-init and completion.
+stdout '(?m)^Setup:$'
+stdout '(?m)^  shell-init '
+stdout '(?m)^  completion '
+
+# Empty groups are not printed (SC-005: zero empty groups).
+! stdout 'Inside a Work'
+! stdout 'Administration'
+
+# The footer and usage line are present.
+stdout '(?m)^Usage:$'
+stdout 'work \[command\] --help'
+
+# `-h` and `work help` are equivalent and also exit 0.
+work -h
+stdout '(?m)^Daily Commands:$'
+work help
+stdout '(?m)^Daily Commands:$'

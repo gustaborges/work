@@ -18,11 +18,11 @@ import (
 	"github.com/gustaborges/work/internal/create"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/gitx"
+	"github.com/gustaborges/work/internal/present"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/reporef"
 	"github.com/gustaborges/work/internal/shellintegration"
 	"github.com/gustaborges/work/internal/starter"
-	"github.com/gustaborges/work/internal/tui"
 	"github.com/gustaborges/work/internal/workhome"
 	"github.com/gustaborges/work/internal/workspace"
 )
@@ -83,7 +83,8 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	}
 	out := cmd.OutOrStdout()
 	errOut := cmd.ErrOrStderr()
-	interactive := tui.IsInteractive()
+	interactive := present.IsInteractive()
+	pio := present.IO{In: cmd.InOrStdin(), UI: errOut}
 
 	if f.jsonSet {
 		return diag.New(diag.Usage, "--json is not accepted on `work start` (it is a mutation)")
@@ -126,140 +127,298 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		return err
 	}
 
-	// 1+2. SOURCE → Starter → validated repository path. In an interactive
-	// terminal an invalid or unusable path returns to the path prompt instead
-	// of exiting, so the user can correct it without restarting (FR-013, S4).
-	var repoPath string
-	for {
-		s := strings.TrimSpace(source)
-		if s == "" {
-			if !interactive {
-				return diag.New(diag.Usage, "no SOURCE given: pass a path to a local git repository")
-			}
-			source, err = tui.InputPath()
-			if err != nil {
-				return err
-			}
-			continue
-		}
-		ref, ierr := starter.Invoke(home.PluginsDir(), starterComp, s)
-		if ierr == nil {
-			repoPath, ierr = reporef.ValidatePath(ref.Path)
-		}
-		if ierr != nil {
-			if interactive && retryable(ierr, diag.InvalidPath, diag.UnusableRepo) {
-				fmt.Fprintln(errOut, diag.Format(ierr))
-				source = ""
-				continue
-			}
-			return ierr
-		}
-		break
-	}
-	repo := gitx.Open(repoPath)
-	repoName := filepath.Base(repoPath)
-
-	// 3. Prefix (freeform convention). A convention that offers a single prefix
-	// is not a choice, so no prompt is shown for it.
 	catalog := convention.Load(reg)
 	prefixes, err := catalog.Prefixes(convention.Freeform)
 	if err != nil {
 		return err
 	}
-	var prefix string
-	switch {
-	case f.prefixSet:
-		prefix = f.prefix
-	case interactive:
-		prefix, err = tui.SelectPrefix(prefixes)
-		if err != nil {
-			return err
+
+	// Values the flow collects. The validation closures side-effect these as
+	// each step is accepted, so the interactive wizard and the non-interactive
+	// resolution below share exactly the same rules (FR-005, FR-029).
+	var (
+		repoPath      string
+		repoName      string
+		prefix        string
+		slug, branch  string
+		base          basebranch.Choice
+		baseResolved  bool
+		workspaceRoot string
+	)
+
+	// 1+2. SOURCE → Starter → validated repository path. The validation runs
+	// inside the interactive field: an invalid or unusable path is shown in the
+	// live frame and replaced on the next attempt, so a rejected path never
+	// reaches terminal history and the journey is not restarted (FR-005, S4).
+	validatePath := func(_ context.Context, s string) error {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return errors.New("a path is required")
 		}
-	default:
-		return diag.New(diag.Usage, "missing --prefix: name a branch prefix")
+		ref, err := starter.Invoke(home.PluginsDir(), starterComp, s)
+		if err == nil {
+			var normalized string
+			normalized, err = reporef.ValidatePath(ref.Path)
+			if err == nil {
+				repoPath = normalized
+				repoName = filepath.Base(normalized)
+				return nil
+			}
+		}
+		if retryable(err, diag.InvalidPath, diag.UnusableRepo) {
+			return err // shown in-frame; the user can correct it
+		}
+		return present.Fatal(err)
 	}
 
 	// 4+5. Slug → derived branch name, validated and collision-checked before
-	// any mutation. In an interactive terminal an invalid name or a collision
-	// returns to the slug prompt so the user can pick another (FR-013, S5, S6).
-	// Asked before the base branch: a rejected slug is the cheapest failure to
-	// recover from, so it comes first.
-	slugFromFlag := f.slugSet
-	var slug, branch string
-	for {
-		switch {
-		case slugFromFlag:
-			slug = strings.TrimSpace(f.slug)
-		case interactive:
-			slug, err = tui.InputSlug()
+	// any mutation. The check runs inside the interactive field, so an invalid
+	// name or a collision is shown in-frame and replaced on the next attempt
+	// without restarting the journey (FR-005, S5, S6).
+	validateSlug := func(_ context.Context, s string) error {
+		s = strings.TrimSpace(s)
+		if err := branchname.ValidateSlug(s); err != nil {
+			return err
+		}
+		derived, err := catalog.DeriveName(convention.Freeform, prefix, s)
+		if err == nil {
+			err = branchname.Validate(derived)
+		}
+		if err == nil {
+			err = branchname.DetectCollision(gitx.Open(repoPath), derived)
+		}
+		if err != nil {
+			if retryable(err, diag.InvalidBranchName, diag.BranchCollision) {
+				return err
+			}
+			return present.Fatal(err)
+		}
+		slug, branch = s, derived
+		return nil
+	}
+
+	// 7. Workspace root: reuse a configured root silently; on a machine with
+	// none, validate the supplied/prompted value and persist it after the run.
+	validateWorkspace := func(_ context.Context, raw string) error {
+		a, verr := workspace.Validate(raw, cfg.RepositoryRoots)
+		if verr != nil {
+			return verr // a path typo the user can correct in-frame
+		}
+		workspaceRoot = a
+		return nil
+	}
+
+	// resolveBaseFlag turns --base into a Choice once the repository path is
+	// known. The explicit state marker, rather than a property of Choice, is the
+	// sole resolution guard; an empty refname can therefore never cause a valid
+	// choice to be resolved again.
+	resolveBaseFlag := func() error {
+		if !f.baseSet || baseResolved || repoPath == "" {
+			return nil
+		}
+		choices, err := basebranch.List(gitx.Open(repoPath))
+		if err != nil {
+			return err
+		}
+		if len(choices) == 0 {
+			return diag.New(diag.NoBaseBranch, "the repository has no selectable base branch")
+		}
+		base, err = basebranch.Resolve(choices, f.base)
+		if err == nil {
+			baseResolved = true
+		}
+		return err
+	}
+
+	// Resolve every value an explicit flag or the SOURCE argument already
+	// supplies; the interactive wizard then prompts only for what is missing.
+	if source != "" {
+		if err := validatePath(ctx, source); err != nil {
+			if underlying, fatal := present.IsFatal(err); fatal {
+				return underlying
+			}
+			if !interactive {
+				return err
+			}
+		}
+	}
+
+	switch {
+	case f.prefixSet:
+		prefix = f.prefix
+	case len(prefixes) == 1:
+		// A convention with a single prefix is not a choice.
+		prefix = prefixes[0]
+	}
+
+	// Slug validation needs the repository (for the collision check), so it can
+	// only run eagerly once the path is known — otherwise the slug becomes a
+	// wizard step whose build runs the same closure after the path step.
+	if f.slugSet && repoPath != "" {
+		if err := validateSlug(ctx, f.slug); err != nil {
+			if underlying, fatal := present.IsFatal(err); fatal {
+				return underlying
+			}
+			if !interactive {
+				return err
+			}
+		}
+	}
+
+	if err := resolveBaseFlag(); err != nil {
+		return err
+	}
+
+	persistWorkspace := false
+	switch {
+	case strings.TrimSpace(cfg.Workspace) != "":
+		if f.workspaceSet {
+			return diag.New(diag.Usage,
+				"a workspace root is already configured; edit ~/.work/config/work.json to change it")
+		}
+		workspaceRoot = cfg.Workspace
+	case f.workspaceSet:
+		a, verr := workspace.Validate(f.workspace, cfg.RepositoryRoots)
+		if verr != nil {
+			return verr
+		}
+		workspaceRoot, persistWorkspace = a, true
+	}
+
+	// 8. Confirmation is the last collected step; it is also required (with
+	// --yes) for a non-interactive run.
+	needConfirm := !f.yes
+
+	if interactive {
+		var steps []present.Step
+
+		if repoPath == "" {
+			steps = append(steps, present.InputStep("path", func(present.Answers) (present.InputSpec, error) {
+				return present.InputSpec{
+					Title:    "Local repository path",
+					Initial:  strings.TrimSpace(source),
+					Validate: validatePath,
+					Receipt:  func(string) string { return repoPath },
+				}, nil
+			}))
+		}
+
+		if prefix == "" && len(prefixes) > 1 {
+			steps = append(steps, present.SelectStep("prefix", func(present.Answers) (present.SelectSpec[string], error) {
+				return present.SelectSpec[string]{
+					Title:   "Branch prefix",
+					Options: stringOptions(prefixes),
+				}, nil
+			}))
+		}
+
+		if branch == "" {
+			steps = append(steps, present.InputStep("slug", func(a present.Answers) (present.InputSpec, error) {
+				if p := a.String("prefix"); p != "" {
+					prefix = p
+				}
+				// --slug can only be resolved here (not eagerly) when SOURCE was
+				// prompted: the collision check needs the repository path.
+				if f.slugSet {
+					switch err := validateSlug(ctx, f.slug); {
+					case err == nil:
+						return present.InputSpec{}, present.StepResolved(slug)
+					default:
+						if underlying, fatal := present.IsFatal(err); fatal {
+							return present.InputSpec{}, underlying
+						}
+						// a retryable error (bad name / collision): fall through
+						// and let the user correct the prefilled value in-frame.
+					}
+				}
+				return present.InputSpec{
+					Title:       "Slug",
+					Description: "a short identifier for this Work",
+					Initial:     strings.TrimSpace(f.slug),
+					Validate:    validateSlug,
+					Receipt:     func(string) string { return slug },
+				}, nil
+			}))
+		}
+
+		if base.Refname == "" {
+			steps = append(steps, present.SelectStep("base", func(present.Answers) (present.SelectSpec[basebranch.Choice], error) {
+				if f.baseSet {
+					if err := resolveBaseFlag(); err != nil {
+						return present.SelectSpec[basebranch.Choice]{}, err
+					}
+					return present.SelectSpec[basebranch.Choice]{}, present.StepResolved(base)
+				}
+				choices, err := basebranch.List(gitx.Open(repoPath))
+				if err != nil {
+					return present.SelectSpec[basebranch.Choice]{}, present.Fatal(err)
+				}
+				if len(choices) == 0 {
+					return present.SelectSpec[basebranch.Choice]{}, present.Fatal(
+						diag.New(diag.NoBaseBranch, "the repository has no selectable base branch"))
+				}
+				return baseBranchSpec(choices), nil
+			}))
+		}
+
+		if strings.TrimSpace(cfg.Workspace) == "" && !f.workspaceSet {
+			suggested, serr := workspace.SuggestDefault()
+			if serr != nil {
+				return diag.Wrap(diag.Usage, serr, "cannot suggest a workspace root")
+			}
+			steps = append(steps, present.InputStep("workspace", func(present.Answers) (present.InputSpec, error) {
+				return present.InputSpec{
+					Title:       "Workspace root",
+					Description: "where materialized Works are kept",
+					Initial:     suggested,
+					Validate:    validateWorkspace,
+					Receipt:     func(string) string { return workspaceRoot },
+				}, nil
+			}))
+			persistWorkspace = true
+		}
+
+		if needConfirm {
+			steps = append(steps, present.ConfirmStep("confirm", func(a present.Answers) (present.ConfirmSpec, error) {
+				if bv, ok := a.Value("base").(basebranch.Choice); ok {
+					base = bv
+				}
+				if err := resolveBaseFlag(); err != nil {
+					return present.ConfirmSpec{}, err
+				}
+				return present.ConfirmSpec{
+					Title:  "Create Work",
+					Impact: startImpact(repoPath, repoName, base, branch, workspaceRoot),
+					Accept: "Create",
+					Reject: "Cancel",
+				}, nil
+			}))
+		}
+
+		if len(steps) > 0 {
+			ans, err := present.Wizard(ctx, pio, present.WizardSpec{Title: "Start a Work", Steps: steps})
 			if err != nil {
 				return err
 			}
-		default:
-			return diag.New(diag.Usage, "missing --slug: name the Work")
-		}
-
-		branch, err = catalog.DeriveName(convention.Freeform, prefix, slug)
-		if err == nil {
-			err = branchname.Validate(branch)
-		}
-		if err == nil {
-			err = branchname.DetectCollision(repo, branch)
-		}
-		if err != nil {
-			if interactive && retryable(err, diag.InvalidBranchName, diag.BranchCollision) {
-				fmt.Fprintln(errOut, diag.Format(err))
-				slugFromFlag = false
-				continue
+			if bv, ok := ans.Value("base").(basebranch.Choice); ok {
+				base = bv
+				baseResolved = true
 			}
+			if needConfirm && !ans.Bool("confirm") {
+				return diag.New(diag.Cancelled, "creation declined at the confirmation prompt")
+			}
+		}
+	}
+
+	if err := resolveBaseFlag(); err != nil {
+		return err
+	}
+
+	// The workspace root is persisted only once every source- and name-level
+	// check has passed, so a rejected run never records a root (SC-004).
+	if persistWorkspace {
+		if err := workspace.Persist(home, workspaceRoot); err != nil {
 			return err
-		}
-		break
-	}
-
-	// 6. Base branch.
-	choices, err := basebranch.List(repo)
-	if err != nil {
-		return err
-	}
-	if len(choices) == 0 {
-		return diag.New(diag.NoBaseBranch, "the repository has no selectable base branch")
-	}
-	var base basebranch.Choice
-	if f.baseSet {
-		base, err = basebranch.Resolve(choices, f.base)
-	} else if interactive {
-		base, err = selectBase(ctx, choices)
-	} else {
-		return diag.New(diag.Usage, "missing --base: name a base branch")
-	}
-	if err != nil {
-		return err
-	}
-
-	// 7. Workspace root. Resolved only once every source- and name-level check
-	// has passed, so a rejected run never persists a root or creates its dirs
-	// (SC-004).
-	workspaceRoot, err := resolveWorkspace(home, cfg, f, interactive)
-	if err != nil {
-		return err
-	}
-
-	// 8. Confirm.
-	dirPath := filepath.Join(workspaceRoot, "in-progress", repoName+"_"+strings.ReplaceAll(branch, "/", "-"))
-	summary := fmt.Sprintf(
-		"Create Work\n  repository: %s\n  base:       %s\n  branch:     %s\n  workspace:  %s\n  directory:  %s",
-		repoPath, base.Format(), branch, workspaceRoot, dirPath)
-	if !f.yes {
-		if !interactive {
-			return diag.New(diag.Usage, "missing --yes: confirm the creation non-interactively with --yes")
-		}
-		ok, err := tui.ConfirmCreate(summary)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			return diag.New(diag.Cancelled, "creation declined at the confirmation prompt")
 		}
 	}
 
@@ -323,44 +482,6 @@ func requireNonInteractiveFlags(source string, cfg *config.Config, f startFlags)
 	return nil
 }
 
-// resolveWorkspace applies the F1 workspace-root rule: reuse a configured root
-// silently; on a machine with none, persist the supplied/prompted value.
-func resolveWorkspace(home workhome.Home, cfg *config.Config, f startFlags, interactive bool) (string, error) {
-	if strings.TrimSpace(cfg.Workspace) != "" {
-		if f.workspaceSet {
-			return "", diag.New(diag.Usage,
-				"a workspace root is already configured; edit ~/.work/config/work.json to change it")
-		}
-		return cfg.Workspace, nil
-	}
-
-	var raw string
-	switch {
-	case f.workspaceSet:
-		raw = f.workspace
-	case interactive:
-		suggested, err := workspace.SuggestDefault()
-		if err != nil {
-			return "", diag.Wrap(diag.Usage, err, "cannot suggest a workspace root")
-		}
-		raw, err = tui.EditWorkspaceRoot(suggested)
-		if err != nil {
-			return "", err
-		}
-	default:
-		return "", diag.New(diag.Usage, "missing --workspace: no workspace root is configured yet")
-	}
-
-	abs, err := workspace.Validate(raw, cfg.RepositoryRoots)
-	if err != nil {
-		return "", err
-	}
-	if err := workspace.Persist(home, abs); err != nil {
-		return "", err
-	}
-	return abs, nil
-}
-
 // retryable reports whether err is a diag.Error whose category is one the
 // interactive flow can recover from by re-prompting.
 func retryable(err error, cats ...diag.Category) bool {
@@ -371,17 +492,47 @@ func retryable(err error, cats ...diag.Category) bool {
 	return slices.Contains(cats, d.Category)
 }
 
-func selectBase(ctx context.Context, choices []basebranch.Choice) (basebranch.Choice, error) {
-	items := make([]tui.BaseBranchItem, len(choices))
+// stringOptions wraps plain strings as single-line select options.
+func stringOptions(vals []string) []present.Option[string] {
+	opts := make([]present.Option[string], len(vals))
+	for i, v := range vals {
+		opts[i] = present.Option[string]{Value: v, Primary: v}
+	}
+	return opts
+}
+
+// baseBranchSpec builds the base-branch selector: the choices grouped into
+// Local / Remote tabs (the tab bar is hidden when only one scope is present),
+// filterable, and hash-free — the short object name is deliberately not shown as
+// a secondary line (it is noise for the common case). The list collapses to its
+// short-name receipt on accept (FR-007, FR-008).
+func baseBranchSpec(choices []basebranch.Choice) present.SelectSpec[basebranch.Choice] {
+	opts := make([]present.Option[basebranch.Choice], len(choices))
 	for i, c := range choices {
-		items[i] = tui.BaseBranchItem{
-			Label:  fmt.Sprintf("%-24s %s", c.Short, c.ObjectShort),
-			Remote: c.Scope == basebranch.ScopeRemoteTracking,
+		group := "Local"
+		if c.Scope == basebranch.ScopeRemoteTracking {
+			group = "Remote"
+		}
+		opts[i] = present.Option[basebranch.Choice]{
+			Value:   c,
+			Primary: c.Short,
+			Group:   group,
 		}
 	}
-	idx, err := tui.SelectBaseBranch(ctx, items)
-	if err != nil {
-		return basebranch.Choice{}, err
+	return present.SelectSpec[basebranch.Choice]{
+		Title:      "Base branch",
+		Grouped:    true,
+		Filterable: true,
+		Options:    opts,
+		Receipt:    func(o present.Option[basebranch.Choice]) string { return o.Value.Short },
 	}
-	return choices[idx], nil
+}
+
+// startImpact is the confirmation preview: the resolved repository, base branch
+// (short name only), branch, workspace root, and target directory.
+func startImpact(repoPath, repoName string, base basebranch.Choice, branch, workspaceRoot string) string {
+	dirPath := filepath.Join(workspaceRoot, "in-progress", repoName+"_"+strings.ReplaceAll(branch, "/", "-"))
+	return fmt.Sprintf(
+		"  repository: %s\n  base:       %s\n  branch:     %s\n  workspace:  %s\n  directory:  %s",
+		repoPath, base.Short, branch, workspaceRoot, dirPath)
 }

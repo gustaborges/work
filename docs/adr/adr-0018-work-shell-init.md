@@ -1,133 +1,125 @@
-# ADR-0018: `work shell-init` e o protocolo `WORK_CD_FILE`
+# ADR-0018: `work shell-init` and the `WORK_CD_FILE` protocol
 
-**Status:** Proposta
+**Status:** Proposal
 
-**Data:** 2026-09-06
+**Date:** 2026-09-06
 
-**Contexto de produto:** `docs/prd.md` — RF-9; `specs/001-first-local-work/spec.md` FR-022, FR-023; roadmap §5.1
+**Product context:** `docs/prd.md` — RF-9; `specs/001-first-local-work/spec.md` FR-022, FR-023; roadmap §5.1
 
-**Governa:** `docs/add/add-0001-work-system-architecture.md` §5 (superfície CLI) e §11 (contrato de processo); `specs/001-first-local-work/contracts/shell-integration.md`
+**Governs:** `docs/add/add-0001-work-system-architecture.md` §5 (CLI surface) and §11 (process contract); `specs/001-first-local-work/contracts/shell-integration.md`
 
-**Relaciona-se com:** ADR-0017 (superfície CLI), ADR-0006 (execução direta de componentes), `research.md` R2
+**Relates to:** ADR-0017 (CLI surface), ADR-0006 (direct component execution), `research.md` R2
 
-## Contexto
+## Context
 
-Ao final de `work start` a jornada esperada deixa o terminal **dentro do novo
-worktree** (US1 cenário 1, FR-022). Um processo filho não pode alterar o diretório
-de trabalho do shell pai; toda ferramenta que faz isso — `direnv`, `zoxide`,
-`pyenv`, `fnm`, `jj` — instala um hook no shell do usuário.
+At the end of `work start`, the expected journey leaves the terminal **inside the new
+worktree** (US1 scenario 1, FR-022). A child process cannot change the working directory
+of its parent shell; every tool that does so — `direnv`, `zoxide`, `pyenv`, `fnm`, `jj` —
+installs a hook in the user's shell.
 
-O F1 precisa, portanto, de um novo comando público que emita esse hook. ADR-0017
-fixou que **`work init` não é público** (bootstrap e configuração acontecem sob
-demanda) e definiu a gramática administrativa `work <recurso> <verbo>`. Um emissor
-de snippet de shell não é bootstrap nem se encaixa nessa gramática — ele não
-administra recurso algum, apenas imprime texto. `research.md` R2 registrou a
-decisão técnica (canal por arquivo temporário, wrapper opt-in) e marcou a
-necessidade de um ADR curto para ratificar **nome, snippets por shell e o
-protocolo** antes da v1. Este ADR faz essa ratificação.
+F1 therefore needs a new public command that emits this hook. ADR-0017 established that
+**`work init` is not public** (bootstrap and configuration happen on-demand) and defined
+the administrative grammar `work <resource> <verb>`. A shell snippet emitter is neither
+bootstrap nor does it fit that grammar — it does not administer any resource, it merely
+prints text. `research.md` R2 recorded the technical decision (channel via temporary file,
+opt-in wrapper) and marked the need for a short ADR to ratify **name, snippets per shell,
+and protocol** before v1. This ADR provides that ratification.
 
-## Decisão
+## Decision
 
-### 1. Comando: `work shell-init <shell>`
+### 1. Command: `work shell-init <shell>`
 
-* Nome **`shell-init`**, hífen, um único nível abaixo de `work`. É a única exceção
-  reconhecida à gramática de ADR-0017: não tem verbo final porque não é uma
-  operação sobre recurso, e sim um gerador de configuração para o shell.
-* `<shell>` é obrigatório e assume os valores `bash`, `zsh`, `fish`, `powershell`.
-  Valor ausente ou desconhecido → saída **2** (`usage`) listando os shells
-  suportados.
-* **Somente leitura.** Escreve o snippet em **stdout**, sai 0, não toca em arquivo
-  nem estado. Aceita `--json`? Não — não há payload estruturado; é texto para
-  `eval`.
-* **Não aparece na home TUI** (`work` sem argumentos). É plumbing de instalação,
-  não uma jornada.
-* Uso pretendido, documentado no `--help` e no README:
-  * `eval "$(work shell-init bash)"` / `zsh` no rc correspondente;
+* Name **`shell-init`**, hyphenated, a single level below `work`. It is the only recognized
+  exception to the grammar of ADR-0017: it has no final verb because it is not an operation
+  on a resource, but rather a configuration generator for the shell.
+* `<shell>` is mandatory and assumes the values `bash`, `zsh`, `fish`, `powershell`.
+  Missing or unknown value → exit **2** (`usage`) listing the supported shells.
+* **Read-only.** Writes the snippet to **stdout**, exits 0, does not touch any file or state.
+  Accept `--json`? No — there is no structured payload; it is text for `eval`.
+* **Does not appear in the home TUI** (`work` without arguments). It is installation plumbing,
+  not a journey.
+* Intended usage, documented in `--help` and in the README:
+  * `eval "$(work shell-init bash)"` / `zsh` in the corresponding rc;
   * `work shell-init fish | source`;
   * `Invoke-Expression (& work shell-init powershell | Out-String)`.
 
-### 2. Contrato do snippet (todos os shells)
+### 2. Snippet contract (all shells)
 
-O snippet define uma função/comando `work` que embrulha o binário real e:
+The snippet defines a function/command `work` that wraps the real binary and:
 
-1. cria um arquivo temporário privado `T`;
-2. exporta, **apenas para o processo filho**, `WORK_CD_FILE=T` e
+1. creates a private temporary file `T`;
+2. exports, **only to the child process**, `WORK_CD_FILE=T` and
    `WORK_SHELL_INTEGRATION=1`;
-3. executa o binário real com todos os argumentos originais, herdando
+3. executes the real binary with all original arguments, inheriting
    stdin/stdout/stderr;
-4. ao retornar: se `T` existe e é não vazio, faz `cd` para o caminho contido nele;
-   em seguida remove `T`;
-5. preserva o código de saída do filho como retorno da função.
+4. upon return: if `T` exists and is non-empty, performs `cd` to the path contained in it;
+   then removes `T`;
+5. preserves the child's exit code as the return value of the function.
 
-O snippet **deve**: resolver o binário real sem recursão na função (`command`,
-`builtin`, caminho absoluto ou `$WORK_REAL_BIN`); não vazar `WORK_CD_FILE` /
-`WORK_SHELL_INTEGRATION` para o shell interativo além do filho; ser idempotente ao
-ser carregado mais de uma vez.
+The snippet **must**: resolve the real binary without recursion into the function (`command`,
+`builtin`, absolute path, or `$WORK_REAL_BIN`); not leak `WORK_CD_FILE` / `WORK_SHELL_INTEGRATION`
+into the interactive shell beyond the child; be idempotent when loaded more than once.
 
-### 3. Protocolo `WORK_CD_FILE` (lado do núcleo)
+### 3. `WORK_CD_FILE` protocol (core side)
 
-* Em `work start` **bem-sucedido** (saída 0), **após** o commit da linha em `works`,
-  se `WORK_CD_FILE` estiver definido e não vazio, o núcleo escreve o **caminho
-  absoluto do worktree** (`<dir>/worktree`) nesse arquivo. É a única coisa que o
-  núcleo escreve ali.
-* O núcleo **nunca** escreve em `WORK_CD_FILE` em falha, em cancelamento, ou para
-  qualquer comando que não seja `start`, `resume` ou `archive` (ver Emenda F2).
-* Se `WORK_CD_FILE` está ausente/vazio numa criação bem-sucedida, o núcleo toma o
-  **caminho FR-023**: sai 0, mantém o resumo de sucesso em stdout e imprime em
-  **stderr** o aviso de que a sessão não foi movida, o caminho real do worktree em
-  linha própria, e a linha `eval "$(work shell-init <shell detectado>)"`. O shell
-  é inferido de `$SHELL` / presença de `$PSVersionTable`; se indeterminado, usa a
-  forma `bash` e menciona os demais. O núcleo nunca afirma que um `cd` ocorreu.
+* On **successful** `work start` (exit 0), **after** committing the line to `works`,
+  if `WORK_CD_FILE` is set and non-empty, the core writes the **absolute path of the worktree**
+  (`<dir>/worktree`) to that file. It is the only thing the core writes there.
+* The core **never** writes to `WORK_CD_FILE` on failure, cancellation, or for
+  any command other than `start`, `resume`, or `archive` (see Amendment F2).
+* If `WORK_CD_FILE` is absent/empty on successful creation, the core takes the
+  **FR-023 path**: exits 0, keeps the success summary in stdout and prints to
+  **stderr** a warning that the session was not moved, the real path of the worktree on
+  its own line, and the line `eval "$(work shell-init <detected shell>)"`. The shell
+  is inferred from `$SHELL` / presence of `$PSVersionTable`; if indeterminate, uses the
+  `bash` form and mentions the others. The core never asserts that a `cd` occurred.
 
-### 4. Não objetivos (F1)
+### 4. Non-objectives (F1)
 
-* Sem edição automática de arquivos rc (ADR-0017: sem `work init`; R2).
-* Sem posicionamento para `cmd.exe`, `nushell`, `xonsh` — recebem o aviso FR-023.
-* Sem spawn de subshell.
+* No automatic editing of rc files (ADR-0017: no `work init`; R2).
+* No positioning for `cmd.exe`, `nushell`, `xonsh` — they receive the FR-023 warning.
+* No subshell spawning.
 
-## Alternativas consideradas
+## Alternatives considered
 
-* **Emitir `cd <path>` em stdout, usuário faz `eval "$(work start …)"`.** Rejeitada:
-  destrói o stdout interativo normal (resumo de sucesso, TUI) e é frágil com a TUI.
-* **Descritor de arquivo reservado (fd 3).** Rejeitada: configuração desajeitada em
-  fish/PowerShell; o arquivo temporário é universal.
-* **Spawn de um shell filho já dentro do worktree.** Rejeitada: aninha shells,
-  quebra job control, perde histórico/sessão do pai.
-* **`work init` que edita o rc.** Rejeitada por ADR-0017 e por ser intrusiva;
-  `shell-init` apenas imprime e o usuário decide instalar.
-* **Encaixar como `work shell init` (recurso `shell`, verbo `init`).** Rejeitada:
-  `shell` não é um recurso administrável do Work e `init` reintroduziria o verbo
-  que ADR-0017 removeu; `shell-init` como token único deixa claro que é um caso
-  à parte.
+* **Emit `cd <path>` to stdout, user does `eval "$(work start …)"`.** Rejected:
+  destroys normal interactive stdout (success summary, TUI) and is fragile with the TUI.
+* **Reserved file descriptor (fd 3).** Rejected: awkward configuration in
+  fish/PowerShell; the temporary file is universal.
+* **Spawn a child shell already inside the worktree.** Rejected: nests shells,
+  breaks job control, loses parent's history/session.
+* **`work init` that edits the rc.** Rejected by ADR-0017 and for being intrusive;
+  `shell-init` merely prints and the user decides to install.
+* **Fit as `work shell init` (resource `shell`, verb `init`).** Rejected:
+  `shell` is not an administrable Work resource and `init` would reintroduce the verb
+  that ADR-0017 removed; `shell-init` as a single token makes clear it is a special case.
 
-## Consequências
+## Consequences
 
-**Positivas:** a jornada US1 termina dentro do worktree quando o hook está
-instalado; a ausência do hook é reportada com honestidade e com instrução de
-correção; o núcleo não precisa de fd reservado nem suja o stdout; o protocolo é o
-mesmo em POSIX e PowerShell.
+**Positive:** the US1 journey ends inside the worktree when the hook is installed; the
+absence of the hook is reported honestly and with instructions for correction; the core
+does not need a reserved fd nor pollutes stdout; the protocol is the same on POSIX and
+PowerShell.
 
-**Negativas / trade-offs:** `work shell-init` é um nome que foge à gramática de
-ADR-0017 e precisa ser sempre documentado como exceção; o usuário tem um passo
-manual de instalação; shells fora da matriz suportada nunca reposicionam.
+**Negative / trade-offs:** `work shell-init` is a name that deviates from the ADR-0017 grammar
+and must always be documented as an exception; the user has a manual installation step; shells
+outside the supported matrix never reposition.
 
-## Emenda (F2 — Daily Cycle, 2026-09-06)
+## Amendment (F2 — Daily Cycle, 2026-09-06)
 
-`work resume` bem-sucedido passa a escrever `WORK_CD_FILE` com o caminho absoluto
-do worktree retomado, exatamente pelo mesmo protocolo do §3 (após o commit
-canônico, nunca em falha/cancelamento) — já antecipado pelo "e, adiante,
-`resume`" acima. `work archive` acrescenta um **terceiro** caso, restrito: quando
-o worktree destruído **é (ou contém) o diretório de trabalho atual do chamador**,
-o núcleo escreve em `WORK_CD_FILE` o **caminho do workspace root** (não um
-worktree), para tirar a sessão de um diretório que deixou de existir; em qualquer
-outra situação `archive` não toca em `WORK_CD_FILE`. Sem o hook instalado,
-`archive` toma o caminho FR-023 equivalente: sai 0, avisa em stderr que a sessão
-está num diretório removido e nomeia o workspace root para `cd`, sem jamais
-afirmar que um `cd` ocorreu. Mecanismo, canal (arquivo temporário privado) e
-snippets por shell permanecem inalterados.
+Successful `work resume` now writes `WORK_CD_FILE` with the absolute path of the resumed
+worktree, exactly by the same protocol of §3 (after canonical commit, never on failure/cancellation)
+— already anticipated by the "and, further, `resume`" above. `work archive` adds a **third** case,
+restricted: when the destroyed worktree **is (or contains) the current working directory of the
+caller**, the core writes to `WORK_CD_FILE` the **path of the workspace root** (not a worktree),
+to exit a session from a directory that no longer exists; in any other situation `archive` does not
+touch `WORK_CD_FILE`. Without the hook installed, `archive` takes the equivalent FR-023 path:
+exits 0, warns on stderr that the session is in a removed directory and names the workspace root
+for `cd`, never asserting that a `cd` occurred. Mechanism, channel (private temporary file), and
+snippets per shell remain unchanged.
 
-## Acompanhamento
+## Follow-up
 
-Ao promover para **Aceito**, referenciar este ADR em `add-0001` §5 e remover o
-item "shell-init follow-up" do Constitution Check de
+When promoting to **Accepted**, reference this ADR in `add-0001` §5 and remove the
+"shell-init follow-up" item from the Constitution Check of
 `specs/001-first-local-work/plan.md`.

@@ -1,20 +1,27 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/002-daily-cycle/plan.md`
+`specs/003-terminal-ux-revamp/plan.md`
 
-Active feature: **F2 — Daily Cycle: Resume and Archive** (`specs/002-daily-cycle/`).
+Active feature: **F2.5 — Terminal UX Revamp** (`specs/003-terminal-ux-revamp/`).
 Design artifacts: `plan.md`, `research.md`, `data-model.md`, `quickstart.md`,
-`contracts/`. Builds on shipped **F1** (`specs/001-first-local-work/`, release 0.1).
-Stack: Go 1.26 single binary (Cobra + Bubble Tea/`huh`), system `git` as a
-subprocess, `modernc.org/sqlite` projection, embedded self-contained seed
-package (`seed/`). Module `github.com/gustaborges/work`.
+`contracts/`. Builds on shipped **F1** (`specs/001-first-local-work/`, release 0.1)
+and **F2** (`specs/002-daily-cycle/`, release 0.2). Stack unchanged: Go 1.26 single
+binary (Cobra + Bubble Tea/Lip Gloss, `huh` optional), system `git` as a subprocess,
+`modernc.org/sqlite` projection, embedded self-contained seed package (`seed/`).
+Module `github.com/gustaborges/work`.
 
-F2 adds `work resume [id]` and `work archive [id...]`, evolves `work-state.json`
-to schema 2 (`status` gains `archived`, new `archived_at`, mutable
-`last_accessed_at`) and `work.db` to `user_version = 2`, and adds
-`internal/reconcile` (rebuild + reconcile the projection from canonical
-snapshots). The F1 `work start` journey is unchanged.
+F2.5 is a presentation-layer slice: no domain journey, no schema change. It adds
+`internal/present` — a domain-free generic interaction boundary (ADR-0020, ADR-0021) —
+with `Input`/`Select`/`MultiSelect`/`Confirm` primitives composed into one
+full-screen `Wizard` per flow, one semantic theme, a `WORK` terminal-art wordmark
+with a primary→secondary gradient, and a split diagnostic border. It migrates
+`internal/cli/{start,resume,archive,root}` onto it,
+deletes the selectable `internal/tui` home and pickers, replaces bare interactive
+`work` with a static brand (exit 0), and makes `work --help` a grouped view sourced
+from the Cobra command tree. Every F1/F2 command grammar, transaction guarantee,
+stable stdout line, error token, and exit code is preserved (the one contracted
+change: interactive bare `work` exits 0 instead of opening the home).
 <!-- SPECKIT END -->
 
 

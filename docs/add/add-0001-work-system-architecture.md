@@ -1,41 +1,41 @@
-# ADD-0001: Arquitetura do Sistema Work
+# ADD-0001: Work System Architecture
 
-**Status:** Rascunho
+**Status:** Draft
 
-**Data:** 2026-08-31
+**Date:** 2026-08-31
 
-**Decisões que governam este documento:** ADR-0000 (execução de plugins), ADR-0002 (instalação e registro), ADR-0003 (bootstrap), ADR-0004 (colisão de Starters), ADR-0005 (atualização), ADR-0006 (runtime), ADR-0008 (assinatura), ADR-0009 (stack), ADR-0011 (resolução de convenção), ADR-0012 (modelo de componentes e manifesto), ADR-0013 (namespaces e estado persistido), ADR-0014 (separação entre origem e localização), ADR-0015 (policy de resolução) e ADR-0016 (Repository Reference e endpoints Git).
+**Decisions governing this document:** ADR-0000 (plugin execution), ADR-0002 (installation and registration), ADR-0003 (bootstrap), ADR-0004 (Starter collision), ADR-0005 (updates), ADR-0006 (runtime), ADR-0008 (signing), ADR-0009 (stack), ADR-0011 (convention resolution), ADR-0012 (component model and manifest), ADR-0013 (namespaces and persisted state), ADR-0014 (source vs. location separation), ADR-0015 (resolution policy), and ADR-0016 (Repository Reference and Git endpoints).
 
-**Requisitos atendidos:** `docs/prd.md` — RF-1 a RF-49, RNF-1 a RNF-9. Este documento implementa os requisitos e decisões listados; incompatibilidades devem ser resolvidas no PRD ou em ADR, nunca por divergência silenciosa de design.
-
-***
-
-## 1. Visão geral de componentes
-
-O sistema possui três tipos de processo:
-
-* **Binário core do Work** — interpreta comandos, exibe TUI, mantém estado local e controla o lifecycle.
-* **`git`** — ferramenta invocada pelo core para worktrees e resolução de branches.
-* **Processos de plugin** — subprocessos de curta duração, um por operação executável; o core nunca carrega seu código no próprio processo.
-
-O estado vive em `~/.work/` (plugins, configuração e o índice SQLite) e no diretório de workspace escolhido pelo usuário para cada Work. O core cria apenas a worktree e `work-state.json`; qualquer outro arquivo ou diretório pode ser incorporado por Importers, sem significado especial para o core.
+**Requirements satisfied:** `docs/prd.md` — RF-1 through RF-49, RNF-1 through RNF-9. This document implements the requirements and decisions listed here; incompatibilities must be resolved in the PRD or in an ADR, never by silent design drift.
 
 ***
 
-## 2. Stack concreto
+## 1. Component overview
 
-Conforme ADR-0009:
+The system has three process types:
 
-* **Linguagem:** Go, em binário único e portável.
+* **Work core binary** — interprets commands, coordinates static and interactive presentation, maintains local state, and controls the lifecycle.
+* **`git`** — tool invoked by the core for worktrees and branch resolution.
+* **Plugin processes** — short-lived subprocesses, one per executable operation; the core never loads their code into its own process.
+
+State lives in `~/.work/` (plugins, configuration, and the SQLite index) and in the workspace directory chosen by the user for each Work. The core creates only the worktree and `work-state.json`; any other file or directory may be incorporated by Importers, with no special meaning to the core.
+
+***
+
+## 2. Concrete stack
+
+As defined by ADR-0009:
+
+* **Language:** Go, as a single portable binary.
 * **CLI:** Cobra.
-* **TUI:** Bubble Tea, para seleções interativas.
-* **Persistência:** `work-state.json` é o snapshot canônico de cada Work; SQLite embutido com driver Go puro, em `~/.work/state/work.db`, é sua projeção global de consulta.
+* **Interactive presentation:** Bubble Tea and Lip Gloss behind the generic boundary defined in ADR-0020; Huh may be used internally for simple fields without defining the journey boundary.
+* **Persistence:** `work-state.json` is the canonical snapshot for each Work; embedded SQLite with a pure-Go driver, under `~/.work/state/work.db`, is its global query projection.
 
 ***
 
-## 3. Layout de diretórios e estado do núcleo
+## 3. Directory layout and core state
 
-O diretório de workspace é escolhido pelo usuário no primeiro uso que exija sua materialização e guardado na configuração. O core pode sugerir um caminho padrão, mas a localização não é fixa nem faz parte da identidade de um Work. Alterações posteriores da configuração afetam novos Works e não movem automaticamente Works já existentes. A estrutura de cada Work é:
+The workspace directory is chosen by the user on the first use that requires it to exist and is stored in configuration. The core may suggest a default path, but the location is not fixed and is not part of a Work's identity. Later configuration changes affect new Works and do not automatically move existing ones. The structure of each Work is:
 
 ```text
 <workspace>/
@@ -44,20 +44,20 @@ O diretório de workspace é escolhido pelo usuário no primeiro uso que exija s
     work-state.json
   archived/<yyyymmdd>-<repo-name>_<branch-name>/
     work-state.json
-    # a worktree foi destruída; artefatos de Importers, se houver, são preservados
+    # the worktree was destroyed; Importer artifacts, if any, are preserved
 ```
 
-`work-state.json` é o snapshot canônico e autocontido de cada Work. Ele possui as seções semânticas `work`, `meta` e `links`, em um único arquivo físico:
+`work-state.json` is the canonical, self-contained snapshot of each Work. It contains the semantic sections `work`, `meta`, and `links` in a single physical file:
 
 ```jsonc
 {
   "schema": 1,
   "work": {
-    "slug": "meu-trabalho",
+    "slug": "my-work",
     "status": "in-progress",
     "start_mode": "fork",
     "starter": "github-pull-request-starter",
-    "branch": "feature/meu-trabalho",
+    "branch": "feature/my-work",
     "base_branch": "main",
     "branch_convention": "gitflow",
     "created_at": "2026-08-29T00:00:00Z",
@@ -72,15 +72,15 @@ O diretório de workspace é escolhido pelo usuário no primeiro uso que exija s
 }
 ```
 
-`work` contém exclusivamente estado governado e versionado pelo core; plugins não criam nem escrevem suas propriedades. `meta` contém dados extensíveis publicados por componentes, e `links` contém relações externas de primeira classe. `branch_convention` é omitida em contribuição. O caminho do repositório resolvido pelo Starter e o checkout corrente não usam um nome persistido ambíguo; quando um componente precisar acessar o checkout, o core poderá expor a chave inequívoca `work:worktree_path` como input.
+`work` contains only state governed and versioned by the core; plugins do not create or write its properties. `meta` contains extensible data published by components, and `links` contains first-class external relations. `branch_convention` is omitted in contribution mode. The resolved repository path from the Starter and the current checkout do not use an ambiguous persisted name; when a component needs to access the checkout, the core may expose the unambiguous `work:worktree_path` key as input.
 
-Cada chave de link possui um único valor corrente e toda publicação é upsert: a última origem vence. A proveniência operacional (`source_component`, `source_operation`, `recorded_at`) é mantida pelo core no índice, separada da chave e do valor semântico. O arquivo é atualizado por gravação temporária e rename atômico. `work.db` é uma projeção/indexação para consultas globais, como listagem e ordenação; ele pode ser reconstruído ou reconciliado a partir dos snapshots e não é a única fonte do estado de um Work.
+Each link key has a single current value, and every publication is an upsert: the latest source wins. Operational provenance (`source_component`, `source_operation`, `recorded_at`) is kept by the core in the index, separate from the semantic key and value. The file is updated via temporary write and atomic rename. `work.db` is a projection/index for global queries such as listing and ordering; it can be rebuilt or reconciled from snapshots and is not the sole source of truth for a Work.
 
 ***
 
-## 4. Pacote de plugin e manifesto
+## 4. Plugin package and manifest
 
-`plugin.json`, na raiz do pacote, descreve estaticamente componentes executáveis e convenções declarativas:
+`plugin.json`, at the package root, statically describes executable components and declarative conventions:
 
 ```jsonc
 {
@@ -111,8 +111,8 @@ Cada chave de link possui um único valor corrente e toda publicação é upsert
         "starters": ["github-pull-request-starter"]
       }],
       "manual": {
-        "display_name": "Contexto do Pull Request",
-        "description": "Importa os artefatos associados ao pull request"
+        "display_name": "Pull Request Context",
+        "description": "Imports the artifacts associated with the pull request"
       },
       "inputs": ["link:github.pull_request", "work:start_mode:optional"],
       "entrypoint": "importer.py",
@@ -131,8 +131,8 @@ Cada chave de link possui um único valor corrente e toda publicação é upsert
         "inputs": ["work:worktree_path"]
       },
       "manual": {
-        "display_name": "Pull Request do GitHub",
-        "description": "Relaciona o Work a um pull request do GitHub"
+        "display_name": "GitHub Pull Request",
+        "description": "Links the Work to a GitHub pull request"
       },
       "entrypoint": "linker.py",
       "runtime": "python3"
@@ -147,30 +147,30 @@ Cada chave de link possui um único valor corrente e toda publicação é upsert
 }
 ```
 
-O pacote é a unidade atômica de instalação, atualização, habilitação e remoção. A identidade de componente e convenção é o `name` lógico; o nome do pacote é um alias local proposto. Nomes de componente ambíguos entre pacotes habilitados são qualificados como `<alias-do-pacote>/<nome>`.
+The package is the atomic unit for installation, update, enablement, and removal. The component and convention identity is the logical `name`; the package name is a proposed local alias. Ambiguous component names across enabled packages are qualified as `<package-alias>/<name>`.
 
-### 4.1 Validação por role
+### 4.1 Validation by role
 
-`role` é obrigatório e é o discriminador semântico do componente.
+`role` is required and is the component's semantic discriminator.
 
-| Role | Obrigatório | Permitido | Inválido |
+| Role | Required | Allowed | Invalid |
 | --- | --- | --- | --- |
 | `starter` | `name`, `role`, `entrypoint` | `pattern`, `runtime` | `on`, `manual`, `inputs`, `key`, `discover` |
-| `importer` | `name`, `role`, `entrypoint`, ao menos um de `on` ou `manual` | `on`, `manual`, `inputs`, `runtime` | `pattern`, `key`, `discover` |
-| `linker` | `name`, `role`, `key`, `entrypoint`, ao menos um de `discover` ou `manual` | `discover`, `manual`, `runtime` | `pattern` |
-| `repository-locator` | `name`, `role`, `entrypoint`, `accepts` não vazio | `runtime`, `display_name`, `description` | `pattern`, `on`, `manual`, `inputs`, `key`, `discover` |
+| `importer` | `name`, `role`, `entrypoint`, at least one of `on` or `manual` | `on`, `manual`, `inputs`, `runtime` | `pattern`, `key`, `discover` |
+| `linker` | `name`, `role`, `key`, `entrypoint`, at least one of `discover` or `manual` | `discover`, `manual`, `runtime` | `pattern` |
+| `repository-locator` | `name`, `role`, `entrypoint`, non-empty `accepts` | `runtime`, `display_name`, `description` | `pattern`, `on`, `manual`, `inputs`, `key`, `discover` |
 
-`accepts` de `repository-locator` contém apenas `git_fetch_urls`, `name` e `query`. `path` não é aceito porque sua presença faz o core validar diretamente o caminho, sem executar Locators. `conventions[]` permanece fora de `components[]`; sua entrada tem somente `name` e `prefixes[]`. Campos incompatíveis tornam a instalação ou atualização inválida. Não existe campo `invocation`, `type`, `capabilities`, `hooks`, `priority`, `score` ou posição recomendada.
+`repository-locator.accepts` contains only `git_fetch_urls`, `name`, and `query`. `path` is not accepted because its presence makes the core validate the path directly, without executing Locators. `conventions[]` remains outside `components[]`; its entry contains only `name` and `prefixes[]`. Incompatible fields make installation or update invalid. There is no `invocation`, `type`, `capabilities`, `hooks`, `priority`, `score`, or recommended position field.
 
-### 4.2 Namespaces de dados e Semantic Conventions
+### 4.2 Data namespaces and Semantic Conventions
 
-`inputs[]` usa a gramática `<source>:<key>[:optional]`, onde `source` é `work`, `meta` ou `link`. `work:<key>` acessa somente a superfície de estado exposta pelo core; `meta:<key>` acessa metadata extensível; e `link:<key>` acessa uma relação externa de primeira classe. O namespace é usado para resolução e elegibilidade, mas não é repetido no payload projetado.
+`inputs[]` uses the grammar `<source>:<key>[:optional]`, where `source` is `work`, `meta`, or `link`. `work:<key>` accesses only the state surface exposed by the core; `meta:<key>` accesses extensible metadata; and `link:<key>` accesses a first-class external relation. The namespace is used for resolution and eligibility, but is not repeated in the projected payload.
 
-Chaves públicas de `meta` e `link` seguem as Semantic Conventions do Work: definem namespace, chave, significado e representação do valor, sem compor uma whitelist fechada no binário. Dados sem semântica compartilhada usam namespace privado `plugin.<nome-do-plugin>.<key>`. A chave identifica o significado do dado, não seu produtor: múltiplos Linkers podem declarar a mesma `key` sem criar colisão de namespace.
+Public `meta` and `link` keys follow Work Semantic Conventions: they define namespace, key, meaning, and value representation without forming a closed binary whitelist. Data without shared semantics uses the private namespace `plugin.<plugin-name>.<key>`. The key identifies the meaning of the data, not its producer: multiple Linkers may declare the same `key` without creating a namespace collision.
 
 ***
 
-## 5. Instalação e registro
+## 5. Installation and registration
 
 ```text
 ~/.work/
@@ -184,29 +184,29 @@ Chaves públicas de `meta` e `link` seguem as Semantic Conventions do Work: defi
     work.db
 ```
 
-`work plugin install <source>` aceita origem remota ou caminho local e produz uma instalação fixada; para um caminho local, `--link` cria em seu lugar um vínculo de desenvolvimento. `--link` é inválido com origem remota. O registro é gerado do manifesto e armazena, por componente, alias do pacote, nome, role, entrypoint, runtime, pattern, eventos e filtros, inputs, chave de Linker, descoberta, apresentação manual e `accepts` de Locator. A instalação valida a gramática e os namespaces de `inputs[]`, `accepts` e a sintaxe das chaves declaradas no manifesto; dados publicados em outputs são validados quando recebidos. Convenções são registradas separadamente com nome e prefixos.
+`work plugin install <source>` accepts a remote source or a local path and produces a pinned installation; for a local path, `--link` creates a development link instead. `--link` is invalid with a remote source. The registry is generated from the manifest and stores, per component, the package alias, name, role, entrypoint, runtime, pattern, events and filters, inputs, Linker key, discovery, manual presentation, and Locator `accepts`. Installation validates the grammar and namespaces of `inputs[]`, `accepts`, and the syntax of the keys declared in the manifest; data published in outputs is validated when received. Conventions are registered separately with name and prefixes.
 
-Conflito de alias de pacote de origem diferente falha; `--as <alias>` resolve-o. Reinstalação da mesma origem sob o mesmo alias é idempotente. A alteração do modelo de campos é validada pelo mesmo pipeline de instalação e atualização. A instalação registra Locators, mas não altera automaticamente a Repository Resolution Policy. Se a desinstalação afetar Locators referenciados na policy, o modo interativo apresenta o impacto e confirma a remoção dessas referências na mesma alteração; o modo não interativo exige tratamento explícito.
-
-***
-
-## 6. Bootstrap do pacote de referência
-
-O seed oficial contém, no mínimo, um Starter fallback para referências a repositório local, um Repository Locator baseado em filesystem e a convenção `freeform` com prefixo `{slug}`. O Locator padrão é incluído inicialmente na Repository Resolution Policy. No primeiro comando que necessite desse estado — normalmente `work start` — todos passam pelo pipeline normal de instalação, sem rede. Não existe `work init` público. Os componentes do seed podem ser desinstalados como qualquer outro pacote.
+Conflicting package aliases from different sources fail; `--as <alias>` resolves it. Reinstalling the same source under the same alias is idempotent. Changes to the field model are validated by the same install and update pipeline. Installation registers Locators, but does not automatically alter the Repository Resolution Policy. If uninstalling affects Locators referenced in the policy, interactive mode surfaces the impact and confirms removal of those references in the same change; non-interactive mode requires explicit handling.
 
 ***
 
-## 7. Resolução de Starters e criação do Work
+## 6. Reference package bootstrap
 
-Em `work start [source]`, a ausência de `source` em terminal interativo abre sua coleta na TUI; em modo não interativo, falha com uso acionável. Obtido o valor, Starters específicos (`pattern` presente e não vazio) são avaliados localmente contra o argumento. Um único match é usado; múltiplos matches são escolhidos por TUI; ausência de match usa o único fallback habilitado. A colisão é perguntada a cada ocorrência. A ausência de fallback gera erro acionável que orienta habilitar ou instalar um Starter.
+The official seed contains, at minimum, a fallback Starter for local repository references, a filesystem-based Repository Locator, and the `freeform` convention with the `{slug}` prefix. The default Locator is initially included in the Repository Resolution Policy. On the first command that requires this state — usually `work start` — everything goes through the normal installation pipeline, without network access. There is no public `work init`. Seed components may be uninstalled like any other package.
 
-O Starter recebe:
+***
+
+## 7. Starter resolution and Work creation
+
+In `work start [source]`, the absence of `source` in an interactive terminal opens collection in the TUI; in non-interactive mode, it fails with actionable usage guidance. Once the value is obtained, specific Starters (`pattern` present and non-empty) are evaluated locally against the argument. A single match is used; multiple matches are chosen through the TUI; no match falls back to the single enabled fallback. Collision is prompted each time it occurs. The absence of a fallback produces an actionable error that instructs the user to enable or install a Starter.
+
+The Starter receives:
 
 ```json
 { "arg": "https://github.com/example/project/pull/212" }
 ```
 
-Com sucesso, devolve os dados que conseguiu resolver. Campos de núcleo são explícitos; dados de integração entram em `meta` e relações externas em `links`:
+On success, it returns the data it managed to resolve. Core fields are explicit; integration data goes into `meta` and external relations into `links`:
 
 ```jsonc
 {
@@ -226,26 +226,26 @@ Com sucesso, devolve os dados que conseguiu resolver. Campos de núcleo são exp
 }
 ```
 
-Campos de `repository` são independentes e opcionais: `path` é uma localização local já resolvida; `git_fetch_urls` são endpoints Git conhecidos para fetch; `name` é nome lógico conhecido, potencialmente ambíguo; e `query` é texto opaco destinado a mecanismos locais. A resposta precisa conter `path` ou informação que torne ao menos um Locator configurado elegível. A referência é transitória: não é promovida automaticamente a `work`, `meta` ou `links`.
+`repository` fields are independent and optional: `path` is a local path already resolved; `git_fetch_urls` are known Git endpoints for fetch; `name` is a known logical name, potentially ambiguous; and `query` is opaque text intended for local mechanisms. The response must contain `path` or information that makes at least one configured Locator eligible. The reference is transient: it is not automatically promoted to `work`, `meta`, or `links`.
 
-Ausência de `start_modes` significa Work novo. Quando presente, o core oferece exatamente os modos retornados e persiste o modo escolhido em `work.start_mode`; para ausência, persiste `new`. A convenção de branch não é entrada nem saída do Starter. Falha de subprocesso do Starter escolhido ou resposta estruturalmente inválida falha `work start`; não há resultado `matched: false` ou equivalente.
+The absence of `start_modes` means a new Work. When present, the core offers exactly the modes returned and persists the chosen mode in `work.start_mode`; when absent, it persists `new`. Branch convention is neither an input nor an output of the Starter. Failure of the chosen Starter subprocess or structurally invalid output fails `work start`; there is no `matched: false` result or equivalent.
 
 ### 7.1 Repository Resolution
 
-O pipeline é:
+The pipeline is:
 
 ```text
 argument
   → Starter
   → Repository Reference
-  → validação direta de path ou chain de Repository Locators
-  → repo_path validado
-  → criação normal do Work
+  → direct path validation or chain of Repository Locators
+  → validated repo_path
+  → normal Work creation
 ```
 
-Quando `repository.path` existe, o core valida diretamente que o caminho existe, é acessível e identifica um repositório Git utilizável. Caminho inválido encerra `work start`; Locators e os demais campos não são fallback. Quando não há `path`, o core percorre a Repository Resolution Policy global na ordem declarada. Um Locator participa apenas se ainda existir, seu plugin estiver habilitado e pelo menos um campo de `accepts` estiver presente na referência.
+When `repository.path` exists, the core directly validates that the path exists, is accessible, and identifies a usable Git repository. An invalid path ends `work start`; Locators and the other fields are not fallback. When there is no `path`, the core walks the global Repository Resolution Policy in declared order. A Locator participates only if it still exists, its plugin is enabled, and at least one field from `accepts` is present in the reference.
 
-O core projeta ao subprocesso somente os campos aceitos e presentes, além das raízes de busca configuradas:
+The core projects to the subprocess only the accepted and present fields, plus the configured search roots:
 
 ```jsonc
 {
@@ -257,19 +257,19 @@ O core projeta ao subprocesso somente os campos aceitos e presentes, além das r
 }
 ```
 
-O Locator retorna somente candidatos:
+The Locator returns only candidates:
 
 ```json
 { "matches": [{ "repo_path": "/home/user/src/example/project" }] }
 ```
 
-Não há `confidence`, `score`, `priority`, `winner` ou agregação entre Locators. `matches: []` continua para o próximo Locator elegível; falha de processo ou de protocolo interrompe a resolução; candidatos retornados são todos validados e deduplicados pelo core. Um candidato válido conclui a resolução; múltiplos candidatos válidos são apresentados ao usuário e interrompem a chain. Se todos os candidatos de um Locator forem inválidos, a resolução falha com diagnóstico.
+There is no `confidence`, `score`, `priority`, `winner`, or aggregation across Locators. `matches: []` continues to the next eligible Locator; process or protocol failure interrupts resolution; returned candidates are all validated and deduplicated by the core. One valid candidate completes resolution; multiple valid candidates are shown to the user and stop the chain. If all candidates from a Locator are invalid, resolution fails with diagnostics.
 
-`git_fetch_urls` não é identidade canônica universal. Locators que as suportarem comparam endpoints de fetch em todos os remotes locais, não somente `origin`, e preferem operações nativas do Git para consultar URLs e seus rewrites. O core não presume equivalência entre SSH, HTTPS, usuários, protocolos, paths ou sufixos `.git`.
+`git_fetch_urls` is not a universal canonical identity. Locators that support them compare fetch endpoints across all local remotes, not only `origin`, and prefer native Git operations to query URLs and their rewrites. The core does not assume equivalence between SSH, HTTPS, usernames, protocols, paths, or `.git` suffixes.
 
-### 7.2 Policy, Locators e raízes de busca
+### 7.2 Policy, Locators, and search roots
 
-A configuração global mantém a policy declarativa e as raízes de busca separadas da raiz de workspace:
+The global configuration keeps the declarative policy and the search roots separate from the workspace root:
 
 ```jsonc
 {
@@ -281,39 +281,39 @@ A configuração global mantém a policy declarativa e as raízes de busca separ
 }
 ```
 
-`work repository` oferece TUI para as mesmas operações dos comandos diretos. `work repository policy list` exibe a sequência efetiva, incluindo referências indisponíveis; `policy add`, `remove`, `move` e `replace` a modificam. `add` aceita posicionamento opcional por `--before` ou `--after`; `move` exige exatamente um deles; `replace` substitui a sequência integral. `work repository locator list` mostra todos os Locators instalados e seu estado. `work repository root list`, `add`, `remove` e `replace` administram raízes de busca. Remover da policy deixa o componente instalado e habilitado, apenas fora da estratégia; desabilitar é estado do plugin e preserva a referência na policy para possível reativação.
+`work repository` provides a TUI for the same operations as the direct commands. `work repository policy list` shows the effective sequence, including unavailable references; `policy add`, `remove`, `move`, and `replace` modify it. `add` accepts optional positioning with `--before` or `--after`; `move` requires exactly one of them; `replace` replaces the full sequence. `work repository locator list` shows all installed Locators and their state. `work repository root list`, `add`, `remove`, and `replace` manage search roots. Removing from the policy leaves the component installed and enabled, only outside the strategy; disabling is a plugin state and preserves the policy reference for possible reactivation.
 
-O filesystem Locator oficial procura somente nas raízes configuradas, com profundidade limitada por sua própria configuração. Não usa `workspace/in-progress` ou `workspace/archived` como catálogo de repositórios. Ele pode usar `name`, `query` e `git_fetch_urls`, retorna todas as correspondências e não depende de serviço externo.
-
-***
-
-## 8. Convenção de branch
-
-Cada pacote habilitado contribui seu `conventions[]` para o catálogo global. Fora de contribuição, o Work calcula a identidade do repositório, reutiliza a convenção memorizada em `repo_branch_convention` ou pede uma escolha e a persiste. Depois apresenta seus prefixos. `work convention` abre a TUI com a escolha atual e a ação de troca; `work convention show` somente a exibe e `work convention set <convention>` a substitui diretamente. A identidade usa, nesta ordem, URL de `origin`, commits raiz ou caminho absoluto em clone raso sem remote.
-
-Fora do modo contribuição, depois de interpolar o prefixo da convenção com o slug escolhido, o core valida o nome de branch resultante utilizando as regras do próprio Git. Também verifica colisões com branches locais e remotas já existentes antes de materializar a nova branch/worktree. Nome inválido ou colisão impede a criação e retorna o fluxo à escolha que produziu o nome.
-
-O core deve preferir as operações nativas do Git para essas verificações, incluindo `git check-ref-format --branch` para validade sintática e consultas de refs para detectar nomes já existentes, em vez de manter uma implementação paralela das regras de nomes de branch. No modo contribuição essa regra não exige que a branch seja nova, pois o comportamento esperado é justamente fazer checkout da branch resolvida pelo Starter.
+The official filesystem Locator searches only the configured roots, with depth limited by its own configuration. It does not use `workspace/in-progress` or `workspace/archived` as a repository catalog. It may use `name`, `query`, and `git_fetch_urls`, returns all matches, and does not depend on an external service.
 
 ***
 
-## 9. Eventos, elegibilidade e Linkers
+## 8. Branch convention
 
-Eventos são identificadores de lifecycle definidos pelo core no formato `<comando>:<evento>`. Plugins se inscrevem, mas não criam eventos. Na v1, `start:finalized` ocorre depois da materialização do Work e de seu estado de núcleo.
+Each enabled package contributes its `conventions[]` to the global catalog. Outside contribution mode, Work computes the repository identity, reuses the convention stored in `repo_branch_convention`, or asks the user to choose one and persists it. It then presents its prefixes. `work convention` opens the TUI with the current choice and the switch action; `work convention show` only displays it and `work convention set <convention>` replaces it directly. Identity uses, in this order, the `origin` URL, root commits, or the absolute path in a shallow clone without a remote.
 
-`on[]` de Importer e `discover.on[]` de Linker aceitam `event` e filtro opcional `starters`; sem filtro, a inscrição vale para qualquer Starter. O filtro decide elegibilidade e nunca é entregue ao subprocesso.
+Outside contribution mode, after interpolating the convention prefix with the chosen slug, the core validates the resulting branch name using Git's own rules. It also checks for collisions with existing local and remote branches before materializing the new branch/worktree. An invalid name or collision blocks creation and returns the flow to the choice that produced the name.
 
-Antes de abrir um subprocesso, o core verifica: plugin habilitado; operação disponível para a ativação corrente; inscrição e filtro quando a ativação é por evento; e existência de todos os inputs obrigatórios. Inputs usam `work:<key>`, `link:<key>` ou `meta:<key>`, com `:optional` para ausência aceitável. Inputs opcionais não participam da elegibilidade e são omitidos da entrada se ausentes. O core resolve o namespace, mas projeta no payload somente a chave solicitada e seu valor.
-
-Um Linker declara uma `key` namespaced. Vários Linkers podem produzir a mesma chave sem que isso seja colisão: são providers alternativos da mesma relação semântica. `discover.automatic` permite descoberta solicitada pelo Work; `discover.on[]` permite descoberta por evento. A descoberta recebe apenas seus inputs e devolve opcionalmente `{ "value": "..." }`; sucesso sem valor não altera o estado e não é erro. Com valor, o core faz upsert em `links[key]` e registra sua proveniência no índice. `manual` torna o Linker disponível em `work link`: após seleção, o core coleta um valor não vazio e faz o mesmo upsert, sem iniciar subprocesso.
+The core must prefer native Git operations for these checks, including `git check-ref-format --branch` for syntactic validity and ref queries to detect already existing names, rather than maintaining a parallel implementation of branch naming rules. In contribution mode this rule does not require the branch to be new, because the expected behavior is precisely to check out the branch resolved by the Starter.
 
 ***
 
-## 10. Importers e staging
+## 9. Events, eligibility, and Linkers
 
-Um Importer possui a única operação de domínio `import`, ativável por `on`, `manual` ou ambos. `manual` o torna disponível em `work import` no Work atual. A elegibilidade e os inputs são idênticos entre ativação manual e por evento.
+Events are lifecycle identifiers defined by the core in the format `<command>:<event>`. Plugins subscribe to them, but do not create events. In v1, `start:finalized` occurs after the Work and its core state have been materialized.
 
-O core cria um diretório temporário exclusivo para cada execução e envia apenas os inputs resolvidos e `output_dir`:
+`on[]` for Importers and `discover.on[]` for Linkers accept `event` and an optional `starters` filter; without a filter, the subscription applies to any Starter. The filter determines eligibility and is never passed to the subprocess.
+
+Before starting a subprocess, the core checks: plugin enabled; operation available for the current activation; subscription and filter when activation is event-driven; and existence of all required inputs. Inputs use `work:<key>`, `link:<key>`, or `meta:<key>`, with `:optional` for acceptable absence. Optional inputs do not participate in eligibility and are omitted from input when absent. The core resolves the namespace, but projects only the requested key and its value into the payload.
+
+A Linker declares a namespaced `key`. Multiple Linkers may produce the same key without this being a collision: they are alternative providers of the same semantic relation. `discover.automatic` allows discovery requested by Work; `discover.on[]` allows event-driven discovery. Discovery receives only its inputs and optionally returns `{ "value": "..." }`; success without a value does not alter state and is not an error. With a value, the core upserts into `links[key]` and records its provenance in the index. `manual` makes the Linker available in `work link`: after selection, the core collects a non-empty value and performs the same upsert, without starting a subprocess.
+
+***
+
+## 10. Importers and staging
+
+An Importer has the single domain operation `import`, activatable by `on`, `manual`, or both. `manual` makes it available in `work import` for the current Work. Eligibility and inputs are identical between manual and event-driven activation.
+
+The core creates a unique temporary directory for each execution and sends only the resolved inputs and `output_dir`:
 
 ```jsonc
 {
@@ -325,46 +325,84 @@ O core cria um diretório temporário exclusivo para cada execução e envia ape
 }
 ```
 
-Após sucesso, o core enumera todo conteúdo produzido, calcula destinos no diretório do Work e verifica todas as colisões antes de modificá-lo. Sem colisões, incorpora os artefatos e remove o temporário. Com colisão ou falha, não incorpora nenhum artefato daquela execução e remove o temporário. O staging é fronteira de dados, não sandbox.
+After success, the core enumerates all produced content, computes destinations in the Work directory, and checks all collisions before modifying it. Without collisions, it incorporates the artifacts and removes the temporary directory. With collision or failure, it incorporates no artifact from that execution and removes the temporary directory. Staging is a data boundary, not a sandbox.
 
 ***
 
-## 11. Ordem de `start:finalized` e contrato de execução
+## 11. `start:finalized` order and execution contract
 
-Ao publicar `start:finalized`, o core executa as fases:
+When publishing `start:finalized`, the core performs the phases:
 
 ```text
-Starter resolvido
-  → estado `work`, links e metadata do Starter persistidos atomicamente
-  → Linkers inscritos e elegíveis
-  → novos links persistidos
-  → Importers inscritos e elegíveis
-  → staging, validação de colisões e incorporação
+Starter resolved
+  → `work`, links, and metadata from the Starter persisted atomically
+  → subscribed and eligible Linkers
+  → new links persisted
+  → subscribed and eligible Importers
+  → staging, collision validation, and incorporation
 ```
 
-Não há ordem garantida entre componentes do mesmo role dentro de uma fase. A elegibilidade dos Importers é avaliada após os Linkers, permitindo consumir links recém-descobertos.
+There is no guaranteed order among components of the same role within a phase. Importer eligibility is evaluated after Linkers, allowing consumption of newly discovered links.
 
-Todo componente executável recebe exatamente um JSON por stdin, escreve no máximo um JSON estruturado por stdout quando sua operação o exige e usa código de saída para sucesso ou falha. Com `runtime`, o comando é `<runtime> <entrypoint>`; sem ele, o entrypoint é executável autocontido. O runtime é checado na instalação. O core não depende de estado implícito entre invocações e nunca executa componente durante descoberta ou instalação para auto-descrição.
+Every executable component receives exactly one JSON on stdin, writes at most one structured JSON on stdout when its operation requires it, and uses exit code for success or failure. With `runtime`, the command is `<runtime> <entrypoint>`; without it, the entrypoint is a self-contained executable. The runtime is checked at installation time. The core does not depend on implicit state between invocations and never executes a component during discovery or installation for self-description.
 
-Na v1, o protocolo IPC não possui mensagens intermediárias de progresso, heartbeat ou streaming de status. Durante uma execução, o core pode apresentar um indicador visual contendo o componente e a operação corrente, mas o subprocesso produz somente o resultado final previsto pelo contrato.
+In v1, the IPC protocol has no intermediate progress, heartbeat, or streaming status messages. During execution, the core may display a visual indicator containing the component and current operation, but the subprocess produces only the final result expected by the contract.
 
-O core não impõe timeout próprio às execuções de Starter, Importer ou Linker na v1. Cancelamento explícito pelo usuário ou encerramento do processo continuam podendo interromper a operação. Políticas específicas de retry, latência ou indisponibilidade de serviços externos pertencem ao componente.
+The core does not impose its own timeout on Starter, Importer, or Linker executions in v1. Explicit user cancellation or process termination can still interrupt the operation. Retry, latency, or external service unavailability policies belong to the component.
 
-Falhas de Linker ou Importer automáticos são registradas e exibidas como aviso, mas não desfazem o Work já criado. Em comandos manuais, a falha é retornada ao usuário sem alteração de links ou incorporação de artefatos. Plugins nunca leem ou escrevem `work-state.json` diretamente: recebem inputs e retornam outputs por contratos IPC; o core converte esses contratos para o snapshot persistido.
+Automatic Linker or Importer failures are logged and shown as warnings, but do not roll back the Work already created. In manual commands, the failure is returned to the user without changing links or incorporating artifacts. Plugins never read or write `work-state.json` directly: they receive inputs and return outputs through IPC contracts; the core converts those contracts into the persisted snapshot.
 
 ***
 
-## 12. Atualização, TUI e integridade
+## 12. Update, presentation, and integrity
 
-`work status [work]` é uma operação somente leitura. O core lê o snapshot canônico e apresenta identidade, estado, branch, localização aplicável — worktree ativa ou diretório arquivado — e links persistidos; não executa extensões, não dispara descoberta e não atualiza acesso recente, proveniência ou timestamps de links. Sem alvo, resolve o Work associado ao diretório corrente; se não houver um, falha com mensagem acionável.
+`work status [work]` is a read-only operation. The core reads the canonical snapshot and presents identity, state, branch, applicable location — active worktree or archived directory — and persisted links; it does not execute extensions, does not trigger discovery, and does not update recent access, provenance, or link timestamps. Without a target, it resolves the Work associated with the current directory; if there is none, it fails with an actionable message.
 
-A apresentação utiliza a chave semântica e o valor persistido. Comportamentos adicionais específicos de representação — por exemplo, oferecer navegação quando uma Semantic Convention definir um valor navegável — podem ser acrescentados sem alterar a semântica básica do comando.
+The presentation uses the semantic key and the persisted value. Additional representation-specific behaviors — for example, offering navigation when a Semantic Convention defines a navigable value — may be added without changing the command's basic semantics.
 
-`work plugin update --check [plugin...]` consulta atualizações sem mudar checkout; sem nomes, verifica todos os plugins instalados. `work plugin update <plugin...>` e `work plugin update --all` alteram versões somente mediante ação explícita; `--check` e `--all` são mutuamente exclusivos. `work plugin update` sem alvo abre a seleção TUI. A atualização lê e valida o novo manifesto antes de trocar a versão registrada.
+`work plugin update --check [plugin...]` checks for updates without changing the checkout; without names, it checks all installed plugins. `work plugin update <plugin...>` and `work plugin update --all` change versions only through explicit action; `--check` and `--all` are mutually exclusive. `work plugin update` without a target opens the TUI selection. The update reads and validates the new manifest before changing the recorded version.
 
-`work` sem argumentos abre uma home TUI que alcança todas as jornadas. `work plugin`, `work repository` e `work convention` são hubs TUI e exibem, após uma operação, seu comando direto equivalente. `work resume`, `work archive`, `work import` e `work link` usam TUI somente para valores omitidos; alvos explícitos pulam a seleção correspondente, mas não validações ou confirmações. Em stdin não interativo, valores obrigatórios ausentes falham sem abrir TUI.
+### 12.1 Discovery surface
 
-A API administrativa direta é:
+As defined by ADR-0019, `work` without arguments does not open an interactive model. In an interactive terminal, the static renderer produces the `WORK` wordmark in terminal art, a tagline, and guidance for `work --help`, then exits 0. The wordmark distributes the theme accents in a gradient from the primary `#11A8CD` to the secondary `#8B7CF6` when capability and contrast allow; the renderer chooses a compact, escape-free `WORK` for narrow, colorless, or non-interactive terminals.
+
+`work --help` uses the registered command tree as the single inventory and groups only the commands that are present by context: everyday/global, within a Work, administration, and setup/plumbing. Branding, usage, options, and groups are rendered by the same capability policy. The home does not maintain a second command list.
+
+`work plugin`, `work repository`, and `work convention` remain interactive hubs and, after an operation, show the equivalent direct command. `work resume`, `work archive`, `work import`, and `work link` use interactive presentation only for omitted values; explicit targets skip the corresponding selection, but not validations or confirmations. In non-interactive stdin, missing required values fail without opening interactive controls.
+
+### 12.2 Interactive presentation boundary
+
+As defined by ADR-0020, the CLI/application composes the journey and translates domain concepts into generic presentation specifications. It provides titles, descriptions, options, groups, repeatable and mutation-free validators, receipt formatters, and confirmation content. It also retains all operation over Work, Git, snapshot, projection, plugins, and configuration.
+
+The presentation layer keeps only visual and input state: editing, cursor, filter, viewport, selection, confirmation, and step lifecycle. It does not receive Work DTOs or query domain or infrastructure. Options carry opaque values and presentation text; group meaning, identities, and consequences remain in the CLI.
+
+As defined by ADR-0021, each journey runs as **one full-screen program** (alternate buffer) — a `present.Wizard` over ordered steps. The primitives implement a domain-free `stepModel`; the wizard composes the ruler, journey title, trail of accepted receipts, and current step body, and performs a full repaint on each frame. No step terminates the program: it reports a terminal state and the wizard drives the transition. Its state flow is:
+
+```text
+active --recoverable error--> active with the current error replaced
+active --accepted-----------> status "completed"; wizard appends the receipt and advances
+active --cancelled----------> status "cancelled"; wizard exits
+```
+
+In controls with confirmation, the sequence is `selection → confirmation → completed`; going back from confirmation returns to selection without mutating domain state, and cancellation ends the step. On exit, the primary buffer is restored automatically and the compact receipt trail is reprinted to the UI channel, ahead of the stable stdout lines — this reprint is what enters terminal history.
+
+### 12.3 Geometry, theme, and capacity
+
+The theme is semantic and injected into all renderers. `Primary` (`#11A8CD`) and `Secondary` (`#8B7CF6`) express branding and focus; `Success`, `Warning`, and `Danger` remain their own tokens; body text uses the terminal foreground; light variants and constrained palettes preserve contrast. A non-empty `NO_COLOR`, `TERM=dumb`, and non-TTY writers disable color. Bold and textual markers preserve meaning without color.
+
+Every active model computes available rows and columns after reserving title, filter, error, help, and confirmation — and, under the wizard, also the ruler, journey title, and receipt trail. Unfocused and focused options reserve the same indicator column; `[ ]`/`[x]` boxes have equal rendered width; the two lines of an option move as a unit — the primary line receives `Primary` when focused, and the secondary line is always `Muted`. The fixed-width `❯ ` marker identifies focus without color. Resize recalculates viewport and cursor clamping. Secondary metadata is truncated before the primary identity. Measurement ignores styling sequences and accounts for displayed Unicode width.
+
+### 12.4 Streams and diagnostics
+
+Each session receives input and a UI writer explicitly from the CLI. Frames, contextual help, and human diagnostics are written to the configured stderr/UI channel. Stdout receives only the stable results defined in the command contracts.
+
+Recoverable validations return a public message to the active control, without printing. Terminal errors rise structurally to the CLI/process boundary, which chooses exactly one renderer: interactive human or stable non-interactive. Category, token, code, and cause remain separate; the human form uses a summary and actionable hint, while technical chains appear only in explicit diagnostic mode.
+
+### 12.5 Satisfaction and governing decisions
+
+This section satisfies `docs/prd.md` RF-50 through RF-64 and RNF-10 through RNF-11. ADR-0019 governs the surface and discovery; ADR-0020 governs the presentation boundary and lifecycle; ADR-0021 governs the full-screen rendering structure (wizard per journey), replacing ADR-0020's inline-per-step session decision; ADR-0009 continues to govern the stack. The historical F1/F2 contracts continue to record the behavior delivered in those slices, but conflicting presentation is replaced by `specs/003-terminal-ux-revamp/`.
+
+The direct administrative API is:
 
 ```text
 work plugin list
@@ -392,4 +430,4 @@ work convention show
 work convention set <CONVENTION>
 ```
 
-Comandos de leitura (`status`, `list`, `show` e `plugin update --check`) aceitam `--json` e são puros. `--yes` confirma impactos já determinados, nunca escolhe alvos ou valores. Não há aliases oficiais. A origem de todos os plugins é explicitamente escolhida pelo usuário e a referência instalada é fixada; assinatura formal fica adiada conforme ADR-0008. A ADR-0017 governa a gramática e a semântica transversal dessa superfície.
+Read commands (`status`, `list`, `show`, and `plugin update --check`) accept `--json` and are pure. `--yes` confirms already determined impacts; it never chooses targets or values. There are no official aliases. The source of every plugin is explicitly chosen by the user and the installed reference is pinned; formal signing is deferred according to ADR-0008. ADR-0019 governs the grammar and cross-cutting semantics of this surface.

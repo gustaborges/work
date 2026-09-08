@@ -1,9 +1,8 @@
 //go:build unix
 
-// Interactive (pty) coverage for the guided journey: the `work` home is
-// reachable and reaches the path prompt, and `work start` with no SOURCE
-// prompts for the path and then converges to the same guarantees as the flag
-// form. Covers US2 scenarios 1 and 2; contracts/cli-work-home.md.
+// Interactive (pty) coverage for the guided journey: `work start` with no
+// SOURCE prompts for the path and then converges to the same guarantees as the
+// flag form. The bare `work` brand is covered by brand_test.go.
 package integration
 
 import (
@@ -62,22 +61,31 @@ type console struct {
 	t    *testing.T
 	f    *os.File
 	cmd  *exec.Cmd
+	rows int
+	cols int
 	mu   sync.Mutex
-	buf  strings.Builder
+	buf  strings.Builder // ANSI stripped, for substring expectations
+	raw  []byte          // untouched, for screen reconstruction
 	done chan struct{}
 }
 
 func newConsole(t *testing.T, bin string, env []string, args ...string) *console {
+	return newConsoleSize(t, pty.Winsize{Rows: 40, Cols: 120}, bin, env, args...)
+}
+
+// newConsoleSize is newConsole with an explicit terminal size, for the geometry
+// and selector-collapse checks that must run at a known rows×cols.
+func newConsoleSize(t *testing.T, ws pty.Winsize, bin string, env []string, args ...string) *console {
 	t.Helper()
 	cmd := exec.Command(bin, args...)
 	cmd.Env = env
 	// A concrete window size is required: bubbletea renders nothing into a 0x0
 	// terminal, which is what an unsized pty reports on Linux.
-	f, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 40, Cols: 120})
+	f, err := pty.StartWithSize(cmd, &ws)
 	if err != nil {
 		t.Fatalf("pty start: %v", err)
 	}
-	c := &console{t: t, f: f, cmd: cmd, done: make(chan struct{})}
+	c := &console{t: t, f: f, cmd: cmd, rows: int(ws.Rows), cols: int(ws.Cols), done: make(chan struct{})}
 	go func() {
 		defer close(c.done)
 		b := make([]byte, 4096)
@@ -85,6 +93,7 @@ func newConsole(t *testing.T, bin string, env []string, args ...string) *console
 			n, err := f.Read(b)
 			if n > 0 {
 				c.mu.Lock()
+				c.raw = append(c.raw, b[:n]...)
 				c.buf.Write([]byte(ansiRe.ReplaceAllString(string(b[:n]), "")))
 				c.mu.Unlock()
 			}
@@ -104,6 +113,20 @@ func (c *console) snapshot() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.buf.String()
+}
+
+// screen replays the raw pty stream through a tiny terminal emulator and
+// returns what a real terminal would actually show: the scrollback above the
+// viewport plus the current grid, with overwritten and erased content gone.
+// This is what makes "no rejected value survives" assertable — the ANSI-
+// stripped snapshot still contains every historical repaint.
+func (c *console) screen() string {
+	c.mu.Lock()
+	raw := append([]byte(nil), c.raw...)
+	c.mu.Unlock()
+	v := newVT(c.rows, c.cols)
+	v.write(raw)
+	return v.String()
 }
 
 // expect waits until sub appears in the output, failing the test on timeout.
@@ -151,6 +174,13 @@ func (c *console) wait() int {
 func ptyEnv(t *testing.T) (env []string, home, workHome string) {
 	t.Helper()
 	base := t.TempDir()
+	// macOS puts TempDir under /var/folders, a symlink to /private/var/folders.
+	// `work` normalizes the repo path (EvalSymlinks) before it reaches a receipt,
+	// so resolve here too or the pty screen assertions compare unequal spellings
+	// of the same directory.
+	if resolved, err := filepath.EvalSymlinks(base); err == nil {
+		base = resolved
+	}
 	home = filepath.Join(base, "home")
 	workHome = filepath.Join(base, "dothome")
 	if err := os.MkdirAll(home, 0o755); err != nil {
@@ -217,123 +247,7 @@ func gitIn(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// `work` no-args opens the home listing the shipped journeys ("Start a Work",
-// "Resume a Work", "Archive Works"); q exits 0 with no state change; selecting
-// "Start a Work" reaches the path prompt, "Resume a Work" reaches the recency
-// picker, and "Archive Works" reaches the archive flow.
-func TestHomeReachability(t *testing.T) {
-	needSeed(t)
-	bin := buildWorkBin(t)
-	env, _, workHome := ptyEnv(t)
-
-	// Quit the home immediately: exit 0, nothing created.
-	c := newConsole(t, bin, env)
-	c.expect("Start a Work")
-	c.expect("Resume a Work")
-	c.expect("Archive Works")
-	for _, reserved := range []string{"status", "import", "link", "plugin", "repository", "convention"} {
-		if strings.Contains(strings.ToLower(c.snapshot()), reserved) {
-			t.Fatalf("home exposes a later-slice action %q:\n%s", reserved, c.snapshot())
-		}
-	}
-	c.send("q")
-	if code := c.wait(); code != 0 {
-		t.Fatalf("quitting the home exited %d, want 0", code)
-	}
-	if _, err := os.Stat(filepath.Join(workHome, "state", "work.db")); err == nil {
-		t.Fatalf("quitting the home created a projection database")
-	}
-
-	// Selecting "Start a Work" enters the path prompt.
-	c2 := newConsole(t, bin, env)
-	c2.expect("Start a Work")
-	c2.send("\r")
-	c2.expect("repository path")
-	c2.send("\x03") // Ctrl-C before anything is created
-	if code := c2.wait(); code != 20 {
-		t.Fatalf("Ctrl-C at the path prompt exited %d, want 20", code)
-	}
-
-	// Selecting "Resume a Work" enters the recency picker; with no Works it
-	// prints the empty-list note and exits 0.
-	c3 := newConsole(t, bin, env)
-	c3.expect("Resume a Work")
-	c3.send("\x1b[B") // arrow down to "Resume a Work"
-	c3.send("\r")
-	if code := c3.wait(); code != 0 {
-		t.Fatalf("resume with no Works exited %d, want 0", code)
-	}
-	c3.expect("no Works to resume")
-
-	// Selecting "Archive Works" enters the archive flow; with no Works it prints
-	// the empty-list note and exits 0.
-	c4 := newConsole(t, bin, env)
-	c4.expect("Archive Works")
-	c4.send("\x1b[B\x1b[B") // arrow down to "Archive Works"
-	c4.send("\r")
-	if code := c4.wait(); code != 0 {
-		t.Fatalf("archive with no Works exited %d, want 0", code)
-	}
-	c4.expect("no active Works to archive")
-
-	// Non-interactive `work` renders no TUI and exits 2 with the one-line
-	// summary naming all three verbs (contracts/cli-work-home.md, FR-030).
-	cmd := exec.Command(bin)
-	cmd.Env = env
-	out, err := cmd.CombinedOutput()
-	var ee *exec.ExitError
-	if !errors.As(err, &ee) || ee.ExitCode() != 2 {
-		t.Fatalf("non-interactive `work` exit = %v, want 2\n%s", err, out)
-	}
-	for _, want := range []string{"work start", "work resume", "work archive", "work --help"} {
-		if !strings.Contains(string(out), want) {
-			t.Errorf("non-interactive summary missing %q:\n%s", want, out)
-		}
-	}
-}
-
-// T039 — with Works present, arrowing to "Resume a Work" opens the recency
-// picker and "Archive Works" opens the multi-select list; `q` leaves either
-// without a state change. (contracts/cli-work-home.md, FR-030.)
-func TestHomeReachesPopulatedPickers(t *testing.T) {
-	needSeed(t)
-	bin := buildWorkBin(t)
-	env, homeDir, _ := ptyEnv(t)
-
-	repo := filepath.Join(homeDir, "demo")
-	makeRepo(t, repo)
-	ws := filepath.Join(homeDir, "ws")
-	seedWorks(t, bin, env, repo, ws, "alpha", "bravo")
-
-	// Home -> Resume a Work -> the recency picker lists a Work row.
-	c := newConsole(t, bin, env)
-	c.expect("Resume a Work")
-	c.send("\x1b[B\r") // down to "Resume a Work", enter
-	c.expect("demo  bravo")
-	c.send("q")
-	if code := c.wait(); code != 20 {
-		t.Fatalf("q at the resume picker exited %d, want 20", code)
-	}
-
-	// Home -> Archive Works -> the multi-select list shows checkboxes.
-	c2 := newConsole(t, bin, env)
-	c2.expect("Archive Works")
-	c2.send("\x1b[B\x1b[B\r") // down twice to "Archive Works", enter
-	c2.expect("[ ]")
-	c2.send("\x03") // Ctrl-C: cancel
-	if code := c2.wait(); code != 20 {
-		t.Fatalf("Ctrl-C at the archive picker exited %d, want 20", code)
-	}
-
-	// Nothing was archived.
-	for _, slug := range []string{"alpha", "bravo"} {
-		if _, err := os.Stat(filepath.Join(ws, "in-progress", "demo_"+slug, "worktree")); err != nil {
-			t.Errorf("%s worktree gone after a cancelled archive: %v", slug, err)
-		}
-	}
-}
-
-// T044 — `work start` with no SOURCE prompts for the path, then converges to
+// `work start` with no SOURCE prompts for the path, then converges to
 // the same materialization as the flag form once the path is supplied.
 func TestStartNoSourcePrompts(t *testing.T) {
 	needSeed(t)
@@ -380,26 +294,27 @@ func TestInteractiveRecovery(t *testing.T) {
 	c := newConsole(t, bin, env, "start",
 		"--workspace", ws, "--base", "main", "--prefix", "{slug}", "--yes")
 
-	// Bad path -> notice + re-prompt, no exit.
+	// Bad path -> the error is shown inside the live field; the step does not
+	// exit and the field stays open for a correction.
 	c.expect("repository path")
 	c.send("/no/such/path\r")
-	c.expect("invalid-path")
+	c.expect("does not exist")
 	c.expect("repository path")
-	c.send(repo + "\r")
+	c.send("\x15" + repo + "\r") // ctrl-u clears the field, then the valid path
 
-	// Slug that git rejects as a ref -> back to the slug prompt.
+	// Slug that git rejects as a ref -> the error appears in-frame.
 	c.expect("Slug")
 	c.send("bad:slug\r")
-	c.expect("invalid-branch-name")
+	c.expect("not a valid branch name")
 	c.expect("Slug")
 
-	// Slug that collides with an existing branch -> back to the slug prompt.
-	c.send("taken\r")
-	c.expect("branch-collision")
+	// Slug that collides with an existing branch -> in-frame collision message.
+	c.send("\x15taken\r")
+	c.expect("already exists")
 	c.expect("Slug")
 
 	// A free slug completes the journey.
-	c.send("fresh\r")
+	c.send("\x15fresh\r")
 	c.expect("work: created ")
 	if code := c.wait(); code != 0 {
 		t.Fatalf("recovered start exited %d, want 0", code)
@@ -445,9 +360,10 @@ func TestInteractiveCancelAtConfirm(t *testing.T) {
 	}
 
 	// An interrupt delivered before the commit step also rolls back to exit 20.
-	// (The declined run above already persisted the workspace root.)
+	// The workspace root is persisted only after the wizard is accepted (p7), so
+	// the declined run above wrote no config — this run supplies --workspace too.
 	c2 := newConsole(t, bin, env, "start", repo,
-		"--base", "main", "--slug", "intr", "--prefix", "{slug}")
+		"--workspace", ws, "--base", "main", "--slug", "intr", "--prefix", "{slug}")
 	c2.expect("Create Work")
 	c2.send("\x03") // Ctrl-C
 	if code := c2.wait(); code != 20 {
@@ -482,18 +398,15 @@ func TestInteractiveBaseBranchTabs(t *testing.T) {
 	}
 	ws := filepath.Join(homeDir, "ws")
 
-	// Only the base branch is prompted; the picker opens on the Remote tab whose
-	// only row is origin/main. Filter to it, then select.
+	// Only the base branch is prompted; the picker groups choices into Local /
+	// Remote tabs. Switch to the Remote tab (its only row is origin/main) and
+	// select it.
 	c := newConsole(t, bin, env, "start", clone,
 		"--workspace", ws, "--slug", "picked", "--prefix", "{slug}", "--yes")
 	c.expect("Base branch")
-	c.expect("Remote")
 	c.expect("Local")
-	// The picker carries huh's styled left rule, so coloring/theme is applied.
-	if s := c.snapshot(); !strings.Contains(s, "┃") {
-		t.Errorf("picker is unstyled (no left rule):\n%s", s)
-	}
-	c.send("/origin/main")
+	c.expect("Remote")
+	c.send("\t") // Local -> Remote
 	c.expect("origin/main")
 	c.send("\r")
 	c.expect("work: created ")
