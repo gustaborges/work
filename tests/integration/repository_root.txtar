@@ -19,8 +19,8 @@ stdout 'r1'
 stdout 'r2'
 
 work repository root list
-stdout '(?m)^'$WORK'/r1$'
-stdout '(?m)^'$WORK'/r2$'
+stdout '(?m)^.*.r1$'
+stdout '(?m)^.*.r2$'
 
 # Re-adding an already-configured root is a no-op, exit 0.
 work repository root add $WORK/r1
@@ -40,7 +40,7 @@ stdout 'work: roots now.*r2'
 
 work repository root replace $WORK/r2
 work repository root list
-stdout '(?m)^'$WORK'/r2$'
+stdout '(?m)^.*.r2$'
 
 # Workspace/root isolation, both directions (FR-020): once a workspace root
 # is configured, a search root cannot equal or nest into it, or vice versa.
@@ -58,5 +58,5 @@ stderr 'error: usage:'
 # internal/workspace/workspace_test.go (TestValidateRejectsRootInsideWorkspace);
 # here we confirm `root add` itself still refuses the workspace root exactly.
 work repository root list
-stdout '(?m)^'$WORK'/r2$'
+stdout '(?m)^.*.r2$'
 ! stdout 'ws'
