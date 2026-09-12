@@ -87,8 +87,12 @@ func TestStartByNameAmbiguousPickerPTY(t *testing.T) {
 	c := newConsoleSize(t, pty.Winsize{Rows: 24, Cols: 80}, bin, env, "start", "payments",
 		"--workspace", ws, "--base", "main", "--slug", "guided", "--prefix", "{slug}", "--yes")
 	c.expect("Repository")
-	c.expect(r1)
-	c.expect(r2)
+	// The primary line is the absolute path, which a long test tempdir (macOS
+	// runners in particular) can truncate past the "primary"/"mirror" segment
+	// that distinguishes the two candidates — so match on the short secondary
+	// (parent-dir) line instead of the full path.
+	c.expect("mirror")
+	c.expect("primary")
 	c.send("\x1b[B") // move focus to the second row
 	c.send("\r")     // accept
 	c.expect("work: created ")

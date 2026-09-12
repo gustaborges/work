@@ -15,7 +15,7 @@ stderr 'error: repository-ambiguous:'
 # No selector, no Work, no branch, no config write beyond the roots we set.
 ! exists $WS/in-progress/payments_x
 ! exists $WORK_HOME/state/work.db
-! grep '"workspace": "'$WS'"' $WORK_HOME/config/work.json
+grep '"workspace": ""' $WORK_HOME/config/work.json
 
 exec git -C $WORK/root/primary/payments branch --list x
 ! stdout .
