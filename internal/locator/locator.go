@@ -98,7 +98,7 @@ func Resolve(ctx context.Context, d Deps, ref Reference) (Outcome, error) {
 	valid := validateAndDedup(tr.matches)
 	switch len(valid) {
 	case 0:
-		return Outcome{}, errCandidateInvalid()
+		return Outcome{}, errCandidateInvalid(tr.matches)
 	case 1:
 		return Outcome{Resolved: valid[0]}, nil
 	default:

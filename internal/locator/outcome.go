@@ -1,6 +1,10 @@
 package locator
 
-import "github.com/gustaborges/work/internal/diag"
+import (
+	"strings"
+
+	"github.com/gustaborges/work/internal/diag"
+)
 
 // errNoRepositoryFound is returned when the policy was fully traversed and
 // every eligible Locator returned matches:[] (26). The interactive Source
@@ -24,10 +28,12 @@ func errNoEligibleLocator() error {
 }
 
 // errCandidateInvalid is returned when the Locator that ended traversal
-// returned candidates but every one failed reporef.ValidatePath (28).
-func errCandidateInvalid() error {
-	return diag.New(diag.RepositoryCandidateInvalid,
-		"the repository locator's candidates are not usable git repositories").
+// returned candidates but every one failed reporef.ValidatePath (28). It
+// names the rejected path(s) so the user can find the broken directory
+// (quickstart S8).
+func errCandidateInvalid(rejected []string) error {
+	return diag.Newf(diag.RepositoryCandidateInvalid,
+		"the repository locator's candidates are not usable git repositories: %s", strings.Join(rejected, ", ")).
 		WithSummary("The repository locator found something, but it isn't a usable Git repository.").
 		WithHint("Check the search roots for a broken or non-git directory, or adjust the reference.")
 }

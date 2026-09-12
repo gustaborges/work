@@ -34,6 +34,40 @@ func writeRepositoryRoots(t *testing.T, workHome string, roots ...string) {
 	}
 }
 
+// TestStartByNameNoMatchRecoversInFrame: at the Source prompt, a name that
+// resolves to no-repository-found (26) is shown in-frame and the field stays
+// re-promptable — unlike the other resolution failures, this one is not
+// fatal — and a subsequent name that does resolve continues the journey
+// (quickstart S7).
+func TestStartByNameNoMatchRecoversInFrame(t *testing.T) {
+	needSeed(t)
+	bin := buildWorkBin(t)
+	env, homeDir, workHome := ptyEnv(t)
+
+	root := filepath.Join(homeDir, "src")
+	makeRepo(t, filepath.Join(root, "payments"))
+	writeRepositoryRoots(t, workHome, root)
+	ws := filepath.Join(homeDir, "ws")
+
+	c := newConsole(t, bin, env, "start",
+		"--workspace", ws, "--base", "main", "--slug", "guided", "--prefix", "{slug}", "--yes")
+	c.expect("Local repository path")
+	c.send("nonesuch\r")
+	c.expect("no configured repository search root has a clone matching")
+	c.expect("Local repository path") // the field is still open, re-promptable
+	c.send("\x15payments\r")
+	c.expect("work: created ")
+	if code := c.wait(); code != 0 {
+		t.Fatalf("recovered start exited %d, want 0\n%s", code, c.screen())
+	}
+
+	// The rejected attempt left no trace in the reconstructed terminal.
+	screen := c.screen()
+	if strings.Contains(screen, "nonesuch") {
+		t.Errorf("rejected reference survived on screen:\n%s", screen)
+	}
+}
+
 // TestStartByNameSingleMatchPTY: `work start payments` in an 80x24 PTY
 // resolves the one clone under the configured search root silently — no
 // "Local repository path" prompt, no selector — and the wizard continues at

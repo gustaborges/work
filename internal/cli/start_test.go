@@ -170,6 +170,32 @@ func TestStartByNameNoRootsIsNoRepositoryFound(t *testing.T) {
 	}
 }
 
+// TestStartByNameEmptyPolicyIsNoEligibleLocatorDistinctFromNoRepositoryFound
+// exercises no-eligible-locator (27) via the CLI and confirms it is a
+// different token/exit from no-repository-found (26) — an empty policy is a
+// configuration problem, not "nothing matched" (research R5).
+func TestStartByNameEmptyPolicyIsNoEligibleLocatorDistinctFromNoRepositoryFound(t *testing.T) {
+	needSeed(t)
+	home := filepath.Join(t.TempDir(), "dothome")
+	root := t.TempDir()
+	writeRepositoryRoot(t, home, root)
+
+	if _, _, code := runWorkHome(t, home, "repository", "policy", "remove",
+		"work-reference/filesystem-repository-locator"); code != 0 {
+		t.Fatalf("policy remove: exit = %d", code)
+	}
+
+	_, errb, code := runWorkHome(t, home, "start", "payments",
+		"--workspace", filepath.Join(t.TempDir(), "ws"),
+		"--base", "main", "--slug", "s", "--prefix", "{slug}", "--yes")
+	if code != 27 {
+		t.Fatalf("exit = %d, want 27\nstderr: %s", code, errb)
+	}
+	if !strings.Contains(errb, "no-eligible-locator") {
+		t.Errorf("stderr missing token: %s", errb)
+	}
+}
+
 func TestStartByNameAmbiguousNonInteractiveIsRepositoryAmbiguous(t *testing.T) {
 	needSeed(t)
 	home := filepath.Join(t.TempDir(), "dothome")
