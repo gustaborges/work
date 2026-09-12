@@ -35,6 +35,7 @@ func TestStartSelectorCollapsesToReceipt(t *testing.T) {
 
 			c := newConsoleSize(t, ws, bin, env, "start", repo,
 				"--workspace", wsRoot, "--slug", "picked", "--prefix", "{slug}")
+			answerFirstRunRootPrompt(c, t.TempDir())
 
 			// Active: a multi-row list with the fixed focus marker.
 			c.expect("Base branch")

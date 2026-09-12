@@ -64,18 +64,15 @@ func Validate(raw string, repositoryRoots []string) (string, error) {
 		return "", diag.Newf(diag.Usage, "cannot inspect workspace root %s", raw)
 	}
 
-	// Compare containment on a canonical basis so a symlinked prefix (macOS
-	// /var -> /private/var, Windows 8.3 names) cannot hide an overlap. The
-	// returned path stays the plain absolute form the user would recognise.
-	absCanon := canonical(abs)
+	// Reject overlap with any configured repository search root in either
+	// direction — the workspace equal to or inside a root, or a root equal to
+	// or inside the workspace (research R13, FR-020). An unrelated Git
+	// repository merely enclosing the workspace root is not rejected; only
+	// overlap with a *configured* root is.
 	for _, root := range repositoryRoots {
-		ra, err := absPath(root)
-		if err != nil {
-			continue
-		}
-		rr := canonical(ra)
-		if absCanon == rr || isSubpath(rr, absCanon) {
-			return "", diag.Newf(diag.Usage, "workspace root %s is inside repository root %s", raw, root)
+		if overlaps, err := Overlaps(abs, root); err == nil && overlaps {
+			return "", diag.Newf(diag.Usage,
+				"workspace root %s overlaps repository root %s", raw, root)
 		}
 	}
 

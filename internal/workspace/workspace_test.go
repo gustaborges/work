@@ -60,6 +60,46 @@ func TestValidateRejectsInsideRepositoryRoot(t *testing.T) {
 	}
 }
 
+// TestValidateRejectsRootInsideWorkspace is the mirror of
+// TestValidateRejectsInsideRepositoryRoot: a configured repository root
+// nested *inside* the candidate workspace root is rejected too (research
+// R13, FR-020) — overlap is bidirectional.
+func TestValidateRejectsRootInsideWorkspace(t *testing.T) {
+	ws := t.TempDir()
+	root := filepath.Join(ws, "clones")
+	os.MkdirAll(root, 0o755)
+	if _, err := Validate(ws, []string{root}); diag.Token(err) != diag.Usage.Token {
+		t.Fatalf("err = %v, want usage", err)
+	}
+}
+
+func TestValidateRejectsEqualPaths(t *testing.T) {
+	same := t.TempDir()
+	if _, err := Validate(same, []string{same}); diag.Token(err) != diag.Usage.Token {
+		t.Fatalf("err = %v, want usage", err)
+	}
+}
+
+func TestOverlapsBothDirections(t *testing.T) {
+	parent := t.TempDir()
+	inner := filepath.Join(parent, "inner")
+	os.MkdirAll(inner, 0o755)
+	unrelated := t.TempDir()
+
+	if ok, err := Overlaps(parent, inner); err != nil || !ok {
+		t.Errorf("Overlaps(parent, inner) = %v, %v; want true, nil", ok, err)
+	}
+	if ok, err := Overlaps(inner, parent); err != nil || !ok {
+		t.Errorf("Overlaps(inner, parent) = %v, %v; want true, nil", ok, err)
+	}
+	if ok, err := Overlaps(parent, parent); err != nil || !ok {
+		t.Errorf("Overlaps(parent, parent) = %v, %v; want true, nil", ok, err)
+	}
+	if ok, err := Overlaps(parent, unrelated); err != nil || ok {
+		t.Errorf("Overlaps(parent, unrelated) = %v, %v; want false, nil", ok, err)
+	}
+}
+
 func TestPersistWritesConfigAndLayout(t *testing.T) {
 	h := workhome.At(filepath.Join(t.TempDir(), "dotwork"))
 	if err := h.EnsureLayout(); err != nil {

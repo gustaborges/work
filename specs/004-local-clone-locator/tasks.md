@@ -314,50 +314,50 @@ Branch: `feature/004-local-clone-locator-p4-us3-roots`, cut from Phase 4 tip.
 
 ### Tests for User Story 3
 
-- [ ] T039 [P] [US3] `testscript` `tests/integration/repository_root.txtar`:
+- [X] T039 [P] [US3] `testscript` `tests/integration/repository_root.txtar`:
       `root list` (human + `--json` `{"roots":[…]}`, empty prints a `note:` to
       stderr exit 0); `root add` multiple, absolute, in order, re-add no-op;
       `root remove`; `root replace`; non-dir / unreadable rejected `usage` 2;
       workspace-overlap rejected in both directions with both paths named; ANSI
       absent on non-TTY (quickstart S2, contracts/cli-work-repository.md).
-- [ ] T040 [P] [US3] PTY test `tests/integration/start_first_run_test.go`: fresh
+- [X] T040 [P] [US3] PTY test `tests/integration/start_first_run_test.go`: fresh
       `WORK_HOME` + unset `workspace` — first prompt = workspace root (purpose
       line), second = search root (purpose line); both persisted in a single
       `config.Save` **before** the first journey step; a second `work start`
       shows neither; search-root prompt rejects `$WS/in-progress` in-frame,
       re-promptable; Ctrl-C at either prompt → exit 20, nothing written, no Work
       (quickstart S13, SC-013).
-- [ ] T041 [P] [US3] Non-interactive coverage in
+- [X] T041 [P] [US3] Non-interactive coverage in
       `tests/integration/start_by_name_non_interactive.txtar`: `work start <name>`
       on a fresh home with no roots → exit 26 `no-repository-found` + hint to
       `work repository root add`, no prompt/hang; `work start "$R1/payments"` on the
       same fresh home proceeds (no root needed) (contracts/cli-work-start.md
       §First-run setup, FR-022a).
-- [ ] T042 [P] [US3] Update the F1 interactive fresh-install PTY scripts
+- [X] T042 [P] [US3] Update the F1 interactive fresh-install PTY scripts
       (`tests/integration/` F1 scenarios / `f1_regression_test.go`) to answer the
       two up-front setup prompts — **no** change to stdout, exit codes, or the
       resulting snapshot (SC-011, SC-013).
-- [ ] T043 [P] [US3] `internal/workspace` test for the new validation clause:
+- [X] T043 [P] [US3] `internal/workspace` test for the new validation clause:
       workspace root equal to / inside / containing a configured repository root
       is rejected; a workspace root merely enclosed by an unrelated Git repo is
       still accepted (research.md R13).
 
 ### Implementation for User Story 3
 
-- [ ] T044 [US3] Add `internal/cli/repository.go`: the `work repository` parent
+- [X] T044 [US3] Add `internal/cli/repository.go`: the `work repository` parent
       command with `GroupID = "admin"` and no `Run` (Cobra prints grouped help,
       exit 0). Register it under `internal/cli/root.go`.
-- [ ] T045 [US3] Add `internal/cli/repository_root.go`: `work repository root`
+- [X] T045 [US3] Add `internal/cli/repository_root.go`: `work repository root`
       parent (`GroupID = "admin"`) + `list` (`--json`, pure), `add <PATH...>`,
       `remove <PATH...>`, `replace <PATH...>` delegating to `internal/repoconfig`;
       mutations reject `--json` (exit 2), print one stable
       `work: roots now <a>, <b>` line; single atomic `config.Save`
       (contracts/cli-work-repository.md, resolution-policy.md §Mutation output).
-- [ ] T046 [US3] Add the workspace↔root overlap clause to
+- [X] T046 [US3] Add the workspace↔root overlap clause to
       `internal/workspace/Validate` (mirror of the `repoconfig` root rule),
       reusing the existing canonicalisation helpers; keep the "not rejected merely
       because a Git repo encloses it" behaviour (data-model.md §8, research.md R13).
-- [ ] T047 [US3] Add first-run setup to `internal/cli/start.go` (interactive
+- [X] T047 [US3] Add first-run setup to `internal/cli/start.go` (interactive
       only), before the Source step: when `repoconfig.NeedsSetup` reports
       `wantWorkspace`, prompt for the workspace root (the F1 FR-006 step moved to
       the front, with a purpose line); when `wantRoot`, prompt for one search root
@@ -365,11 +365,11 @@ Branch: `feature/004-local-clone-locator-p4-us3-roots`, cut from Phase 4 tip.
       re-promptable). Persist both in a single `config.Save` before resolution;
       cancel → exit 20, nothing persisted (contracts/cli-work-start.md, research.md
       R21).
-- [ ] T048 [US3] Ensure non-interactive `work start` runs **no** setup: a
+- [X] T048 [US3] Ensure non-interactive `work start` runs **no** setup: a
       name/reference needing resolution with `RepositoryRoots` empty →
       `no-repository-found` (exit 26) + hint; `work start <path>` still root-free
       (FR-022a).
-- [ ] T049 [US3] Add `internal/cli/repository_test.go` cases for `repository root`
+- [X] T049 [US3] Add `internal/cli/repository_test.go` cases for `repository root`
       grammar, `--json` purity, mutation output, and exit codes.
 
 **Checkpoint**: Roots are fully manageable non-interactively and round-trip through
