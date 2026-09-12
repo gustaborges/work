@@ -53,6 +53,23 @@ func TruncTail(s string, max int) string {
 	return ansi.Truncate(s, max, ellipsis)
 }
 
+// collapseToLine joins a bracketed-paste payload into one line, for a text
+// field (an InputStep value or a list's filter) that cannot hold a newline.
+func collapseToLine(s string) string {
+	return strings.Join(strings.FieldsFunc(s, func(r rune) bool { return r == '\n' || r == '\r' }), " ")
+}
+
+// Wrap reflows s to at most width display cells per line, breaking at word
+// boundaries (falling back to a hard break inside an over-long word). A width
+// of zero or less returns s unchanged. Unlike TruncTail/TruncMiddle, no content
+// is discarded — every rune of s appears in the result.
+func Wrap(s string, width int) string {
+	if width <= 0 {
+		return s
+	}
+	return ansi.Wordwrap(s, width, "")
+}
+
 // TruncMiddle shortens s to at most max display cells by eliding the middle and
 // joining the head and tail with "…" — useful for long paths where both ends
 // carry meaning. The result is never wider than max.

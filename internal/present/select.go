@@ -84,7 +84,7 @@ func (m *selectModel[T]) refilter() {
 func (m selectModel[T]) rows() int {
 	reserved := 3 // title + scroll line + help/filter line
 	if m.spec.Description != "" {
-		reserved++
+		reserved += lineCount(Wrap(m.spec.Description, m.w))
 	}
 	if len(m.tabs) > 0 {
 		reserved += 2
@@ -108,11 +108,18 @@ func (m selectModel[T]) Update(msg tea.Msg) (stepModel, tea.Cmd) {
 		m.refilter()
 		return m, nil
 	}
-	key, ok := msg.(tea.KeyPressMsg)
-	if !ok {
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		return m.handleKey(msg)
+	case tea.PasteMsg:
+		if m.filtering {
+			m.filter += collapseToLine(msg.Content)
+			m.cursor, m.offset = 0, 0
+			m.refilter()
+		}
 		return m, nil
 	}
-	return m.handleKey(key)
+	return m, nil
 }
 
 func (m selectModel[T]) handleKey(key tea.KeyPressMsg) (stepModel, tea.Cmd) {
@@ -229,7 +236,7 @@ func (m selectModel[T]) body(width, height int) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n", m.th.Primary.Render(m.spec.Title))
 	if m.spec.Description != "" {
-		fmt.Fprintf(&b, "%s\n", m.th.Muted.Render(m.spec.Description))
+		fmt.Fprintf(&b, "%s\n", m.th.Muted.Render(Wrap(m.spec.Description, m.w)))
 	}
 	if len(m.tabs) > 0 {
 		b.WriteString(m.tabBar() + "\n\n")
