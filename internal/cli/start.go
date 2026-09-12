@@ -21,6 +21,7 @@ import (
 	"github.com/gustaborges/work/internal/locator"
 	"github.com/gustaborges/work/internal/present"
 	"github.com/gustaborges/work/internal/registry"
+	"github.com/gustaborges/work/internal/repoconfig"
 	"github.com/gustaborges/work/internal/reporef"
 	"github.com/gustaborges/work/internal/shellintegration"
 	"github.com/gustaborges/work/internal/starter"
@@ -139,6 +140,20 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	prefixes, err := catalog.Prefixes(convention.Freeform)
 	if err != nil {
 		return err
+	}
+
+	// First-run setup (interactive only, before any other step): ensure a
+	// workspace root and at least one repository search root exist, each with
+	// a purpose line. First-run only — once both are configured neither
+	// prompt appears again and an already-configured install is
+	// byte-identical to F1/F2.5. Persisted as a single config.Save here,
+	// before the eager SOURCE-argv resolution below, so an explicit
+	// `work start <name>` also resolves through the just-configured root
+	// (contracts/cli-work-start.md §First-run setup, research R21).
+	if interactive {
+		if err := runFirstRunSetup(ctx, pio, home, cfg, f); err != nil {
+			return err
+		}
 	}
 
 	// Values the flow collects. The validation closures side-effect these as
@@ -555,6 +570,90 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		shellintegration.ReportNoIntegration(errOut, res.WorktreePath, shellintegration.DetectShell())
 	}
 	return nil
+}
+
+// runFirstRunSetup asks for the workspace root and/or a repository search
+// root when either is still unconfigured (contracts/cli-work-start.md
+// §First-run setup, research R21). It mutates cfg in place and persists both
+// values in a single config.Save before returning; a cancelled prompt
+// (Ctrl-C/Esc) returns diag.Cancelled with cfg unchanged on disk. A no-op
+// when both are already configured, or when a --workspace flag covers the
+// only missing piece.
+func runFirstRunSetup(ctx context.Context, pio present.IO, home workhome.Home, cfg *config.Config, f startFlags) error {
+	wantWorkspace, wantRoot := repoconfig.NeedsSetup(cfg)
+	wantWorkspace = wantWorkspace && !f.workspaceSet
+	if !wantWorkspace && !wantRoot {
+		return nil
+	}
+
+	var setupWorkspace, setupRoot string
+	var steps []present.Step
+
+	if wantWorkspace {
+		suggested, serr := workspace.SuggestDefault()
+		if serr != nil {
+			return diag.Wrap(diag.Usage, serr, "cannot suggest a workspace root")
+		}
+		steps = append(steps, present.InputStep("setup-workspace", func(present.Answers) (present.InputSpec, error) {
+			return present.InputSpec{
+				Title: "Workspace root",
+				Description: "where Work stores and organises worktrees — in-progress and " +
+					"archived Works live here, kept separate from your source clones",
+				Initial: suggested,
+				Validate: func(_ context.Context, raw string) error {
+					a, verr := workspace.Validate(raw, cfg.RepositoryRoots)
+					if verr != nil {
+						return verr // shown in-frame; re-promptable
+					}
+					// Lay out in-progress/archived now (not deferred to the
+					// final persist below) so a search root typed at the next
+					// prompt can be checked for overlap against a real
+					// directory (quickstart S13: rejecting $WS/in-progress).
+					if err := workspace.EnsureLayout(a); err != nil {
+						return present.Fatal(err)
+					}
+					setupWorkspace = a
+					return nil
+				},
+				Receipt: func(string) string { return setupWorkspace },
+			}, nil
+		}))
+	}
+
+	if wantRoot {
+		steps = append(steps, present.InputStep("setup-root", func(present.Answers) (present.InputSpec, error) {
+			return present.InputSpec{
+				Title: "Repository search root",
+				Description: "a directory that holds your Git clones, so `work start <name>` can find " +
+					"them without a full path — add more later with `work repository root add`",
+				Validate: func(_ context.Context, raw string) error {
+					probe := *cfg
+					if setupWorkspace != "" {
+						probe.Workspace = setupWorkspace
+					}
+					a, verr := repoconfig.ValidateRoot(&probe, raw)
+					if verr != nil {
+						return verr // shown in-frame; re-promptable (overlap included)
+					}
+					setupRoot = a
+					return nil
+				},
+				Receipt: func(string) string { return setupRoot },
+			}, nil
+		}))
+	}
+
+	if _, err := present.Wizard(ctx, pio, present.WizardSpec{Title: "Set up Work", Steps: steps}); err != nil {
+		return err // Ctrl-C/Esc -> diag.Cancelled (exit 20); nothing persisted
+	}
+
+	if setupWorkspace != "" {
+		cfg.Workspace = setupWorkspace
+	}
+	if setupRoot != "" {
+		cfg.RepositoryRoots = append(cfg.RepositoryRoots, setupRoot)
+	}
+	return config.Save(home.ConfigFile(), cfg)
 }
 
 // requireNonInteractiveFlags enforces that a non-interactive run carries every

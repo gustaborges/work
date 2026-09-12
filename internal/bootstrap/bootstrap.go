@@ -62,6 +62,15 @@ type installMeta struct {
 	Origin        string `json:"origin"`
 	ContentDigest string `json:"content_digest"`
 	InstalledAt   string `json:"installed_at"`
+	// PolicySeeded records that the one-time "add the seed Locator to the
+	// resolution policy" action has completed at least once. It is an
+	// installation-history fact, not a mirror of the live policy: once true
+	// it stays true across repairs and digest updates even if the user later
+	// runs `work repository policy remove` (FR-027, ADR-0015 — reinstalling
+	// never edits the policy). It only distinguishes that history from a
+	// genuinely fresh or interrupted-before-seeding install, which must still
+	// self-heal.
+	PolicySeeded bool `json:"policy_seeded,omitempty"`
 }
 
 // EnsureSeed makes the reference package present and registered. It is safe to
@@ -93,20 +102,26 @@ func EnsureSeed(h workhome.Home) error {
 		return diag.Wrap(diag.BootstrapFailed, err, "cannot recover the previous reference package")
 	}
 
-	isCurrent, err := current(h, reg, digest)
+	metaPath := filepath.Join(h.PluginsDir(), Alias, ".install-meta.json")
+	oldMeta, _ := readInstallMeta(metaPath) // zero value (PolicySeeded: false) if unreadable
+
+	isCurrent, err := current(h, reg, digest, oldMeta)
 	if err != nil {
 		return err // already a diag error
 	}
 	if isCurrent {
 		return nil
 	}
-	return install(h, digest)
+	return install(h, digest, !oldMeta.PolicySeeded)
 }
 
-// current reports whether every seed record and the locator policy entry are
-// present, the installed digest matches the embedded one, and the plugin
-// directory is intact.
-func current(h workhome.Home, reg *registry.Registry, digest string) (bool, error) {
+// current reports whether every seed record is registered, the installed
+// digest matches the embedded one, the one-time policy-seed action has
+// completed, and the plugin directory is intact. Deliberately not part of
+// this check: whether the seed Locator is still *in* the live policy — that
+// is user-editable state past the first install (`work repository policy
+// remove`), not an installation-integrity signal (FR-027, ADR-0015).
+func current(h workhome.Home, reg *registry.Registry, digest string, meta installMeta) (bool, error) {
 	if !reg.HasComponent(Alias, componentStarter) ||
 		!reg.HasComponent(Alias, componentLocator) {
 		return false, nil
@@ -114,17 +129,7 @@ func current(h workhome.Home, reg *registry.Registry, digest string) (bool, erro
 	if _, ok := reg.ConventionByName(conventionName); !ok {
 		return false, nil
 	}
-
-	cfg, err := config.Load(h.ConfigFile())
-	if err != nil {
-		return false, err
-	}
-	if !slices.Contains(cfg.RepositoryResolution.Locators, LocatorPolicyEntry) {
-		return false, nil
-	}
-
-	meta, err := readInstallMeta(filepath.Join(h.PluginsDir(), Alias, ".install-meta.json"))
-	if err != nil || meta.ContentDigest != digest {
+	if meta.ContentDigest != digest || !meta.PolicySeeded {
 		return false, nil
 	}
 
@@ -137,7 +142,13 @@ func current(h workhome.Home, reg *registry.Registry, digest string) (bool, erro
 	return true, nil
 }
 
-func install(h workhome.Home, digest string) error {
+// install stages and swaps in the embedded reference package and registers
+// its components. seedPolicy is true unless the policy-seed action already
+// completed in a prior install of this package (research: install-meta
+// PolicySeeded) — only then does it also append the seed Locator to the
+// resolution policy; either way the completed fact is (re)recorded in the
+// swapped-in install-meta so a later repair does not re-seed it.
+func install(h workhome.Home, digest string, seedPolicy bool) error {
 	manifestBytes := seed.ManifestJSON()
 	manifest, err := plugin.Parse(manifestBytes)
 	if err != nil {
@@ -215,7 +226,34 @@ func install(h workhome.Home, digest string) error {
 	if err := checkpoint("registered"); err != nil {
 		return diag.Wrap(diag.BootstrapFailed, err, "interrupted before updating the resolution policy")
 	}
-	return addLocatorToPolicy(h)
+	if seedPolicy {
+		if err := addLocatorToPolicy(h); err != nil {
+			return err
+		}
+	}
+	// Record the policy-seed action as done, whether it just ran or had
+	// already completed in a prior install of this package — the meta file
+	// this install just swapped in otherwise reads PolicySeeded: false, which
+	// would look like an interrupted install and re-trigger addLocatorToPolicy
+	// on the very next command, undoing an explicit `policy remove`.
+	if err := setPolicySeeded(filepath.Join(dest, ".install-meta.json")); err != nil {
+		return diag.Wrap(diag.BootstrapFailed, err, "cannot record the resolution policy as seeded")
+	}
+	return nil
+}
+
+// setPolicySeeded marks the install-meta file at path as PolicySeeded: true.
+func setPolicySeeded(path string) error {
+	meta, err := readInstallMeta(path)
+	if err != nil {
+		return err
+	}
+	meta.PolicySeeded = true
+	data, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
 }
 
 // recoverInterruptedSwap restores the previous package when a process died
