@@ -1,0 +1,23 @@
+# S6 — an explicit SOURCE resolving to >= 2 repositories fails non-interactively
+# with repository-ambiguous (30) and no selector; nothing is created or
+# persisted. Covers US2 FR-033, SC-010.
+
+gitrepo root/primary/payments
+gitrepo root/mirror/payments
+env WS=$WORK/ws
+
+work-set-roots $WORK_HOME/config/work.json $WORK/root
+
+! work start payments --workspace $WS --base main --slug x --prefix {slug} --yes
+! stdout .
+stderr 'error: repository-ambiguous:'
+
+# No selector, no Work, no branch, no config write beyond the roots we set.
+! exists $WS/in-progress/payments_x
+! exists $WORK_HOME/state/work.db
+grep '"workspace": ""' $WORK_HOME/config/work.json
+
+exec git -C $WORK/root/primary/payments branch --list x
+! stdout .
+exec git -C $WORK/root/mirror/payments branch --list x
+! stdout .

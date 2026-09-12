@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -99,6 +100,86 @@ func TestStartMachinePortionUnderBudget(t *testing.T) {
 	}
 	if !rep.OK {
 		t.Errorf("created Work is incoherent: %s", strings.Join(rep.Problems, "; "))
+	}
+}
+
+// resolutionBudget is SC-012: a single-match name lookup over a large search
+// tree completes well under this ceiling on the reference runner.
+const resolutionBudget = 2 * time.Second
+
+// TestStartByUniqueNameOver500ReposUnderBudget builds a search root of 500
+// sibling directories that merely *look* like repositories to the Locator's
+// walk (a bare .git entry, no init) plus one real, uniquely-named repository,
+// and asserts non-interactive `work start <unique-name>` resolves and
+// completes within the SC-012 budget. The expensive part (reporef.ValidatePath)
+// scales with matches, not with the size of the search tree — a unique name
+// returns exactly one (research R18).
+func TestStartByUniqueNameOver500ReposUnderBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds a 500-entry search tree; skipped under -short")
+	}
+	if _, _, err := seed.HostAssets(); err != nil {
+		t.Skipf("no embedded seed; run `make seed` (%v)", err)
+	}
+
+	t.Setenv("GIT_AUTHOR_NAME", "t")
+	t.Setenv("GIT_AUTHOR_EMAIL", "t@t")
+	t.Setenv("GIT_COMMITTER_NAME", "t")
+	t.Setenv("GIT_COMMITTER_EMAIL", "t@t")
+
+	root := t.TempDir()
+	workBin := filepath.Join(root, "work")
+	if runtime.GOOS == "windows" {
+		workBin += ".exe"
+	}
+	buildCmd := exec.Command("go", "build", "-o", workBin, "github.com/gustaborges/work/cmd/work")
+	if out, err := buildCmd.CombinedOutput(); err != nil {
+		t.Fatalf("build work binary: %v\n%s", err, out)
+	}
+
+	searchRoot := filepath.Join(root, "src")
+	for i := range 500 {
+		dir := filepath.Join(searchRoot, fmt.Sprintf("repo-%d", i))
+		if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	target := filepath.Join(searchRoot, "unique-target-payments")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, target, "init", "-q", "-b", "main")
+	gitRun(t, target, "commit", "-q", "--allow-empty", "-m", "init")
+
+	home := filepath.Join(root, "dothome")
+	cfgPath := filepath.Join(home, "config", "work.json")
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	cfg.RepositoryRoots = []string{searchRoot}
+	if err := config.Save(cfgPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(workBin, "start", "unique-target-payments",
+		"--workspace", filepath.Join(root, "ws"), "--base", "main",
+		"--slug", "perf", "--prefix", "{slug}", "--yes")
+	cmd.Env = append(os.Environ(),
+		"WORK_HOME="+home, "HOME="+filepath.Join(root, "home"),
+		"GIT_CONFIG_GLOBAL="+filepath.Join(root, "gitconfig"), "GIT_CONFIG_SYSTEM="+os.DevNull,
+		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+
+	start := time.Now()
+	out, err := cmd.CombinedOutput()
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("work start: %v\n%s", err, out)
+	}
+
+	t.Logf("name resolution + create over 500 repos: %s (budget %s)", elapsed.Round(time.Millisecond), resolutionBudget)
+	if elapsed > resolutionBudget {
+		t.Errorf("resolution + create %s exceeds the %s budget", elapsed, resolutionBudget)
 	}
 }
 

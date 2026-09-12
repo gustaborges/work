@@ -64,22 +64,43 @@ func Validate(raw string, repositoryRoots []string) (string, error) {
 		return "", diag.Newf(diag.Usage, "cannot inspect workspace root %s", raw)
 	}
 
-	// Compare containment on a canonical basis so a symlinked prefix (macOS
-	// /var -> /private/var, Windows 8.3 names) cannot hide an overlap. The
-	// returned path stays the plain absolute form the user would recognise.
-	absCanon := canonical(abs)
+	// Reject overlap with any configured repository search root in either
+	// direction — the workspace equal to or inside a root, or a root equal to
+	// or inside the workspace (research R13, FR-020). An unrelated Git
+	// repository merely enclosing the workspace root is not rejected; only
+	// overlap with a *configured* root is.
 	for _, root := range repositoryRoots {
-		ra, err := absPath(root)
-		if err != nil {
-			continue
-		}
-		rr := canonical(ra)
-		if absCanon == rr || isSubpath(rr, absCanon) {
-			return "", diag.Newf(diag.Usage, "workspace root %s is inside repository root %s", raw, root)
+		if overlaps, err := Overlaps(abs, root); err == nil && overlaps {
+			return "", diag.Newf(diag.Usage,
+				"workspace root %s overlaps repository root %s", raw, root)
 		}
 	}
 
 	return abs, nil
+}
+
+// Canonical resolves symlinks on the longest existing prefix of abs and
+// re-appends the remainder, so two paths can be compared for equality or
+// containment even when one does not yet exist or differs only by a
+// symlinked ancestor. abs must already be absolute.
+func Canonical(abs string) string { return canonical(abs) }
+
+// Overlaps reports whether a and b are the same directory, or one is nested
+// within the other, compared on a canonical basis so a symlinked or
+// short-named ancestor cannot hide the overlap (macOS /var -> /private/var,
+// Windows 8.3 names). Used to keep the workspace root and repository search
+// roots mutually exclusive in both directions (research R13, FR-020).
+func Overlaps(a, b string) (bool, error) {
+	aa, err := absPath(a)
+	if err != nil {
+		return false, err
+	}
+	bb, err := absPath(b)
+	if err != nil {
+		return false, err
+	}
+	ca, cb := canonical(aa), canonical(bb)
+	return ca == cb || isSubpath(ca, cb) || isSubpath(cb, ca), nil
 }
 
 // Persist writes absRoot to config.workspace and creates the root's

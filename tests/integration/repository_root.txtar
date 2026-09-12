@@ -1,0 +1,62 @@
+# S2 — `work repository root list|add|remove|replace`: validation,
+# absolutization, ordering, no-op re-add, and bidirectional workspace-root
+# overlap rejection. Covers US3; FR-020, FR-022.
+
+# Empty: a note to stderr, exit 0, no ANSI.
+work repository root list
+stderr 'note:'
+! stdout '\x1b'
+
+mkdir r1
+mkdir r2
+work repository root add $WORK/r1 $WORK/r2
+stdout 'work: roots now .*r1.*r2'
+! stdout '\x1b'
+
+work repository root list --json
+stdout '"roots"'
+stdout 'r1'
+stdout 'r2'
+
+work repository root list
+stdout '(?m)^.*.r1$'
+stdout '(?m)^.*.r2$'
+
+# Re-adding an already-configured root is a no-op, exit 0.
+work repository root add $WORK/r1
+stdout 'work: roots now'
+
+# A non-directory / missing path is rejected, exit 2, nothing persisted.
+! work repository root add $WORK/does-not-exist
+stderr 'error: usage:'
+
+# --json is rejected on a mutation.
+! work repository root add $WORK/r1 --json
+stderr 'error: usage:'
+
+work repository root remove $WORK/r1
+stdout 'work: roots now.*r2'
+! stdout 'r1'
+
+work repository root replace $WORK/r2
+work repository root list
+stdout '(?m)^.*.r2$'
+
+# Workspace/root isolation, both directions (FR-020): once a workspace root
+# is configured, a search root cannot equal or nest into it, or vice versa.
+mkdir ws
+work-set-workspace $WORK_HOME/config/work.json $WORK/ws
+
+! work repository root add $WORK/ws
+stderr 'error: usage:'
+mkdir ws/in-progress
+! work repository root add $WORK/ws/in-progress
+stderr 'error: usage:'
+
+# The reverse direction: a configured root containing the workspace is
+# rejected too — exercised directly against internal/workspace in
+# internal/workspace/workspace_test.go (TestValidateRejectsRootInsideWorkspace);
+# here we confirm `root add` itself still refuses the workspace root exactly.
+work repository root list
+stdout '(?m)^.*.r2$'
+! stdout 'ws'

@@ -6,8 +6,6 @@
 package starter
 
 import (
-	"strings"
-
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/ipc"
 	"github.com/gustaborges/work/internal/registry"
@@ -27,10 +25,15 @@ func Select(reg *registry.Registry) (registry.Component, error) {
 	return c, nil
 }
 
-// Reference is the subset of a Starter response the core acts on. Only path is
-// populated by the F1 seed Starter.
+// Reference is the subset of a Starter response the core acts on (ADR-0016).
+// All four fields are independent and optional; a reference with none of them
+// set is not rejected here — internal/locator classifies that case as
+// no-eligible-locator (FR-005, research R8).
 type Reference struct {
-	Path string
+	Path         string
+	GitFetchURLs []string
+	Name         string
+	Query        string
 }
 
 // Invoke runs the Starter entrypoint with arg and returns the repository
@@ -43,11 +46,13 @@ func Invoke(pluginsDir string, c registry.Component, arg string) (Reference, err
 		return Reference{}, diag.Wrap(diag.UnusableRepo, err,
 			"the Starter could not resolve the given source")
 	}
-	if strings.TrimSpace(resp.Repository.Path) == "" {
-		return Reference{}, diag.New(diag.UnusableRepo,
-			"the Starter returned no repository path for the given source")
-	}
-	// Only repository.path is consumed in F1; every other field of the response
-	// (and any extra keys the subprocess emitted) is deliberately ignored.
-	return Reference{Path: resp.Repository.Path}, nil
+	// Only the typed reference fields are consumed; every other field of the
+	// response (start_modes, base_branch, meta, links) and any extra keys the
+	// subprocess emitted are deliberately ignored (FR-018 trust boundary).
+	return Reference{
+		Path:         resp.Repository.Path,
+		GitFetchURLs: resp.Repository.GitFetchURLs,
+		Name:         resp.Repository.Name,
+		Query:        resp.Repository.Query,
+	}, nil
 }

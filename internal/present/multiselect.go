@@ -67,7 +67,7 @@ func (m *multiSelectModel[T]) refilter() {
 func (m multiSelectModel[T]) rows() int {
 	reserved := 3
 	if m.spec.Description != "" {
-		reserved++
+		reserved += lineCount(Wrap(m.spec.Description, m.w))
 	}
 	per := 1
 	if m.twoLine {
@@ -96,6 +96,14 @@ func (m multiSelectModel[T]) withFrame(f baseFrame) stepModel {
 func (m multiSelectModel[T]) Update(msg tea.Msg) (stepModel, tea.Cmd) {
 	if m.absorb(msg) {
 		m.refilter()
+		return m, nil
+	}
+	if paste, ok := msg.(tea.PasteMsg); ok {
+		if m.filtering {
+			m.filter += collapseToLine(paste.Content)
+			m.cursor, m.offset = 0, 0
+			m.refilter()
+		}
 		return m, nil
 	}
 	key, ok := msg.(tea.KeyPressMsg)
@@ -251,7 +259,7 @@ func (m multiSelectModel[T]) body(width, height int) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n", m.th.Primary.Render(m.spec.Title))
 	if m.spec.Description != "" {
-		fmt.Fprintf(&b, "%s\n", m.th.Muted.Render(m.spec.Description))
+		fmt.Fprintf(&b, "%s\n", m.th.Muted.Render(Wrap(m.spec.Description, m.w)))
 	}
 
 	rows := m.rows()

@@ -32,6 +32,10 @@ func TestStartReceiptsLeaveNoDebris(t *testing.T) {
 
 	c := newConsoleSize(t, pty.Winsize{Rows: 24, Cols: 80}, bin, env, "start")
 
+	// F3 first-run setup (fresh WORK_HOME): accept the suggested workspace
+	// default, then supply a search root.
+	answerFirstRunSetup(c, "", t.TempDir())
+
 	// Path: four rejects, each replacing the last error in-frame, then the repo.
 	c.expect("Local repository path")
 	c.send("/no/such/a\r")

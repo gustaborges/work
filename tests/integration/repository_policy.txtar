@@ -1,0 +1,51 @@
+# S1, S9 — `work repository policy list|add|remove|move|replace`: the seed
+# default, reordering, pruning, and the availability model. Covers US5;
+# FR-023, FR-024, FR-025.
+
+# S1: fresh WORK_HOME, one row for the seed Locator.
+work repository policy list
+stdout '(?m)^1  work-reference/filesystem-repository-locator  \(available\)$'
+
+work repository policy list --json
+stdout '"ref": "work-reference/filesystem-repository-locator"'
+stdout '"position": 1'
+stdout '"available": true'
+
+registerlocator acme corp-index name
+
+work repository policy add acme/corp-index --after work-reference/filesystem-repository-locator
+stdout 'work: policy now work-reference/filesystem-repository-locator, acme/corp-index'
+
+work repository policy list
+stdout '(?m)^1  work-reference/filesystem-repository-locator  \(available\)$'
+stdout '(?m)^2  acme/corp-index  \(available\)$'
+
+work repository policy move acme/corp-index --before work-reference/filesystem-repository-locator
+stdout 'work: policy now acme/corp-index, work-reference/filesystem-repository-locator'
+
+# move requires exactly one of --before/--after.
+! work repository policy move acme/corp-index
+stderr 'error: usage:'
+! work repository policy move acme/corp-index --before x --after y
+stderr 'error: usage:'
+
+# An unknown <LOCATOR> is exit 2.
+! work repository policy add nonexistent/thing
+stderr 'error: usage:'
+
+work repository policy remove acme/corp-index
+stdout 'work: policy now work-reference/filesystem-repository-locator'
+
+# Removal keeps the component installed; it just leaves the policy.
+work repository locator list
+stdout 'acme/corp-index'
+! stdout 'acme/corp-index.*\(in policy\)'
+
+work repository policy replace work-reference/filesystem-repository-locator
+work repository policy list
+stdout '(?m)^1  work-reference/filesystem-repository-locator  \(available\)$'
+! stdout '(?m)^2 '
+
+# --json is rejected on every mutation.
+! work repository policy add acme/corp-index --json
+stderr 'error: usage:'

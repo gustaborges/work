@@ -1,0 +1,36 @@
+# S7, S8 — the five resolution outcomes are five distinct diagnostics, never
+# cross-converted, never a partial Work. Covers US4; FR-015, FR-018, FR-019.
+
+gitrepo root/payments
+env WS=$WORK/ws
+work-set-roots $WORK_HOME/config/work.json $WORK/root
+
+# --- no-repository-found (26): every eligible Locator returned []. ---
+! work start nonesuch --workspace $WS --base main --slug x --prefix {slug} --yes
+! stdout .
+stderr 'error: no-repository-found:'
+! exists $WS/in-progress/nonesuch_x
+
+# --- repository-candidate-invalid (28): the ending Locator's matches are not
+# usable git repositories. ---
+mkdir not-a-repo
+setfixturematches $WORK/not-a-repo
+installlocatorfixture fixtureinvalid invalid invalid name
+work repository policy replace fixtureinvalid/invalid
+
+! work start whatever --workspace $WS --base main --slug y --prefix {slug} --yes
+stderr 'error: repository-candidate-invalid:'
+stderr 'not-a-repo'
+! exists $WS/in-progress/whatever_y
+
+# --- locator-failed (29): a Locator errors; a later entry is never
+# consulted (no fallback). ---
+installlocatorfixture fixtureboom boom boom name
+work repository policy replace fixtureboom/boom work-reference/filesystem-repository-locator
+
+! work start payments --workspace $WS --base main --slug z --prefix {slug} --yes
+stderr 'error: locator-failed:'
+! exists $WS/in-progress/payments_z
+
+# 26 != 27 != 28 != 29, and no Work was created in any case.
+! exists $WORK_HOME/state/work.db

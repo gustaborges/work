@@ -1,0 +1,37 @@
+# S3/S4 (Phase 3 MVP) — `work start <name>` resolves a single matching local
+# clone through the Repository Resolution Policy non-interactively;
+# `work start <path>` stays unchanged. Ambiguity (repository-ambiguous, exit
+# 30), the full no-repository-found story with `work repository root`
+# management, and the interactive picker land in later phases.
+
+gitrepo root/payments
+env WS=$WORK/ws
+
+work-set-roots $WORK_HOME/config/work.json $WORK/root
+
+# A bare name resolves through the policy and proceeds exactly like a path.
+work start payments --workspace $WS --base main --slug s --prefix {slug} --yes
+stdout 'work: created [0-9A-HJKMNP-TV-Z]{26}'
+stdout 'work: branch s  \(from main @ '
+
+exists $WS/in-progress/payments_s/worktree
+exists $WS/in-progress/payments_s/work-state.json
+grep '"starter": "local-path-starter"' $WS/in-progress/payments_s/work-state.json
+
+# work start <path> is unchanged: no repository_roots needed at all, and the
+# workspace root (already configured above) is reused silently.
+gitrepo other
+work start $WORK/other --base main --slug direct --prefix {slug} --yes
+stdout 'work: created [0-9A-HJKMNP-TV-Z]{26}'
+exists $WS/in-progress/other_direct/worktree
+
+# Missing SOURCE is still exit 2.
+! work start --base main --slug x --prefix {slug} --yes
+stderr 'error: usage: no SOURCE given'
+! exists $WS/in-progress/_x
+
+# --json is still rejected on `work start`.
+! work start payments --json
+stderr 'error: usage: --json is not accepted'
+
+verifycoherent

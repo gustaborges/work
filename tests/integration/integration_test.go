@@ -5,11 +5,13 @@ package integration
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,6 +23,7 @@ import (
 	"github.com/gustaborges/work/internal/cli"
 	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/projection"
+	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/work"
 	"github.com/gustaborges/work/internal/work/verify"
 	"github.com/gustaborges/work/seed"
@@ -86,6 +89,123 @@ func TestScripts(t *testing.T) {
 				if err := config.Save(path, cfg); err != nil {
 					ts.Fatalf("save config: %v", err)
 				}
+			},
+			// work-set-roots <config.json> <path>... rewrites repository_roots,
+			// standing in for `work repository root add` (F3) before Phase 5
+			// ships that command.
+			"work-set-roots": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) < 2 {
+					ts.Fatalf("usage: work-set-roots <config.json> <path>...")
+				}
+				path := ts.MkAbs(args[0])
+				cfg, err := config.Load(path)
+				if err != nil {
+					ts.Fatalf("load config: %v", err)
+				}
+				roots := make([]string, len(args)-1)
+				for i, p := range args[1:] {
+					roots[i] = ts.MkAbs(p)
+				}
+				cfg.RepositoryRoots = roots
+				if err := config.Save(path, cfg); err != nil {
+					ts.Fatalf("save config: %v", err)
+				}
+			},
+			// registerlocator <alias> <name> <accepts...> registers a fake
+			// repository-locator component directly in the registry —
+			// standing in for `work plugin install` (F4) so F3's
+			// `work repository policy`/`locator` scenarios have a second
+			// locator to add/move/remove without a real plugin install.
+			"registerlocator": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) < 3 {
+					ts.Fatalf("usage: registerlocator <alias> <name> <accepts...>")
+				}
+				regPath := filepath.Join(ts.Getenv("WORK_HOME"), "state", "registry.json")
+				reg, err := registry.Load(regPath)
+				if err != nil {
+					ts.Fatalf("registry.Load: %v", err)
+				}
+				reg.UpsertComponent(registry.Component{
+					Alias: args[0], Name: args[1], Role: registry.RoleRepositoryLocator,
+					Entrypoint: args[1], Accepts: args[2:], DisplayName: args[1],
+				})
+				if err := registry.Save(regPath, reg); err != nil {
+					ts.Fatalf("registry.Save: %v", err)
+				}
+			},
+			// installlocatorfixture <alias> <name> <fixture> <accepts...>
+			// builds one of tests/fixtures/locators/{ok,empty,two,dupe,
+			// invalid,boom} and installs it as a registered repository-locator
+			// component — a runnable fake Locator for exercising the five
+			// resolution outcomes (26-29) without a real plugin install.
+			"installlocatorfixture": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) < 4 {
+					ts.Fatalf("usage: installlocatorfixture <alias> <name> <fixture> <accepts...>")
+				}
+				alias, name, fixture, accepts := args[0], args[1], args[2], args[3:]
+				home := ts.Getenv("WORK_HOME")
+				if home == "" {
+					ts.Fatalf("installlocatorfixture: $WORK_HOME is not set")
+				}
+
+				_, thisFile, _, _ := runtime.Caller(0)
+				pkgDir := filepath.Join(filepath.Dir(thisFile), "..", "fixtures", "locators", fixture)
+				binDir, err := os.MkdirTemp("", "locatorfixture-*")
+				if err != nil {
+					ts.Fatalf("%v", err)
+				}
+				bin := filepath.Join(binDir, fixture)
+				if runtime.GOOS == "windows" {
+					bin += ".exe"
+				}
+				if out, err := exec.Command("go", "build", "-o", bin, pkgDir).CombinedOutput(); err != nil {
+					ts.Fatalf("build locator fixture %s: %v\n%s", fixture, err, out)
+				}
+
+				src := filepath.Join(home, "plugins", alias, "source")
+				if err := os.MkdirAll(src, 0o755); err != nil {
+					ts.Fatalf("%v", err)
+				}
+				destName := fixture
+				if runtime.GOOS == "windows" {
+					destName += ".exe"
+				}
+				data, err := os.ReadFile(bin)
+				if err != nil {
+					ts.Fatalf("%v", err)
+				}
+				if err := os.WriteFile(filepath.Join(src, destName), data, 0o755); err != nil {
+					ts.Fatalf("%v", err)
+				}
+
+				regPath := filepath.Join(home, "state", "registry.json")
+				reg, err := registry.Load(regPath)
+				if err != nil {
+					ts.Fatalf("registry.Load: %v", err)
+				}
+				reg.UpsertComponent(registry.Component{
+					Alias: alias, Name: name, Role: registry.RoleRepositoryLocator,
+					Entrypoint: fixture, Accepts: accepts, DisplayName: name,
+				})
+				if err := registry.Save(regPath, reg); err != nil {
+					ts.Fatalf("registry.Save: %v", err)
+				}
+			},
+			// setfixturematches <path>... sets LOCATOR_FIXTURE_MATCHES to the
+			// proper JSON encoding of the given (MkAbs-resolved) paths. A naive
+			// `env LOCATOR_FIXTURE_MATCHES=["$WORK/x"]` literal breaks on Windows,
+			// where $WORK contains '\': the unescaped backslashes make the value
+			// invalid JSON, so the fixture silently sees matches:[].
+			"setfixturematches": func(ts *testscript.TestScript, neg bool, args []string) {
+				paths := make([]string, len(args))
+				for i, p := range args {
+					paths[i] = ts.MkAbs(p)
+				}
+				b, err := json.Marshal(paths)
+				if err != nil {
+					ts.Fatalf("%v", err)
+				}
+				ts.Setenv("LOCATOR_FIXTURE_MATCHES", string(b))
 			},
 			// gitrepo <dir> initialises a repo with one commit on main.
 			"gitrepo": func(ts *testscript.TestScript, neg bool, args []string) {
