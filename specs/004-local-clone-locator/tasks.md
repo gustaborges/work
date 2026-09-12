@@ -461,35 +461,35 @@ Branch: `feature/004-local-clone-locator-p6-polish`, cut from Phase 6 tip
 
 ### Tests for User Story 4
 
-- [ ] T059 [P] [US4] `testscript` `tests/integration/resolution_outcomes.txtar`:
+- [X] T059 [P] [US4] `testscript` `tests/integration/resolution_outcomes.txtar`:
       policy `[invalid]` → exit 28 `repository-candidate-invalid` naming the
       rejected path; policy `[boom]` → exit 29 `locator-failed` naming the
       Locator, a following policy entry **never consulted**; empty roots → exit 26
       `no-repository-found`; assert 26 ≠ 27 ≠ 28 ≠ 29 and no Work in any case
       (quickstart S7, S8).
-- [ ] T060 [P] [US4] PTY variant in `tests/integration/start_by_name_test.go`: at
+- [X] T060 [P] [US4] PTY variant in `tests/integration/start_by_name_test.go`: at
       the Source prompt, `nonesuch` shows the `no-repository-found` error
       **in-frame** and the field is re-promptable; then `payments` continues the
       journey (quickstart S7).
-- [ ] T061 [P] [US4] Test that `no-eligible-locator` (27) — empty policy or a
+- [X] T061 [P] [US4] Test that `no-eligible-locator` (27) — empty policy or a
       reference carrying no accepted field, and the `{}` / unaccepted-`query`
       cases from `contracts/repository-reference.md` §Tests — is terminal and
       distinct from 26.
 
 ### Implementation for User Story 4
 
-- [ ] T062 [US4] Finalise `Summary`/`Hint` text for all five categories in
+- [X] T062 [US4] Finalise `Summary`/`Hint` text for all five categories in
       `internal/locator/outcome.go` (and the `repository-ambiguous` construction
       in `start.go`): "add a root" (26), "policy not set up" (27), "that folder is
       broken" (28), "your Locator errored" (29), "be more specific" (30); the
       Locator's stderr is retained as the internal cause only, never printed in
       normal output (research.md R5, plan Auditability gate).
-- [ ] T063 [US4] In `internal/cli/start.go`, wire the interactive Source-step
+- [X] T063 [US4] In `internal/cli/start.go`, wire the interactive Source-step
       outcome handling: `no-repository-found` (26) shown in-frame & re-promptable;
       `no-eligible-locator` (27) / `repository-candidate-invalid` (28) /
       `locator-failed` (29) → `present.Fatal(err)` to the diagnostic border
       (contracts/cli-work-start.md §Interactive flow, research.md R9).
-- [ ] T064 [US4] Confirm non-interactive Source-step handling returns the exact
+- [X] T064 [US4] Confirm non-interactive Source-step handling returns the exact
       token/exit for each of 26/27/28/29 (no re-prompt) with the transaction
       guarantee (no branch/worktree/dir/snapshot/row; config unchanged; workspace
       root not persisted) (contracts/cli-work-start.md §Non-interactive flow,

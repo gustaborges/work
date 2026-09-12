@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -126,6 +127,64 @@ func TestScripts(t *testing.T) {
 				reg.UpsertComponent(registry.Component{
 					Alias: args[0], Name: args[1], Role: registry.RoleRepositoryLocator,
 					Entrypoint: args[1], Accepts: args[2:], DisplayName: args[1],
+				})
+				if err := registry.Save(regPath, reg); err != nil {
+					ts.Fatalf("registry.Save: %v", err)
+				}
+			},
+			// installlocatorfixture <alias> <name> <fixture> <accepts...>
+			// builds one of tests/fixtures/locators/{ok,empty,two,dupe,
+			// invalid,boom} and installs it as a registered repository-locator
+			// component — a runnable fake Locator for exercising the five
+			// resolution outcomes (26-29) without a real plugin install.
+			"installlocatorfixture": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) < 4 {
+					ts.Fatalf("usage: installlocatorfixture <alias> <name> <fixture> <accepts...>")
+				}
+				alias, name, fixture, accepts := args[0], args[1], args[2], args[3:]
+				home := ts.Getenv("WORK_HOME")
+				if home == "" {
+					ts.Fatalf("installlocatorfixture: $WORK_HOME is not set")
+				}
+
+				_, thisFile, _, _ := runtime.Caller(0)
+				pkgDir := filepath.Join(filepath.Dir(thisFile), "..", "fixtures", "locators", fixture)
+				binDir, err := os.MkdirTemp("", "locatorfixture-*")
+				if err != nil {
+					ts.Fatalf("%v", err)
+				}
+				bin := filepath.Join(binDir, fixture)
+				if runtime.GOOS == "windows" {
+					bin += ".exe"
+				}
+				if out, err := exec.Command("go", "build", "-o", bin, pkgDir).CombinedOutput(); err != nil {
+					ts.Fatalf("build locator fixture %s: %v\n%s", fixture, err, out)
+				}
+
+				src := filepath.Join(home, "plugins", alias, "source")
+				if err := os.MkdirAll(src, 0o755); err != nil {
+					ts.Fatalf("%v", err)
+				}
+				destName := fixture
+				if runtime.GOOS == "windows" {
+					destName += ".exe"
+				}
+				data, err := os.ReadFile(bin)
+				if err != nil {
+					ts.Fatalf("%v", err)
+				}
+				if err := os.WriteFile(filepath.Join(src, destName), data, 0o755); err != nil {
+					ts.Fatalf("%v", err)
+				}
+
+				regPath := filepath.Join(home, "state", "registry.json")
+				reg, err := registry.Load(regPath)
+				if err != nil {
+					ts.Fatalf("registry.Load: %v", err)
+				}
+				reg.UpsertComponent(registry.Component{
+					Alias: alias, Name: name, Role: registry.RoleRepositoryLocator,
+					Entrypoint: fixture, Accepts: accepts, DisplayName: name,
 				})
 				if err := registry.Save(regPath, reg); err != nil {
 					ts.Fatalf("registry.Save: %v", err)
