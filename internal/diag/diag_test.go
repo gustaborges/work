@@ -29,6 +29,11 @@ func TestCategoryTable(t *testing.T) {
 		{DirtyWorktree, "dirty-worktree", 23},
 		{ArchiveFailed, "archive-failed", 24},
 		{SnapshotUnreadable, "snapshot-unreadable", 25},
+		{NoRepositoryFound, "no-repository-found", 26},
+		{NoEligibleLocator, "no-eligible-locator", 27},
+		{RepositoryCandidateInvalid, "repository-candidate-invalid", 28},
+		{LocatorFailed, "locator-failed", 29},
+		{RepositoryAmbiguous, "repository-ambiguous", 30},
 	}
 
 	if len(want) != len(All) {
