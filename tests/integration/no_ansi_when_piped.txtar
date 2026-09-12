@@ -17,6 +17,26 @@ stdout 'work: created [0-9A-HJKMNP-TV-Z]{26}'
 
 workid $WS/in-progress/src_piped-run/work-state.json ID
 
+# F3: work repository — grouped help, list/mutation output — no escapes.
+work repository
+stdout 'locator'
+! stdout '\x1b'
+
+work repository root list
+! stdout '\x1b'
+! stderr '\x1b'
+
+work repository root add $WORK/src
+stdout 'work: roots now'
+! stdout '\x1b'
+
+work repository policy list
+! stdout '\x1b'
+! stderr '\x1b'
+
+work repository locator list --json
+! stdout '\x1b'
+
 # work resume <id> — no picker, no escapes.
 work resume $ID
 stdout '^work: resumed [0-9A-HJKMNP-TV-Z]{26}$'

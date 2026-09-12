@@ -505,29 +505,29 @@ fixtures with zero cross-conversion and zero partial Work. Merge forward.
 **Purpose**: Compatibility sweep, presentation parity, performance, docs. Same
 branch as Phase 7.
 
-- [ ] T065 [P] Presentation parity sweep: `NO_COLOR` / `TERM=dumb` / redirected
+- [X] T065 [P] Presentation parity sweep: `NO_COLOR` / `TERM=dumb` / redirected
       streams carry zero ANSI for every `work repository` subcommand and the
       new `work start` steps (extend `tests/integration/no_color_env.txtar` /
       `no_ansi_when_piped.txtar` / `stream_separation_test.go`) (F2.5 parity,
       spec Edge Cases).
-- [ ] T066 [P] Performance test (`tests/integration/performance_test.go`): a
+- [X] T066 [P] Performance test (`tests/integration/performance_test.go`): a
       500-repo search tree, non-interactive `work start <unique-name>` completes
       < 2 s on the CI reference runner (SC-012, research.md R18).
-- [ ] T067 Full regression run: F1 `quickstart.md` S1–S12 (non-interactive
+- [X] T067 Full regression run: F1 `quickstart.md` S1–S12 (non-interactive
       unchanged; interactive fresh-install scripts carry only the two added setup
       answers), F2 S1–S13, F2.5 Q1–Q12, `tests/contract/locator_test.go`, and the
       `diag` table test — all green with no stdout / token / mutation / exit-code
       diff (SC-011).
-- [ ] T068 [P] Run the F3 `quickstart.md` scenarios S1–S13 end to end and record
+- [X] T068 [P] Run the F3 `quickstart.md` scenarios S1–S13 end to end and record
       any deviation.
-- [ ] T069 [P] Refresh the managed Spec Kit agent-context section via
+- [X] T069 [P] Refresh the managed Spec Kit agent-context section via
       `/speckit-agent-context-update` (or the skill) so `AGENTS.md` / `CLAUDE.md`
       reflect the shipped `internal/locator`, `internal/repoconfig`, and
       `work repository` surface.
-- [ ] T070 [P] Update `docs/add/add-0001-work-system-architecture.md` §7.1–§7.2
+- [X] T070 [P] Update `docs/add/add-0001-work-system-architecture.md` §7.1–§7.2
       cross-references and any `docs/` command inventory to list `work repository`;
       confirm ADR-0014/0015/0016/0019 need no text edit (plan Phase 0 note).
-- [ ] T071 Code-quality pass on `internal/locator`, `internal/repoconfig`, and the
+- [X] T071 Code-quality pass on `internal/locator`, `internal/repoconfig`, and the
       new `internal/cli/repository*.go` (comments preserve *why* per CLAUDE.md; no
       process metadata in comments; public API documented).
 
