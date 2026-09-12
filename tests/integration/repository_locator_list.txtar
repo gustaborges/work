@@ -1,0 +1,28 @@
+# S1 — `work repository locator list [--json]`: human + json shapes, the
+# in_policy flag, purity. Covers US5; contracts/resolution-policy.md.
+
+work repository locator list
+stdout 'work-reference/filesystem-repository-locator'
+stdout '\(in policy\)'
+
+work repository locator list --json
+stdout '"ref": "work-reference/filesystem-repository-locator"'
+stdout '"accepts"'
+stdout '"name"'
+stdout '"git_fetch_urls"'
+stdout '"query"'
+stdout '"in_policy": true'
+
+registerlocator acme corp-index name query
+
+work repository locator list
+stdout 'acme/corp-index'
+
+work repository locator list --json
+stdout '"ref": "acme/corp-index"'
+stdout '"in_policy": false'
+
+# Purity: listing twice in a row does not change work.json.
+cp $WORK_HOME/config/work.json before.json
+work repository locator list --json
+cmp $WORK_HOME/config/work.json before.json

@@ -19,9 +19,13 @@ stdout '(?m)^Setup:$'
 stdout '(?m)^  shell-init '
 stdout '(?m)^  completion '
 
-# Empty groups are not printed (SC-005: zero empty groups).
+# F3: Administration lists exactly `repository`, appearing once.
+stdout '(?m)^Administration:$'
+stdout '(?m)^  repository '
+stdout -count=1 'repository  '
+
+# Inside a Work is still empty and not printed (SC-005: zero empty groups).
 ! stdout 'Inside a Work'
-! stdout 'Administration'
 
 # The footer and usage line are present.
 stdout '(?m)^Usage:$'

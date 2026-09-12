@@ -35,6 +35,10 @@ func TestStdoutCarriesOnlyStableLines(t *testing.T) {
 	s := startSplit(t, bin, env, "start", repo,
 		"--workspace", ws, "--base", "main", "--slug", "split", "--prefix", "{slug}")
 
+	// F3 first-run search-root prompt (fresh WORK_HOME).
+	s.expectUI("Repository search root")
+	s.send(t.TempDir() + "\r")
+
 	s.expectUI("Create Work")
 	s.send("y")
 	s.expectOut("work: created ")

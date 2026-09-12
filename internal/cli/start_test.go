@@ -7,10 +7,40 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/gittest"
 	"github.com/gustaborges/work/seed"
 )
+
+// seedRepoAt creates a git repository at exactly dir (unlike gittest.Repo,
+// which always uses a fresh t.TempDir()), so its basename can be chosen to
+// match a `work start <name>` lookup.
+func seedRepoAt(t *testing.T, dir string) string {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gittest.Git(t, dir, "init", "-q", "-b", "main")
+	gittest.Git(t, dir, "commit", "-q", "--allow-empty", "-m", "init")
+	return dir
+}
+
+// writeRepositoryRoot pre-configures repository_roots = [root] in home's
+// config/work.json — Phase 3 has no `work repository root add` CLI yet, so
+// tests write the file directly.
+func writeRepositoryRoot(t *testing.T, home, root string) {
+	t.Helper()
+	cfgPath := filepath.Join(home, "config", "work.json")
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	cfg.RepositoryRoots = []string{root}
+	if err := config.Save(cfgPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func needSeed(t *testing.T) {
 	t.Helper()
@@ -19,11 +49,11 @@ func needSeed(t *testing.T) {
 	}
 }
 
-// runWork executes `work` with args in an isolated WORK_HOME and returns
-// stdout, stderr, and the mapped exit code.
-func runWork(t *testing.T, args ...string) (stdout, stderr string, code int) {
+// runWorkHome executes `work` with args against the given WORK_HOME and
+// returns stdout, stderr, and the mapped exit code.
+func runWorkHome(t *testing.T, home string, args ...string) (stdout, stderr string, code int) {
 	t.Helper()
-	t.Setenv("WORK_HOME", filepath.Join(t.TempDir(), "dothome"))
+	t.Setenv("WORK_HOME", home)
 	root := newRootCmd()
 	var out, errb bytes.Buffer
 	root.SetOut(&out)
@@ -36,6 +66,12 @@ func runWork(t *testing.T, args ...string) (stdout, stderr string, code int) {
 		msg += diag.Format(err) + "\n"
 	}
 	return out.String(), msg, diag.ExitCode(err)
+}
+
+// runWork executes `work` with args in a fresh, isolated WORK_HOME.
+func runWork(t *testing.T, args ...string) (stdout, stderr string, code int) {
+	t.Helper()
+	return runWorkHome(t, filepath.Join(t.TempDir(), "dothome"), args...)
 }
 
 func TestStartRejectsJSON(t *testing.T) {
@@ -103,6 +139,99 @@ func TestStartBranchCollision(t *testing.T) {
 		"--base", "main", "--slug", "taken", "--prefix", "{slug}", "--yes")
 	if code != 14 {
 		t.Fatalf("exit = %d, want 14", code)
+	}
+}
+
+func TestStartByNameSingleMatchNonInteractive(t *testing.T) {
+	needSeed(t)
+	home := filepath.Join(t.TempDir(), "dothome")
+	root := t.TempDir()
+	seedRepoAt(t, filepath.Join(root, "payments"))
+	writeRepositoryRoot(t, home, root)
+
+	out, errb, code := runWorkHome(t, home, "start", "payments",
+		"--workspace", filepath.Join(t.TempDir(), "ws"),
+		"--base", "main", "--slug", "s", "--prefix", "{slug}", "--yes")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\nstderr: %s", code, errb)
+	}
+	if !strings.Contains(out, "work: created") {
+		t.Errorf("stdout missing success line: %s", out)
+	}
+}
+
+func TestStartByNameNoRootsIsNoRepositoryFound(t *testing.T) {
+	needSeed(t)
+	_, errb, code := runWork(t, "start", "payments",
+		"--workspace", filepath.Join(t.TempDir(), "ws"),
+		"--base", "main", "--slug", "s", "--prefix", "{slug}", "--yes")
+	if code != 26 {
+		t.Fatalf("exit = %d, want 26\nstderr: %s", code, errb)
+	}
+}
+
+// TestStartByNameEmptyPolicyIsNoEligibleLocatorDistinctFromNoRepositoryFound
+// exercises no-eligible-locator (27) via the CLI and confirms it is a
+// different token/exit from no-repository-found (26) — an empty policy is a
+// configuration problem, not "nothing matched" (research R5).
+func TestStartByNameEmptyPolicyIsNoEligibleLocatorDistinctFromNoRepositoryFound(t *testing.T) {
+	needSeed(t)
+	home := filepath.Join(t.TempDir(), "dothome")
+	root := t.TempDir()
+	writeRepositoryRoot(t, home, root)
+
+	if _, _, code := runWorkHome(t, home, "repository", "policy", "remove",
+		"work-reference/filesystem-repository-locator"); code != 0 {
+		t.Fatalf("policy remove: exit = %d", code)
+	}
+
+	_, errb, code := runWorkHome(t, home, "start", "payments",
+		"--workspace", filepath.Join(t.TempDir(), "ws"),
+		"--base", "main", "--slug", "s", "--prefix", "{slug}", "--yes")
+	if code != 27 {
+		t.Fatalf("exit = %d, want 27\nstderr: %s", code, errb)
+	}
+	if !strings.Contains(errb, "no-eligible-locator") {
+		t.Errorf("stderr missing token: %s", errb)
+	}
+}
+
+func TestStartByNameAmbiguousNonInteractiveIsRepositoryAmbiguous(t *testing.T) {
+	needSeed(t)
+	home := filepath.Join(t.TempDir(), "dothome")
+	root := t.TempDir()
+	seedRepoAt(t, filepath.Join(root, "a", "payments"))
+	seedRepoAt(t, filepath.Join(root, "b", "payments"))
+	writeRepositoryRoot(t, home, root)
+	ws := filepath.Join(t.TempDir(), "ws")
+
+	_, errb, code := runWorkHome(t, home, "start", "payments",
+		"--workspace", ws, "--base", "main", "--slug", "s", "--prefix", "{slug}", "--yes")
+	if code != 30 {
+		t.Fatalf("exit = %d, want 30\nstderr: %s", code, errb)
+	}
+	if !strings.Contains(errb, "repository-ambiguous") {
+		t.Errorf("stderr missing token: %s", errb)
+	}
+	// No selector opened, no Work, no config write (FR-033, SC-010).
+	if _, err := os.Stat(ws); err == nil {
+		t.Errorf("workspace root was created on an ambiguous non-interactive resolution")
+	}
+}
+
+func TestStartPathStillBypassesLocator(t *testing.T) {
+	// work start <path> must remain byte-for-byte the F1 journey: no
+	// repository_roots configured at all, and the path still resolves.
+	needSeed(t)
+	repo := gittest.Repo(t)
+	out, errb, code := runWork(t, "start", repo,
+		"--workspace", filepath.Join(t.TempDir(), "ws"),
+		"--base", "main", "--slug", "s", "--prefix", "{slug}", "--yes")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\nstderr: %s", code, errb)
+	}
+	if !strings.Contains(out, "work: created") {
+		t.Errorf("stdout missing success line: %s", out)
 	}
 }
 

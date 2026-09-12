@@ -114,7 +114,24 @@ func (m inputModel) Update(msg tea.Msg) (stepModel, tea.Cmd) {
 		return m, nil
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
+	case tea.PasteMsg:
+		return m.handlePaste(msg.Content)
 	}
+	return m, nil
+}
+
+// handlePaste inserts bracketed-paste content at the cursor. The field is
+// single-line, so embedded newlines (a multi-line clipboard selection) are
+// collapsed to spaces rather than silently dropped.
+func (m inputModel) handlePaste(text string) (stepModel, tea.Cmd) {
+	text = collapseToLine(text)
+	if text == "" {
+		return m, nil
+	}
+	r := []rune(text)
+	m.value = append(m.value[:m.cursorAt], append(r, m.value[m.cursorAt:]...)...)
+	m.cursorAt += len(r)
+	m.curErr = ""
 	return m, nil
 }
 
@@ -214,7 +231,7 @@ func (m inputModel) cursorPos() (tea.Position, bool) {
 	}
 	y := 1 // past the title line
 	if m.spec.Description != "" {
-		y++
+		y += lineCount(Wrap(m.spec.Description, m.w))
 	}
 	x := DisplayWidth("❯ ") + DisplayWidth(string(m.value[:m.cursorAt]))
 	return tea.Position{X: x, Y: y}, true
@@ -229,7 +246,7 @@ func (m inputModel) body(width, height int) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n", m.th.Primary.Render(m.spec.Title))
 	if m.spec.Description != "" {
-		fmt.Fprintf(&b, "%s\n", m.th.Muted.Render(m.spec.Description))
+		fmt.Fprintf(&b, "%s\n", m.th.Muted.Render(Wrap(m.spec.Description, m.w)))
 	}
 
 	shown := string(m.value)
@@ -240,7 +257,7 @@ func (m inputModel) body(width, height int) string {
 
 	switch {
 	case m.curErr != "":
-		fmt.Fprintf(&b, "%s%s", m.th.Danger.Render("✘ "), TruncTail(m.curErr, max(m.w-2, 1)))
+		fmt.Fprintf(&b, "%s%s", m.th.Danger.Render("✘ "), Wrap(m.curErr, max(m.w-2, 1)))
 	case m.showWait:
 		b.WriteString(m.th.Muted.Render("⋯ checking…"))
 	default:

@@ -67,6 +67,7 @@ func TestDiagBorderInteractiveVsPiped(t *testing.T) {
 				"--slug", "boom", "--prefix", "{slug}", "--yes"}
 			if interactive {
 				c := newConsole(t, bin, env, args...)
+				answerFirstRunRootPrompt(c, t.TempDir())
 				code := c.wait()
 				return c.screen(), code
 			}

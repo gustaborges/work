@@ -201,6 +201,25 @@ func ptyEnv(t *testing.T) (env []string, home, workHome string) {
 	return env, home, workHome
 }
 
+// answerFirstRunRootPrompt answers the F3 first-run "Repository search root"
+// prompt only (the workspace root was already supplied via --workspace, so
+// that prompt does not appear — contracts/cli-work-start.md §First-run
+// setup). Every interactive fresh-install PTY scenario needs this once
+// (SC-013): a fresh WORK_HOME always has zero configured search roots.
+func answerFirstRunRootPrompt(c *console, root string) {
+	c.expect("Repository search root")
+	c.send(root + "\r")
+}
+
+// answerFirstRunSetup answers both up-front first-run prompts — workspace
+// root then repository search root — for a scenario that supplies neither via
+// flag.
+func answerFirstRunSetup(c *console, ws, root string) {
+	c.expect("Workspace root")
+	c.send(ws + "\r")
+	answerFirstRunRootPrompt(c, root)
+}
+
 func makeRepo(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -258,9 +277,11 @@ func TestStartNoSourcePrompts(t *testing.T) {
 	makeRepo(t, repo)
 	ws := filepath.Join(homeDir, "ws")
 
-	// Every required value except SOURCE is a flag, so only the path is asked.
+	// Every required value except SOURCE is a flag, so only the F3 first-run
+	// search-root prompt (fresh WORK_HOME) and the path are asked.
 	c := newConsole(t, bin, env, "start",
 		"--workspace", ws, "--base", "main", "--slug", "guided", "--prefix", "{slug}", "--yes")
+	answerFirstRunRootPrompt(c, t.TempDir())
 	c.expect("repository path")
 	c.send(repo + "\r")
 	c.expect("work: created ")
@@ -290,9 +311,11 @@ func TestInteractiveRecovery(t *testing.T) {
 	gitIn(t, repo, "branch", "taken")
 	ws := filepath.Join(homeDir, "ws")
 
-	// Only SOURCE and the slug are prompted.
+	// Only SOURCE and the slug are prompted (plus the F3 first-run search
+	// root, since this is a fresh WORK_HOME).
 	c := newConsole(t, bin, env, "start",
 		"--workspace", ws, "--base", "main", "--prefix", "{slug}", "--yes")
+	answerFirstRunRootPrompt(c, t.TempDir())
 
 	// Bad path -> the error is shown inside the live field; the step does not
 	// exit and the field stays open for a correction.
@@ -341,9 +364,13 @@ func TestInteractiveCancelAtConfirm(t *testing.T) {
 	makeRepo(t, repo)
 	ws := filepath.Join(homeDir, "ws")
 
-	// No --yes, so the confirm prompt is shown.
+	// No --yes, so the confirm prompt is shown. The F3 first-run search-root
+	// prompt appears first (fresh WORK_HOME) and is persisted immediately —
+	// unlike the workspace root, its persistence does not wait on this
+	// declined confirmation, so the second run below does not see it again.
 	c := newConsole(t, bin, env, "start", repo,
 		"--workspace", ws, "--base", "main", "--slug", "cancelme", "--prefix", "{slug}")
+	answerFirstRunRootPrompt(c, t.TempDir())
 	c.expect("Create Work")
 	c.send("n") // Reject -> submit
 	if code := c.wait(); code != 20 {
@@ -403,6 +430,7 @@ func TestInteractiveBaseBranchTabs(t *testing.T) {
 	// select it.
 	c := newConsole(t, bin, env, "start", clone,
 		"--workspace", ws, "--slug", "picked", "--prefix", "{slug}", "--yes")
+	answerFirstRunRootPrompt(c, t.TempDir())
 	c.expect("Base branch")
 	c.expect("Local")
 	c.expect("Remote")

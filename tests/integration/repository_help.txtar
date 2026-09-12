@@ -1,0 +1,16 @@
+# S12 — `work repository` with no subcommand prints grouped help for
+# locator/policy/root and exits 0 in every stream configuration; --json is
+# still rejected (mutation-style). Covers US5; FR-022, FR-029.
+
+work repository
+stdout 'locator'
+stdout 'policy'
+stdout 'root'
+! stdout '\x1b'
+
+work --help
+stdout '(?m)^Administration:$'
+stdout '(?m)^  repository  '
+
+! work repository --json
+stderr 'error: usage:'

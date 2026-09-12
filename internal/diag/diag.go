@@ -41,6 +41,15 @@ var (
 	DirtyWorktree      = Category{Token: "dirty-worktree", Code: 23}
 	ArchiveFailed      = Category{Token: "archive-failed", Code: 24}
 	SnapshotUnreadable = Category{Token: "snapshot-unreadable", Code: 25}
+
+	// F3 (local clone locator) categories. See internal/locator for the
+	// resolution outcomes that produce 26-29; repository-ambiguous (30) is
+	// constructed by the CLI when a resolved ambiguity cannot be prompted.
+	NoRepositoryFound          = Category{Token: "no-repository-found", Code: 26}
+	NoEligibleLocator          = Category{Token: "no-eligible-locator", Code: 27}
+	RepositoryCandidateInvalid = Category{Token: "repository-candidate-invalid", Code: 28}
+	LocatorFailed              = Category{Token: "locator-failed", Code: 29}
+	RepositoryAmbiguous        = Category{Token: "repository-ambiguous", Code: 30}
 )
 
 // All lists every category including OK, ordered by exit code. Tests assert the
@@ -49,7 +58,8 @@ var All = []Category{
 	OK, Usage, InvalidPath, UnusableRepo, NoBaseBranch, InvalidBranchName,
 	BranchCollision, DestinationUnavailable, BootstrapFailed, MaterializationFailed,
 	Cancelled, TargetNotFound, TargetArchived, DirtyWorktree, ArchiveFailed,
-	SnapshotUnreadable,
+	SnapshotUnreadable, NoRepositoryFound, NoEligibleLocator, RepositoryCandidateInvalid,
+	LocatorFailed, RepositoryAmbiguous,
 }
 
 // Error is a failure tagged with a Category. Msg is shown to the user; Err, when

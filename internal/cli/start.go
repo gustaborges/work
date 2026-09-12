@@ -18,8 +18,10 @@ import (
 	"github.com/gustaborges/work/internal/create"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/gitx"
+	"github.com/gustaborges/work/internal/locator"
 	"github.com/gustaborges/work/internal/present"
 	"github.com/gustaborges/work/internal/registry"
+	"github.com/gustaborges/work/internal/repoconfig"
 	"github.com/gustaborges/work/internal/reporef"
 	"github.com/gustaborges/work/internal/shellintegration"
 	"github.com/gustaborges/work/internal/starter"
@@ -113,6 +115,13 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	if err := bootstrap.EnsureSeed(home); err != nil {
 		return err
 	}
+	// EnsureSeed may have just appended the seed Locator to the policy (first
+	// run only, bootstrap.LocatorPolicyEntry); reload so locatorDeps below
+	// reflects it instead of the pre-bootstrap snapshot.
+	cfg, err = config.Load(home.ConfigFile())
+	if err != nil {
+		return err
+	}
 	if err := gitx.Preflight(); err != nil {
 		return diag.Wrap(diag.BootstrapFailed, err, "git is required but not usable")
 	}
@@ -133,42 +142,117 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		return err
 	}
 
+	// First-run setup (interactive only, before any other step): ensure a
+	// workspace root and at least one repository search root exist, each with
+	// a purpose line. First-run only — once both are configured neither
+	// prompt appears again and an already-configured install is
+	// byte-identical to F1/F2.5. Persisted as a single config.Save here,
+	// before the eager SOURCE-argv resolution below, so an explicit
+	// `work start <name>` also resolves through the just-configured root
+	// (contracts/cli-work-start.md §First-run setup, research R21).
+	if interactive {
+		if err := runFirstRunSetup(ctx, pio, home, cfg, f); err != nil {
+			return err
+		}
+	}
+
 	// Values the flow collects. The validation closures side-effect these as
 	// each step is accepted, so the interactive wizard and the non-interactive
 	// resolution below share exactly the same rules (FR-005, FR-029).
 	var (
-		repoPath      string
-		repoName      string
-		prefix        string
-		slug, branch  string
-		base          basebranch.Choice
-		baseResolved  bool
-		workspaceRoot string
+		repoPath         string
+		repoName         string
+		prefix           string
+		slug, branch     string
+		base             basebranch.Choice
+		baseResolved     bool
+		workspaceRoot    string
+		candidates       []locator.Candidate
+		ambiguityPending bool
 	)
 
-	// 1+2. SOURCE → Starter → validated repository path. The validation runs
-	// inside the interactive field: an invalid or unusable path is shown in the
-	// live frame and replaced on the next attempt, so a rejected path never
-	// reaches terminal history and the journey is not restarted (FR-005, S4).
-	validatePath := func(_ context.Context, s string) error {
+	// locatorDeps feeds internal/locator.Resolve from the loaded config: the
+	// policy and search roots are read-only here, exactly like cfg itself.
+	locatorDeps := locator.Deps{
+		PluginsDir: home.PluginsDir(),
+		Policy:     cfg.RepositoryResolution.Locators,
+		Roots:      cfg.RepositoryRoots,
+		Registry:   reg,
+	}
+
+	// 1+2. SOURCE → Starter → a Repository Reference, then either direct path
+	// validation or resolution through the policy. The validation runs inside
+	// the interactive field: an invalid/unusable path or an unresolved name is
+	// shown in the live frame and replaced on the next attempt, so a rejected
+	// value never reaches terminal history and the journey is not restarted
+	// (FR-005, S4). A path reference short-circuits to reporef.ValidatePath and
+	// never reaches internal/locator (ADR-0014); every other shape resolves
+	// through the policy (contracts/cli-work-start.md §Interactive flow).
+	validatePath := func(ctx context.Context, s string) error {
 		s = strings.TrimSpace(s)
 		if s == "" {
-			return errors.New("a path is required")
+			return errors.New("a path or name is required")
 		}
 		ref, err := starter.Invoke(home.PluginsDir(), starterComp, s)
-		if err == nil {
-			var normalized string
-			normalized, err = reporef.ValidatePath(ref.Path)
-			if err == nil {
-				repoPath = normalized
-				repoName = filepath.Base(normalized)
-				return nil
+		if err != nil {
+			if retryable(err, diag.InvalidPath, diag.UnusableRepo) {
+				return err // shown in-frame; the user can correct it
 			}
+			return present.Fatal(err)
 		}
-		if retryable(err, diag.InvalidPath, diag.UnusableRepo) {
-			return err // shown in-frame; the user can correct it
+
+		if ref.Path != "" {
+			normalized, verr := reporef.ValidatePath(ref.Path)
+			if verr != nil {
+				if retryable(verr, diag.InvalidPath, diag.UnusableRepo) {
+					return verr
+				}
+				return present.Fatal(verr)
+			}
+			repoPath = normalized
+			repoName = filepath.Base(normalized)
+			return nil
 		}
-		return present.Fatal(err)
+
+		out, rerr := locator.Resolve(ctx, locatorDeps, locator.Reference{
+			GitFetchURLs: ref.GitFetchURLs,
+			Name:         ref.Name,
+			Query:        ref.Query,
+		})
+		if rerr != nil {
+			// no-repository-found is the one outcome the interactive step
+			// recovers from in-frame (research R5, R9); the other categories
+			// (no-eligible-locator, repository-candidate-invalid,
+			// locator-failed) are configuration/operational and terminal.
+			if retryable(rerr, diag.NoRepositoryFound) {
+				return rerr
+			}
+			return present.Fatal(rerr)
+		}
+		if out.Resolved != "" {
+			repoPath = out.Resolved
+			repoName = filepath.Base(out.Resolved)
+			return nil
+		}
+		// Ambiguous outcome (>= 2 candidates): accept the step and stash the
+		// candidates. The caller decides what happens next: interactively, the
+		// conditional Repository present.Select step below renders them;
+		// non-interactively (or an explicit-argv SOURCE with no TTY), the
+		// caller maps this to repository-ambiguous (30) with no selector
+		// opened (FR-011, FR-013, FR-033, research R9).
+		candidates = out.Candidates
+		ambiguityPending = true
+		return nil
+	}
+
+	// ambiguousErr is the repository-ambiguous (30) diagnostic for the
+	// non-interactive / explicit-argv path (contracts/cli-work-start.md
+	// §Non-interactive flow, FR-033).
+	ambiguousErr := func() error {
+		return diag.New(diag.RepositoryAmbiguous,
+			fmt.Sprintf("%d repositories matched this reference", len(candidates))).
+			WithSummary("More than one local clone matched what you typed.").
+			WithHint("Pass a more specific reference, or adjust repository_roots.")
 	}
 
 	// 4+5. Slug → derived branch name, validated and collision-checked before
@@ -241,6 +325,12 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 				return err
 			}
 		}
+		// Non-interactive (or an explicit SOURCE with no TTY to prompt on)
+		// cannot open the Repository selector: an ambiguous match fails here
+		// with no Work, branch, worktree, or config write (FR-033, SC-010).
+		if ambiguityPending && !interactive {
+			return ambiguousErr()
+		}
 	}
 
 	switch {
@@ -292,16 +382,33 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	if interactive {
 		var steps []present.Step
 
-		if repoPath == "" {
+		if repoPath == "" && !ambiguityPending {
 			steps = append(steps, present.InputStep("path", func(present.Answers) (present.InputSpec, error) {
 				return present.InputSpec{
 					Title:    "Local repository path",
 					Initial:  strings.TrimSpace(source),
 					Validate: validatePath,
-					Receipt:  func(string) string { return repoPath },
+					Receipt: func(accepted string) string {
+						if repoPath != "" {
+							return repoPath
+						}
+						return accepted // ambiguous: the step shows what was typed
+					},
 				}, nil
 			}))
 		}
+
+		// A conditional Repository step: skipped without rendering unless the
+		// Source step just resolved to >= 2 candidates (research R9,
+		// contracts/cli-work-start.md §Interactive flow). It is always present
+		// in the step list — never resumed, never re-added — because the
+		// ambiguity is only known once the Source step above has run.
+		steps = append(steps, present.SelectStep("repository", func(present.Answers) (present.SelectSpec[locator.Candidate], error) {
+			if !ambiguityPending {
+				return present.SelectSpec[locator.Candidate]{}, present.StepResolved(locator.Candidate{Path: repoPath})
+			}
+			return candidateSelectSpec(candidates), nil
+		}))
 
 		if prefix == "" && len(prefixes) > 1 {
 			steps = append(steps, present.SelectStep("prefix", func(present.Answers) (present.SelectSpec[string], error) {
@@ -316,6 +423,13 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			steps = append(steps, present.InputStep("slug", func(a present.Answers) (present.InputSpec, error) {
 				if p := a.String("prefix"); p != "" {
 					prefix = p
+				}
+				// The Repository step (immediately before this one) resolves an
+				// ambiguous match; sync it here — before this step's own build
+				// runs — so the slug's collision check below sees the chosen
+				// repository, not the pre-selection empty repoPath.
+				if rv, ok := a.Value("repository").(locator.Candidate); ok && rv.Path != "" {
+					repoPath, repoName = rv.Path, filepath.Base(rv.Path)
 				}
 				// --slug can only be resolved here (not eagerly) when SOURCE was
 				// prompted: the collision check needs the repository path.
@@ -458,6 +572,90 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	return nil
 }
 
+// runFirstRunSetup asks for the workspace root and/or a repository search
+// root when either is still unconfigured (contracts/cli-work-start.md
+// §First-run setup, research R21). It mutates cfg in place and persists both
+// values in a single config.Save before returning; a cancelled prompt
+// (Ctrl-C/Esc) returns diag.Cancelled with cfg unchanged on disk. A no-op
+// when both are already configured, or when a --workspace flag covers the
+// only missing piece.
+func runFirstRunSetup(ctx context.Context, pio present.IO, home workhome.Home, cfg *config.Config, f startFlags) error {
+	wantWorkspace, wantRoot := repoconfig.NeedsSetup(cfg)
+	wantWorkspace = wantWorkspace && !f.workspaceSet
+	if !wantWorkspace && !wantRoot {
+		return nil
+	}
+
+	var setupWorkspace, setupRoot string
+	var steps []present.Step
+
+	if wantWorkspace {
+		suggested, serr := workspace.SuggestDefault()
+		if serr != nil {
+			return diag.Wrap(diag.Usage, serr, "cannot suggest a workspace root")
+		}
+		steps = append(steps, present.InputStep("setup-workspace", func(present.Answers) (present.InputSpec, error) {
+			return present.InputSpec{
+				Title: "Workspace root",
+				Description: "where Work stores and organises worktrees — in-progress and " +
+					"archived Works live here, kept separate from your source clones",
+				Initial: suggested,
+				Validate: func(_ context.Context, raw string) error {
+					a, verr := workspace.Validate(raw, cfg.RepositoryRoots)
+					if verr != nil {
+						return verr // shown in-frame; re-promptable
+					}
+					// Lay out in-progress/archived now (not deferred to the
+					// final persist below) so a search root typed at the next
+					// prompt can be checked for overlap against a real
+					// directory (quickstart S13: rejecting $WS/in-progress).
+					if err := workspace.EnsureLayout(a); err != nil {
+						return present.Fatal(err)
+					}
+					setupWorkspace = a
+					return nil
+				},
+				Receipt: func(string) string { return setupWorkspace },
+			}, nil
+		}))
+	}
+
+	if wantRoot {
+		steps = append(steps, present.InputStep("setup-root", func(present.Answers) (present.InputSpec, error) {
+			return present.InputSpec{
+				Title: "Repository search root",
+				Description: "a directory that holds your Git clones, so `work start <name>` can find " +
+					"them without a full path — add more later with `work repository root add`",
+				Validate: func(_ context.Context, raw string) error {
+					probe := *cfg
+					if setupWorkspace != "" {
+						probe.Workspace = setupWorkspace
+					}
+					a, verr := repoconfig.ValidateRoot(&probe, raw)
+					if verr != nil {
+						return verr // shown in-frame; re-promptable (overlap included)
+					}
+					setupRoot = a
+					return nil
+				},
+				Receipt: func(string) string { return setupRoot },
+			}, nil
+		}))
+	}
+
+	if _, err := present.Wizard(ctx, pio, present.WizardSpec{Title: "Set up Work", Steps: steps}); err != nil {
+		return err // Ctrl-C/Esc -> diag.Cancelled (exit 20); nothing persisted
+	}
+
+	if setupWorkspace != "" {
+		cfg.Workspace = setupWorkspace
+	}
+	if setupRoot != "" {
+		cfg.RepositoryRoots = append(cfg.RepositoryRoots, setupRoot)
+	}
+	return config.Save(home.ConfigFile(), cfg)
+}
+
 // requireNonInteractiveFlags enforces that a non-interactive run carries every
 // value the flow needs, naming the first missing one.
 func requireNonInteractiveFlags(source string, cfg *config.Config, f startFlags) error {
@@ -499,6 +697,28 @@ func stringOptions(vals []string) []present.Option[string] {
 		opts[i] = present.Option[string]{Value: v, Primary: v}
 	}
 	return opts
+}
+
+// candidateSelectSpec builds the Repository selector shown only when the
+// Source step resolved to >= 2 candidates: primary line the resolved absolute
+// path (what actually disambiguates two clones of the same project),
+// secondary line the first remote fetch URL or the parent directory
+// (locator.Candidate.Remote, research R15). The list collapses to a
+// "name (secondary)" receipt on accept (contracts/cli-work-start.md
+// §Interactive flow, quickstart S5).
+func candidateSelectSpec(candidates []locator.Candidate) present.SelectSpec[locator.Candidate] {
+	opts := make([]present.Option[locator.Candidate], len(candidates))
+	for i, c := range candidates {
+		opts[i] = present.Option[locator.Candidate]{Value: c, Primary: c.Path, Secondary: c.Remote}
+	}
+	return present.SelectSpec[locator.Candidate]{
+		Title:      "Repository",
+		Filterable: true,
+		Options:    opts,
+		Receipt: func(o present.Option[locator.Candidate]) string {
+			return fmt.Sprintf("%s (%s)", filepath.Base(o.Value.Path), o.Value.Remote)
+		},
+	}
 }
 
 // baseBranchSpec builds the base-branch selector: the choices grouped into
