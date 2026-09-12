@@ -170,22 +170,26 @@ func TestStartByNameNoRootsIsNoRepositoryFound(t *testing.T) {
 	}
 }
 
-func TestStartByNameAmbiguousIsTerminalInPhase3(t *testing.T) {
-	// Phase 3 (US1) only wires the single-match outcome; the ambiguity picker
-	// and the non-interactive repository-ambiguous exit (30) land in Phase 4.
-	// Until then, >= 2 matches is a terminal diagnostic (T029).
+func TestStartByNameAmbiguousNonInteractiveIsRepositoryAmbiguous(t *testing.T) {
 	needSeed(t)
 	home := filepath.Join(t.TempDir(), "dothome")
 	root := t.TempDir()
 	seedRepoAt(t, filepath.Join(root, "a", "payments"))
 	seedRepoAt(t, filepath.Join(root, "b", "payments"))
 	writeRepositoryRoot(t, home, root)
+	ws := filepath.Join(t.TempDir(), "ws")
 
-	_, _, code := runWorkHome(t, home, "start", "payments",
-		"--workspace", filepath.Join(t.TempDir(), "ws"),
-		"--base", "main", "--slug", "s", "--prefix", "{slug}", "--yes")
-	if code == 0 {
-		t.Fatalf("exit = 0, want a non-zero (non-MVP-scoped) outcome for an ambiguous name")
+	_, errb, code := runWorkHome(t, home, "start", "payments",
+		"--workspace", ws, "--base", "main", "--slug", "s", "--prefix", "{slug}", "--yes")
+	if code != 30 {
+		t.Fatalf("exit = %d, want 30\nstderr: %s", code, errb)
+	}
+	if !strings.Contains(errb, "repository-ambiguous") {
+		t.Errorf("stderr missing token: %s", errb)
+	}
+	// No selector opened, no Work, no config write (FR-033, SC-010).
+	if _, err := os.Stat(ws); err == nil {
+		t.Errorf("workspace root was created on an ambiguous non-interactive resolution")
 	}
 }
 

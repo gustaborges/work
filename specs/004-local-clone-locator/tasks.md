@@ -261,15 +261,15 @@ tip.
 
 ### Tests for User Story 2
 
-- [ ] T032 [P] [US2] PTY test in `tests/integration/start_by_name_test.go`: two
+- [X] T032 [P] [US2] PTY test in `tests/integration/start_by_name_test.go`: two
       matches — a Repository select step appears with primary = absolute path,
       secondary = remote URL or parent dir, bounded/filterable/`❯` marker;
       choosing `$R2/payments` materialises the Work against it; step collapses to a
       `payments (…/mirror)` receipt; chain not resumed (quickstart S5).
-- [ ] T033 [P] [US2] Selector-geometry assertions for the Repository step at
+- [X] T033 [P] [US2] Selector-geometry assertions for the Repository step at
       40×10 / 80×24 / 160×50 (extend `tests/integration/selector_geometry_test.go`
       or a new file), per plan Testing.
-- [ ] T034 [P] [US2] `testscript` / non-interactive test
+- [X] T034 [P] [US2] `testscript` / non-interactive test
       (`tests/integration/*ambiguity*` or extend an existing txtar): explicit
       `SOURCE` resolving to ≥2 repos → exit 30 `repository-ambiguous` with the
       narrow-the-reference hint, **no selector**, no branch/worktree/dir/snapshot/
@@ -277,19 +277,19 @@ tip.
 
 ### Implementation for User Story 2
 
-- [ ] T035 [US2] In `internal/cli/start.go`, on `Outcome.Candidates` from the
+- [X] T035 [US2] In `internal/cli/start.go`, on `Outcome.Candidates` from the
       Source step: stash the deduped candidates, set `ambiguityPending`, accept the
       step (research.md R9).
-- [ ] T036 [US2] Add the conditional `repository` `present.SelectStep` in
+- [X] T036 [US2] Add the conditional `repository` `present.SelectStep` in
       `internal/cli/start.go`, shown only when `ambiguityPending`: options are the
       candidates (primary = resolved path, secondary = remote/parent per T015);
       on accept `repoPath` is the chosen path and the chain is not resumed
       (FR-011, FR-013, contracts/cli-work-start.md).
-- [ ] T037 [US2] In the non-interactive / explicit-argv path in
+- [X] T037 [US2] In the non-interactive / explicit-argv path in
       `internal/cli/start.go`, map `Outcome.Candidates` to `repository-ambiguous`
       (exit 30) with a `*diag.Error` carrying the "pass a more specific reference
       or adjust repository_roots" hint; open no selector (FR-033, research.md R5).
-- [ ] T038 [US2] Verify (test + code) that every ambiguity/failure exit from the
+- [X] T038 [US2] Verify (test + code) that every ambiguity/failure exit from the
       Source or Repository step returns before `create.Run`, leaving zero branch,
       worktree, Work dir, snapshot, or `works` row (FR-037, SC-010).
 

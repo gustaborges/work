@@ -145,13 +145,15 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	// each step is accepted, so the interactive wizard and the non-interactive
 	// resolution below share exactly the same rules (FR-005, FR-029).
 	var (
-		repoPath      string
-		repoName      string
-		prefix        string
-		slug, branch  string
-		base          basebranch.Choice
-		baseResolved  bool
-		workspaceRoot string
+		repoPath         string
+		repoName         string
+		prefix           string
+		slug, branch     string
+		base             basebranch.Choice
+		baseResolved     bool
+		workspaceRoot    string
+		candidates       []locator.Candidate
+		ambiguityPending bool
 	)
 
 	// locatorDeps feeds internal/locator.Resolve from the loaded config: the
@@ -217,13 +219,25 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			repoName = filepath.Base(out.Resolved)
 			return nil
 		}
-		// Ambiguous outcome (>= 2 candidates): the Repository present.Select
-		// step and the non-interactive repository-ambiguous exit (30) land in
-		// a later slice; until then this is a terminal diagnostic.
-		return present.Fatal(diag.New(diag.RepositoryAmbiguous,
-			"multiple repositories matched this reference; disambiguation is not yet available").
+		// Ambiguous outcome (>= 2 candidates): accept the step and stash the
+		// candidates. The caller decides what happens next: interactively, the
+		// conditional Repository present.Select step below renders them;
+		// non-interactively (or an explicit-argv SOURCE with no TTY), the
+		// caller maps this to repository-ambiguous (30) with no selector
+		// opened (FR-011, FR-013, FR-033, research R9).
+		candidates = out.Candidates
+		ambiguityPending = true
+		return nil
+	}
+
+	// ambiguousErr is the repository-ambiguous (30) diagnostic for the
+	// non-interactive / explicit-argv path (contracts/cli-work-start.md
+	// §Non-interactive flow, FR-033).
+	ambiguousErr := func() error {
+		return diag.New(diag.RepositoryAmbiguous,
+			fmt.Sprintf("%d repositories matched this reference", len(candidates))).
 			WithSummary("More than one local clone matched what you typed.").
-			WithHint("Pass a more specific reference, or a direct path, for now."))
+			WithHint("Pass a more specific reference, or adjust repository_roots.")
 	}
 
 	// 4+5. Slug → derived branch name, validated and collision-checked before
@@ -296,6 +310,12 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 				return err
 			}
 		}
+		// Non-interactive (or an explicit SOURCE with no TTY to prompt on)
+		// cannot open the Repository selector: an ambiguous match fails here
+		// with no Work, branch, worktree, or config write (FR-033, SC-010).
+		if ambiguityPending && !interactive {
+			return ambiguousErr()
+		}
 	}
 
 	switch {
@@ -347,16 +367,33 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	if interactive {
 		var steps []present.Step
 
-		if repoPath == "" {
+		if repoPath == "" && !ambiguityPending {
 			steps = append(steps, present.InputStep("path", func(present.Answers) (present.InputSpec, error) {
 				return present.InputSpec{
 					Title:    "Local repository path",
 					Initial:  strings.TrimSpace(source),
 					Validate: validatePath,
-					Receipt:  func(string) string { return repoPath },
+					Receipt: func(accepted string) string {
+						if repoPath != "" {
+							return repoPath
+						}
+						return accepted // ambiguous: the step shows what was typed
+					},
 				}, nil
 			}))
 		}
+
+		// A conditional Repository step: skipped without rendering unless the
+		// Source step just resolved to >= 2 candidates (research R9,
+		// contracts/cli-work-start.md §Interactive flow). It is always present
+		// in the step list — never resumed, never re-added — because the
+		// ambiguity is only known once the Source step above has run.
+		steps = append(steps, present.SelectStep("repository", func(present.Answers) (present.SelectSpec[locator.Candidate], error) {
+			if !ambiguityPending {
+				return present.SelectSpec[locator.Candidate]{}, present.StepResolved(locator.Candidate{Path: repoPath})
+			}
+			return candidateSelectSpec(candidates), nil
+		}))
 
 		if prefix == "" && len(prefixes) > 1 {
 			steps = append(steps, present.SelectStep("prefix", func(present.Answers) (present.SelectSpec[string], error) {
@@ -371,6 +408,13 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			steps = append(steps, present.InputStep("slug", func(a present.Answers) (present.InputSpec, error) {
 				if p := a.String("prefix"); p != "" {
 					prefix = p
+				}
+				// The Repository step (immediately before this one) resolves an
+				// ambiguous match; sync it here — before this step's own build
+				// runs — so the slug's collision check below sees the chosen
+				// repository, not the pre-selection empty repoPath.
+				if rv, ok := a.Value("repository").(locator.Candidate); ok && rv.Path != "" {
+					repoPath, repoName = rv.Path, filepath.Base(rv.Path)
 				}
 				// --slug can only be resolved here (not eagerly) when SOURCE was
 				// prompted: the collision check needs the repository path.
@@ -554,6 +598,28 @@ func stringOptions(vals []string) []present.Option[string] {
 		opts[i] = present.Option[string]{Value: v, Primary: v}
 	}
 	return opts
+}
+
+// candidateSelectSpec builds the Repository selector shown only when the
+// Source step resolved to >= 2 candidates: primary line the resolved absolute
+// path (what actually disambiguates two clones of the same project),
+// secondary line the first remote fetch URL or the parent directory
+// (locator.Candidate.Remote, research R15). The list collapses to a
+// "name (secondary)" receipt on accept (contracts/cli-work-start.md
+// §Interactive flow, quickstart S5).
+func candidateSelectSpec(candidates []locator.Candidate) present.SelectSpec[locator.Candidate] {
+	opts := make([]present.Option[locator.Candidate], len(candidates))
+	for i, c := range candidates {
+		opts[i] = present.Option[locator.Candidate]{Value: c, Primary: c.Path, Secondary: c.Remote}
+	}
+	return present.SelectSpec[locator.Candidate]{
+		Title:      "Repository",
+		Filterable: true,
+		Options:    opts,
+		Receipt: func(o present.Option[locator.Candidate]) string {
+			return fmt.Sprintf("%s (%s)", filepath.Base(o.Value.Path), o.Value.Remote)
+		},
+	}
 }
 
 // baseBranchSpec builds the base-branch selector: the choices grouped into
