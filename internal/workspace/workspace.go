@@ -82,6 +82,30 @@ func Validate(raw string, repositoryRoots []string) (string, error) {
 	return abs, nil
 }
 
+// Canonical resolves symlinks on the longest existing prefix of abs and
+// re-appends the remainder, so two paths can be compared for equality or
+// containment even when one does not yet exist or differs only by a
+// symlinked ancestor. abs must already be absolute.
+func Canonical(abs string) string { return canonical(abs) }
+
+// Overlaps reports whether a and b are the same directory, or one is nested
+// within the other, compared on a canonical basis so a symlinked or
+// short-named ancestor cannot hide the overlap (macOS /var -> /private/var,
+// Windows 8.3 names). Used to keep the workspace root and repository search
+// roots mutually exclusive in both directions (research R13, FR-020).
+func Overlaps(a, b string) (bool, error) {
+	aa, err := absPath(a)
+	if err != nil {
+		return false, err
+	}
+	bb, err := absPath(b)
+	if err != nil {
+		return false, err
+	}
+	ca, cb := canonical(aa), canonical(bb)
+	return ca == cb || isSubpath(ca, cb) || isSubpath(cb, ca), nil
+}
+
 // Persist writes absRoot to config.workspace and creates the root's
 // in-progress/ and archived/ subdirectories. absRoot must already be validated.
 func Persist(h workhome.Home, absRoot string) error {
