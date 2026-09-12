@@ -40,25 +40,25 @@ raw P1→P3 priority.
 before any logic lands. Branch: `feature/004-local-clone-locator-p1-foundational`
 (shared with Phase 2).
 
-- [ ] T001 Confirm base/target branch with the user, then
+- [X] T001 Confirm base/target branch with the user, then
       `git switch feature/004-local-clone-locator-specs-00 && git pull && git switch -c feature/004-local-clone-locator-p1-foundational`.
-- [ ] T002 [P] Create `internal/locator/` package skeleton with `locator.go`
+- [X] T002 [P] Create `internal/locator/` package skeleton with `locator.go`
       holding the package doc, `Reference`, `Deps`, `Outcome`, `Candidate` type
       declarations and the `Resolve(ctx context.Context, d Deps, ref Reference) (Outcome, error)`
       signature (empty body returning a not-implemented error), per data-model.md
       §1–§3 and research.md R2.
-- [ ] T003 [P] Create `internal/repoconfig/` package skeleton with `roots.go` and
+- [X] T003 [P] Create `internal/repoconfig/` package skeleton with `roots.go` and
       `policy.go` package docs and exported-function stubs (`ListRoots`, `AddRoots`,
       `RemoveRoots`, `ReplaceRoots`, `NeedsSetup`, `ValidateRoot`; `ListPolicy`,
       `AddPolicy`, `RemovePolicy`, `MovePolicy`, `ReplacePolicy`) per data-model.md
       §4–§5 and contracts/resolution-policy.md §Operation semantics.
-- [ ] T004 [P] Create `tests/fixtures/locators/` with `go:build ignore`-style
+- [X] T004 [P] Create `tests/fixtures/locators/` with `go:build ignore`-style
       buildable entrypoints `ok/` (one match), `empty/` (matches: []), `two/`
       (two matches), `dupe/` (same repo twice via a relative + symlinked path),
       `invalid/` (a match that is not a git repo), `boom/` (exit 1), each a
       `main.go` reading `ipc.LocatorInput` and writing `ipc.LocatorResponse`,
       following `internal/starter/testdata/rogue` and `seed/locator/main.go`.
-- [ ] T005 [P] Add a fixture-Locator registry helper (test-only) that registers a
+- [X] T005 [P] Add a fixture-Locator registry helper (test-only) that registers a
       component with a chosen `alias/name`, `role: repository-locator`, `accepts`
       list, and entrypoint path — used by `internal/locator`, `internal/repoconfig`,
       and `tests/contract` to install fake Locators without a plugin install.
@@ -76,58 +76,58 @@ wire together. **No CLI wiring in this phase.** Same branch as Phase 1.
 
 ### Diagnostics
 
-- [ ] T006 Add categories `NoRepositoryFound` (`no-repository-found`, 26),
+- [X] T006 Add categories `NoRepositoryFound` (`no-repository-found`, 26),
       `NoEligibleLocator` (`no-eligible-locator`, 27), `RepositoryCandidateInvalid`
       (`repository-candidate-invalid`, 28), `LocatorFailed` (`locator-failed`, 29),
       `RepositoryAmbiguous` (`repository-ambiguous`, 30) to `internal/diag/diag.go`,
       appended to `All` after `SnapshotUnreadable`, per data-model.md §7.
-- [ ] T007 Extend the `diag` table test in `internal/diag/diag_test.go` to assert
+- [X] T007 Extend the `diag` table test in `internal/diag/diag_test.go` to assert
       codes 26–30 and their tokens, and that codes 0/2/10–25 and every existing
       token are unchanged (FR-036).
 
 ### Starter reference extension
 
-- [ ] T008 Extend `starter.Reference` in `internal/starter/starter.go` with
+- [X] T008 Extend `starter.Reference` in `internal/starter/starter.go` with
       `GitFetchURLs []string`, `Name string`, `Query string`; make `Invoke` return
       all typed reference fields and **remove** the "the Starter returned no
       repository path" guard (its intent moves to `internal/locator`), per
       research.md R8. Keep `start_modes`/`base_branch`/`meta`/`links` ignored.
-- [ ] T009 [P] Update `internal/starter/starter_test.go` for the widened
+- [X] T009 [P] Update `internal/starter/starter_test.go` for the widened
       `Reference` (path-only, name-only, and mixed responses) and the removed
       no-path error.
 
 ### Resolution engine (`internal/locator`)
 
-- [ ] T010 Implement eligibility in `internal/locator/locator.go`: a policy entry
+- [X] T010 Implement eligibility in `internal/locator/locator.go`: a policy entry
       participates iff it resolves to a registered `role == "repository-locator"`
       component **and** `accepts ∩ {non-empty git_fetch_urls|name|query} ≠ ∅`;
       `path` is never in `accepts`; computed from static data only, no subprocess
       (FR-006, research.md R3).
-- [ ] T011 Implement projection in `internal/locator/locator.go`: build
+- [X] T011 Implement projection in `internal/locator/locator.go`: build
       `ipc.LocatorInput` with only the accepted-and-present reference fields plus
       `Deps.Roots` — never the raw arg, base branch, start modes, meta, or links
       (FR-007, FR-008, SC-004, research.md R4).
-- [ ] T012 Implement chain traversal in `internal/locator/chain.go`: walk
+- [X] T012 Implement chain traversal in `internal/locator/chain.go`: walk
       `Deps.Policy` in order; skip unavailable, skip ineligible; `InvokeLocator`
       transport/non-zero-exit/unparseable-stdout → **halt** `locator-failed` (29);
       `matches: []` → continue; non-empty `matches` → end traversal and evaluate
       that Locator only. No aggregation, no fallback after results or after an
       error (FR-009–FR-015, ADR-0015, research.md R6).
-- [ ] T013 Implement candidate validation + dedup in `internal/locator/candidate.go`:
+- [X] T013 Implement candidate validation + dedup in `internal/locator/candidate.go`:
       `reporef.ValidatePath` per `match.repo_path`; dedup key = resolved
       (`EvalSymlinks`) absolute path; drop invalid silently; all-invalid →
       `repository-candidate-invalid` (28) (FR-016–FR-018, SC-009, research.md R7).
-- [ ] T014 Implement outcome classification in `internal/locator/outcome.go`:
+- [X] T014 Implement outcome classification in `internal/locator/outcome.go`:
       1 valid → `Outcome.Resolved`; ≥2 valid → `Outcome.Candidates`; traversal
       ended with no candidates and some Locator was eligible → `no-repository-found`
       (26); none ever eligible (empty policy / no accepted field) →
       `no-eligible-locator` (27). All errors are `*diag.Error` with `Summary` +
       `Hint` (data-model.md §3, research.md R5).
-- [ ] T015 [P] Compute the picker secondary line for the ambiguous case in
+- [X] T015 [P] Compute the picker secondary line for the ambiguous case in
       `internal/locator/candidate.go`: first remote fetch URL
       (`git -C <path> remote get-url <first>`) else parent directory name;
       computed only when `len(Candidates) >= 2` (research.md R15).
-- [ ] T016 [P] Unit tests `internal/locator/locator_test.go` driving `Resolve`
+- [X] T016 [P] Unit tests `internal/locator/locator_test.go` driving `Resolve`
       against the Phase 1 fixture Locators: eligibility (accepts ∩ fields),
       projection payload (only accepted+present + roots; never arg/base/modes/
       meta/links), traversal order, `matches:[]` advances, first non-empty ends,
@@ -136,18 +136,18 @@ wire together. **No CLI wiring in this phase.** Same branch as Phase 1.
 
 ### Config operations (`internal/repoconfig`)
 
-- [ ] T017 Implement `internal/repoconfig/roots.go`: `ListRoots` (stored order,
+- [X] T017 Implement `internal/repoconfig/roots.go`: `ListRoots` (stored order,
       `[]` never an error); `AddRoots`/`ReplaceRoots` (expand `~`, `filepath.Abs`,
       store plain absolute; require existing readable dir else `usage` 2; reject
       overlap with `config.Workspace` in **either** direction on a path-segment
       boundary using `workspace` canonical helpers, error names both paths + reason,
       `usage` 2; canonical dedup); `RemoveRoots` (canonical match, absent = no-op)
       (FR-020, FR-022, research.md R13).
-- [ ] T018 Implement `internal/repoconfig/roots.go` exports for the CLI first-run
+- [X] T018 Implement `internal/repoconfig/roots.go` exports for the CLI first-run
       steps: `NeedsSetup(cfg) (wantWorkspace, wantRoot bool)` and
       `ValidateRoot(cfg, path) (abs string, err error)` — no `present` import
       (data-model.md §5, research.md R21).
-- [ ] T019 Implement `internal/repoconfig/policy.go`: `ListPolicy` (every entry in
+- [X] T019 Implement `internal/repoconfig/policy.go`: `ListPolicy` (every entry in
       order with an `available` flag from the registry — `role == "repository-locator"`;
       unavailable entries kept + marked, never dropped); `AddPolicy` (`ref` must
       resolve to a registered repository-locator else `usage` 2; append or
@@ -157,11 +157,11 @@ wire together. **No CLI wiring in this phase.** Same branch as Phase 1.
       `ReplacePolicy` (validate whole list then atomic write). Accept a bare
       `<component>` when unambiguous and echo it back qualified (FR-023–FR-028,
       research.md R12, contracts/resolution-policy.md).
-- [ ] T020 [P] Add a `Registered Locator` view helper for `locator list` in
+- [X] T020 [P] Add a `Registered Locator` view helper for `locator list` in
       `internal/repoconfig/policy.go`: project `registry.Component` where
       `role == "repository-locator"` to `{ref, display_name, description, accepts,
       in_policy}` (data-model.md §6, research.md R14).
-- [ ] T021 [P] Unit tests `internal/repoconfig/repoconfig_test.go`: every policy
+- [X] T021 [P] Unit tests `internal/repoconfig/repoconfig_test.go`: every policy
       operation incl. unknown-locator rejection, positioning, bare-component
       resolution, availability marker on `list`; every root operation incl.
       absolutization, canonical dedup, non-dir/unreadable rejection, and
@@ -169,7 +169,7 @@ wire together. **No CLI wiring in this phase.** Same branch as Phase 1.
 
 ### Contract test (core-side resolution)
 
-- [ ] T022 Add `tests/contract/locator_resolution_test.go`: assert the serialised
+- [X] T022 Add `tests/contract/locator_resolution_test.go`: assert the serialised
       `LocatorInput` payload for every reference shape in
       `contracts/repository-reference.md` §Tests, and the six outcome rows in
       `contracts/repository-locator.md` §"Outcome → exit code" against fake
@@ -198,44 +198,44 @@ tip.
 
 ### Tests for User Story 1
 
-- [ ] T023 [P] [US1] PTY test `tests/integration/start_by_name_test.go`: single
+- [X] T023 [P] [US1] PTY test `tests/integration/start_by_name_test.go`: single
       match — `work start payments` in an 80×24 PTY resolves `$R1/payments`
       silently, no path prompt, no picker; wizard continues at prefix/slug/base;
       confirm prints the three F1 stdout lines and repositions the terminal;
       `internal/work/verify.Check` passes (quickstart S3).
-- [ ] T024 [P] [US1] Head-to-head test (`tests/integration/`): `work start <path>`
+- [X] T024 [P] [US1] Head-to-head test (`tests/integration/`): `work start <path>`
       vs `work start <name>` for the same repo produce identical `work-state.json`
       fields (normalising slug/branch/timestamps) and identical terminal
       repositioning (SC-008, quickstart S4).
-- [ ] T025 [P] [US1] `testscript` `tests/integration/start_by_name_non_interactive.txtar`:
+- [X] T025 [P] [US1] `testscript` `tests/integration/start_by_name_non_interactive.txtar`:
       one match proceeds; explicit-argv single match proceeds; missing `SOURCE`
       still exit 2; `--json` still rejected on `work start`.
-- [ ] T026 [P] [US1] Extend `seed/starter/main_test.go` for argument
+- [X] T026 [P] [US1] Extend `seed/starter/main_test.go` for argument
       classification (path-looking vs bare token).
 
 ### Implementation for User Story 1
 
-- [ ] T027 [US1] Teach `seed/starter/main.go` to classify the argument: emit
+- [X] T027 [US1] Teach `seed/starter/main.go` to classify the argument: emit
       `repository.path` (absolutised) when it contains a path separator, starts
       with `.`/`..`/`~`/a drive letter, or names an existing filesystem entry;
       otherwise emit `repository.name = <arg>`. Never emit `git_fetch_urls`/`query`
       (contracts/cli-work-start.md §Argument classification, FR-032).
-- [ ] T028 [US1] In `internal/cli/start.go`, restructure the Source step to
+- [X] T028 [US1] In `internal/cli/start.go`, restructure the Source step to
       classify the `starter.Reference`: `ref.Path != ""` → `reporef.ValidatePath`
       (unchanged F1 path, `invalid-path`/`unusable-repo` still in-frame
       recoverable); otherwise call `locator.Resolve` with `Deps` built from the
       loaded `config.Config` (policy, roots, registry, plugins dir) (research.md
       R9, contracts/cli-work-start.md §Interactive flow).
-- [ ] T029 [US1] Handle the single-match outcome in `internal/cli/start.go`:
+- [X] T029 [US1] Handle the single-match outcome in `internal/cli/start.go`:
       `Outcome.Resolved` → stash `repoPath`, accept the step, continue the
       identical F1 creation journey (no divergence in snapshot, projection, or
       repositioning — FR-004, FR-035, research.md R16). Defer `Ambiguous` and the
       error outcomes to Phases 4/7 (a temporary `present.Fatal`/error return is
       acceptable within this phase).
-- [ ] T030 [US1] Wire the same classify-then-`locator.Resolve` closure into the
+- [X] T030 [US1] Wire the same classify-then-`locator.Resolve` closure into the
       non-interactive / explicit-argv path in `internal/cli/start.go` so a single
       resolved match proceeds without a prompt (FR-012).
-- [ ] T031 [US1] Update `internal/cli/start_test.go` for the restructured Source
+- [X] T031 [US1] Update `internal/cli/start_test.go` for the restructured Source
       step (path classification branch + single-match resolution branch).
 
 **Checkpoint**: `work start <name>` (single match) reaches a ready worktree with
