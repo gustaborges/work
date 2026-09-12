@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/gustaborges/work/internal/config"
+	"github.com/gustaborges/work/internal/registry"
+	"github.com/gustaborges/work/internal/workhome"
 )
 
 func TestRepositoryNoSubcommandPrintsHelpExitZero(t *testing.T) {
@@ -182,6 +184,110 @@ func TestRepositoryRootMutationRejectsJSON(t *testing.T) {
 	needSeed(t)
 	if _, _, code := runWork(t, "repository", "root", "add", t.TempDir(), "--json"); code != 2 {
 		t.Fatalf("exit = %d, want 2", code)
+	}
+}
+
+// TestRepositoryInstallingLocatorDoesNotTouchPolicy is SC-005 (quickstart
+// S10): registering a second repository-locator component directly in the
+// registry (standing in for `work plugin install` before F4) leaves
+// repository_resolution.locators byte-identical; the new locator shows up in
+// `locator list` with in_policy:false (FR-027, ADR-0015 — install never
+// edits the policy).
+func TestRepositoryInstallingLocatorDoesNotTouchPolicy(t *testing.T) {
+	needSeed(t)
+	home := filepath.Join(t.TempDir(), "dothome")
+	if _, _, code := runWorkHome(t, home, "repository", "policy", "list"); code != 0 {
+		t.Fatalf("initial policy list: exit = %d", code)
+	}
+
+	cfgPath := filepath.Join(home, "config", "work.json")
+	before, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+
+	h := workhome.At(home)
+	reg, err := registry.Load(h.RegistryFile())
+	if err != nil {
+		t.Fatalf("registry.Load: %v", err)
+	}
+	reg.UpsertComponent(registry.Component{
+		Alias: "acme", Name: "corp-index", Role: registry.RoleRepositoryLocator,
+		Entrypoint: "corp-index", Accepts: []string{"name"}, DisplayName: "Corp Index",
+	})
+	if err := registry.Save(h.RegistryFile(), reg); err != nil {
+		t.Fatalf("registry.Save: %v", err)
+	}
+
+	after, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read config after install: %v", err)
+	}
+	if string(before) != string(after) {
+		t.Fatalf("config changed after installing a component:\nbefore: %s\nafter:  %s", before, after)
+	}
+
+	out, _, code := runWorkHome(t, home, "repository", "locator", "list")
+	if code != 0 {
+		t.Fatalf("locator list: exit = %d", code)
+	}
+	if !strings.Contains(out, "acme/corp-index") {
+		t.Errorf("new locator not listed:\n%s", out)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "acme/corp-index") && strings.Contains(line, "(in policy)") {
+			t.Errorf("newly installed locator should not be in_policy: %q", line)
+		}
+	}
+}
+
+// TestRepositoryPolicyListShowsUnavailableAndResolutionSkipsIt is quickstart
+// S11: a hand-edited work.json naming a never-installed locator is shown,
+// marked unavailable, and resolution skips it without a locator-failed.
+func TestRepositoryPolicyListShowsUnavailableAndResolutionSkipsIt(t *testing.T) {
+	needSeed(t)
+	home := filepath.Join(t.TempDir(), "dothome")
+	if _, _, code := runWorkHome(t, home, "repository", "policy", "list"); code != 0 {
+		t.Fatalf("bootstrap via policy list: exit = %d", code)
+	}
+
+	cfgPath := filepath.Join(home, "config", "work.json")
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	cfg.RepositoryResolution.Locators = append([]string{"ghost/missing-locator"}, cfg.RepositoryResolution.Locators...)
+	if err := config.Save(cfgPath, cfg); err != nil {
+		t.Fatalf("config.Save: %v", err)
+	}
+
+	out, _, code := runWorkHome(t, home, "repository", "policy", "list")
+	if code != 0 {
+		t.Fatalf("policy list: exit = %d", code)
+	}
+	if !strings.Contains(out, "1  ghost/missing-locator  (unavailable)") {
+		t.Errorf("unavailable entry not shown as expected:\n%s", out)
+	}
+
+	out, _, code = runWorkHome(t, home, "repository", "policy", "list", "--json")
+	if code != 0 || !strings.Contains(out, `"available": false`) {
+		t.Fatalf("json list missing available:false: %s (exit %d)", out, code)
+	}
+
+	root := t.TempDir()
+	seedRepoAt(t, filepath.Join(root, "payments"))
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _ = config.Load(cfgPath)
+	cfg.RepositoryRoots = []string{root}
+	config.Save(cfgPath, cfg)
+
+	_, errb, code := runWorkHome(t, home, "start", "payments",
+		"--workspace", filepath.Join(t.TempDir(), "ws"),
+		"--base", "main", "--slug", "s", "--prefix", "{slug}", "--yes")
+	if code != 0 {
+		t.Fatalf("start with a ghost entry ahead of the seed locator: exit = %d\nstderr: %s", code, errb)
 	}
 }
 
