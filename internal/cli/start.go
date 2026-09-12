@@ -18,6 +18,7 @@ import (
 	"github.com/gustaborges/work/internal/create"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/gitx"
+	"github.com/gustaborges/work/internal/locator"
 	"github.com/gustaborges/work/internal/present"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/reporef"
@@ -113,6 +114,13 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	if err := bootstrap.EnsureSeed(home); err != nil {
 		return err
 	}
+	// EnsureSeed may have just appended the seed Locator to the policy (first
+	// run only, bootstrap.LocatorPolicyEntry); reload so locatorDeps below
+	// reflects it instead of the pre-bootstrap snapshot.
+	cfg, err = config.Load(home.ConfigFile())
+	if err != nil {
+		return err
+	}
 	if err := gitx.Preflight(); err != nil {
 		return diag.Wrap(diag.BootstrapFailed, err, "git is required but not usable")
 	}
@@ -146,29 +154,76 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		workspaceRoot string
 	)
 
-	// 1+2. SOURCE → Starter → validated repository path. The validation runs
-	// inside the interactive field: an invalid or unusable path is shown in the
-	// live frame and replaced on the next attempt, so a rejected path never
-	// reaches terminal history and the journey is not restarted (FR-005, S4).
-	validatePath := func(_ context.Context, s string) error {
+	// locatorDeps feeds internal/locator.Resolve from the loaded config: the
+	// policy and search roots are read-only here, exactly like cfg itself.
+	locatorDeps := locator.Deps{
+		PluginsDir: home.PluginsDir(),
+		Policy:     cfg.RepositoryResolution.Locators,
+		Roots:      cfg.RepositoryRoots,
+		Registry:   reg,
+	}
+
+	// 1+2. SOURCE → Starter → a Repository Reference, then either direct path
+	// validation or resolution through the policy. The validation runs inside
+	// the interactive field: an invalid/unusable path or an unresolved name is
+	// shown in the live frame and replaced on the next attempt, so a rejected
+	// value never reaches terminal history and the journey is not restarted
+	// (FR-005, S4). A path reference short-circuits to reporef.ValidatePath and
+	// never reaches internal/locator (ADR-0014); every other shape resolves
+	// through the policy (contracts/cli-work-start.md §Interactive flow).
+	validatePath := func(ctx context.Context, s string) error {
 		s = strings.TrimSpace(s)
 		if s == "" {
-			return errors.New("a path is required")
+			return errors.New("a path or name is required")
 		}
 		ref, err := starter.Invoke(home.PluginsDir(), starterComp, s)
-		if err == nil {
-			var normalized string
-			normalized, err = reporef.ValidatePath(ref.Path)
-			if err == nil {
-				repoPath = normalized
-				repoName = filepath.Base(normalized)
-				return nil
+		if err != nil {
+			if retryable(err, diag.InvalidPath, diag.UnusableRepo) {
+				return err // shown in-frame; the user can correct it
 			}
+			return present.Fatal(err)
 		}
-		if retryable(err, diag.InvalidPath, diag.UnusableRepo) {
-			return err // shown in-frame; the user can correct it
+
+		if ref.Path != "" {
+			normalized, verr := reporef.ValidatePath(ref.Path)
+			if verr != nil {
+				if retryable(verr, diag.InvalidPath, diag.UnusableRepo) {
+					return verr
+				}
+				return present.Fatal(verr)
+			}
+			repoPath = normalized
+			repoName = filepath.Base(normalized)
+			return nil
 		}
-		return present.Fatal(err)
+
+		out, rerr := locator.Resolve(ctx, locatorDeps, locator.Reference{
+			GitFetchURLs: ref.GitFetchURLs,
+			Name:         ref.Name,
+			Query:        ref.Query,
+		})
+		if rerr != nil {
+			// no-repository-found is the one outcome the interactive step
+			// recovers from in-frame (research R5, R9); the other categories
+			// (no-eligible-locator, repository-candidate-invalid,
+			// locator-failed) are configuration/operational and terminal.
+			if retryable(rerr, diag.NoRepositoryFound) {
+				return rerr
+			}
+			return present.Fatal(rerr)
+		}
+		if out.Resolved != "" {
+			repoPath = out.Resolved
+			repoName = filepath.Base(out.Resolved)
+			return nil
+		}
+		// Ambiguous outcome (>= 2 candidates): the Repository present.Select
+		// step and the non-interactive repository-ambiguous exit (30) land in
+		// a later slice; until then this is a terminal diagnostic.
+		return present.Fatal(diag.New(diag.RepositoryAmbiguous,
+			"multiple repositories matched this reference; disambiguation is not yet available").
+			WithSummary("More than one local clone matched what you typed.").
+			WithHint("Pass a more specific reference, or a direct path, for now."))
 	}
 
 	// 4+5. Slug → derived branch name, validated and collision-checked before

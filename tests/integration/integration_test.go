@@ -87,6 +87,27 @@ func TestScripts(t *testing.T) {
 					ts.Fatalf("save config: %v", err)
 				}
 			},
+			// work-set-roots <config.json> <path>... rewrites repository_roots,
+			// standing in for `work repository root add` (F3) before Phase 5
+			// ships that command.
+			"work-set-roots": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) < 2 {
+					ts.Fatalf("usage: work-set-roots <config.json> <path>...")
+				}
+				path := ts.MkAbs(args[0])
+				cfg, err := config.Load(path)
+				if err != nil {
+					ts.Fatalf("load config: %v", err)
+				}
+				roots := make([]string, len(args)-1)
+				for i, p := range args[1:] {
+					roots[i] = ts.MkAbs(p)
+				}
+				cfg.RepositoryRoots = roots
+				if err := config.Save(path, cfg); err != nil {
+					ts.Fatalf("save config: %v", err)
+				}
+			},
 			// gitrepo <dir> initialises a repo with one commit on main.
 			"gitrepo": func(ts *testscript.TestScript, neg bool, args []string) {
 				if len(args) != 1 {
