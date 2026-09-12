@@ -5,6 +5,7 @@ package integration
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -189,6 +190,22 @@ func TestScripts(t *testing.T) {
 				if err := registry.Save(regPath, reg); err != nil {
 					ts.Fatalf("registry.Save: %v", err)
 				}
+			},
+			// setfixturematches <path>... sets LOCATOR_FIXTURE_MATCHES to the
+			// proper JSON encoding of the given (MkAbs-resolved) paths. A naive
+			// `env LOCATOR_FIXTURE_MATCHES=["$WORK/x"]` literal breaks on Windows,
+			// where $WORK contains '\': the unescaped backslashes make the value
+			// invalid JSON, so the fixture silently sees matches:[].
+			"setfixturematches": func(ts *testscript.TestScript, neg bool, args []string) {
+				paths := make([]string, len(args))
+				for i, p := range args {
+					paths[i] = ts.MkAbs(p)
+				}
+				b, err := json.Marshal(paths)
+				if err != nil {
+					ts.Fatalf("%v", err)
+				}
+				ts.Setenv("LOCATOR_FIXTURE_MATCHES", string(b))
 			},
 			// gitrepo <dir> initialises a repo with one commit on main.
 			"gitrepo": func(ts *testscript.TestScript, neg bool, args []string) {

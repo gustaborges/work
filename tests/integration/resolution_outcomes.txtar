@@ -14,7 +14,7 @@ stderr 'error: no-repository-found:'
 # --- repository-candidate-invalid (28): the ending Locator's matches are not
 # usable git repositories. ---
 mkdir not-a-repo
-env LOCATOR_FIXTURE_MATCHES=["$WORK/not-a-repo"]
+setfixturematches $WORK/not-a-repo
 installlocatorfixture fixtureinvalid invalid invalid name
 work repository policy replace fixtureinvalid/invalid
 
