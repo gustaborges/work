@@ -21,6 +21,7 @@ import (
 	"github.com/gustaborges/work/internal/cli"
 	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/projection"
+	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/work"
 	"github.com/gustaborges/work/internal/work/verify"
 	"github.com/gustaborges/work/seed"
@@ -106,6 +107,28 @@ func TestScripts(t *testing.T) {
 				cfg.RepositoryRoots = roots
 				if err := config.Save(path, cfg); err != nil {
 					ts.Fatalf("save config: %v", err)
+				}
+			},
+			// registerlocator <alias> <name> <accepts...> registers a fake
+			// repository-locator component directly in the registry —
+			// standing in for `work plugin install` (F4) so F3's
+			// `work repository policy`/`locator` scenarios have a second
+			// locator to add/move/remove without a real plugin install.
+			"registerlocator": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) < 3 {
+					ts.Fatalf("usage: registerlocator <alias> <name> <accepts...>")
+				}
+				regPath := filepath.Join(ts.Getenv("WORK_HOME"), "state", "registry.json")
+				reg, err := registry.Load(regPath)
+				if err != nil {
+					ts.Fatalf("registry.Load: %v", err)
+				}
+				reg.UpsertComponent(registry.Component{
+					Alias: args[0], Name: args[1], Role: registry.RoleRepositoryLocator,
+					Entrypoint: args[1], Accepts: args[2:], DisplayName: args[1],
+				})
+				if err := registry.Save(regPath, reg); err != nil {
+					ts.Fatalf("registry.Save: %v", err)
 				}
 			},
 			// gitrepo <dir> initialises a repo with one commit on main.

@@ -396,32 +396,32 @@ Branch: `feature/004-local-clone-locator-p5-us5-policy`, cut from Phase 5 tip.
 
 ### Tests for User Story 5
 
-- [ ] T050 [P] [US5] `testscript` `tests/integration/repository_policy.txtar`:
+- [X] T050 [P] [US5] `testscript` `tests/integration/repository_policy.txtar`:
       `policy list` (human + `--json` `{"policy":[{ref,position,available}]}`);
       `add` with/without `--before`/`--after`; `move` (neither/both →
       exit 2); `remove` (component stays installed, `in_policy:false` after);
       `replace`; unknown `<LOCATOR>` → exit 2; unavailable entry from a
       hand-edited `work.json` shown marked `(unavailable)` and skipped at
       resolution (quickstart S9, S11).
-- [ ] T051 [P] [US5] `testscript` `tests/integration/repository_locator_list.txtar`:
+- [X] T051 [P] [US5] `testscript` `tests/integration/repository_locator_list.txtar`:
       `--json` and human shapes, `in_policy` flag, exit codes, purity
       (quickstart S1, contracts/resolution-policy.md §`--json` shapes).
-- [ ] T052 [P] [US5] `testscript` `tests/integration/repository_help.txtar`:
+- [X] T052 [P] [US5] `testscript` `tests/integration/repository_help.txtar`:
       `work repository` with no subcommand → grouped `locator`/`policy`/`root`
       help on stdout, exit 0, in interactive and redirected streams; no menu; no
       ANSI on non-TTY; `work repository --json` → `error: usage:` exit 2
       (quickstart S12).
-- [ ] T053 [P] [US5] No-auto-insert test (`tests/integration/` or
+- [X] T053 [P] [US5] No-auto-insert test (`tests/integration/` or
       `internal/` — extend an existing bootstrap/plugin test): registering /
       installing a second Locator leaves `repository_resolution.locators`
       byte-identical; the new Locator appears in `locator list` with
       `in_policy:false` (SC-005, quickstart S10).
-- [ ] T054 [P] [US5] Extend `tests/integration/help_inventory.*`: `work
+- [X] T054 [P] [US5] Extend `tests/integration/help_inventory.*`: `work
       repository` appears exactly once, under **Administration**.
 
 ### Implementation for User Story 5
 
-- [ ] T055 [US5] Add `internal/cli/repository_policy.go`: `work repository policy`
+- [X] T055 [US5] Add `internal/cli/repository_policy.go`: `work repository policy`
       parent (`GroupID = "admin"`) + `list` (`--json`, pure, marks unavailable),
       `add <LOCATOR> [--before|--after]`, `remove <LOCATOR...>`,
       `move <LOCATOR> (--before|--after)`, `replace <LOCATOR...>`, plus
@@ -429,14 +429,14 @@ Branch: `feature/004-local-clone-locator-p5-us5-policy`, cut from Phase 5 tip.
       `internal/repoconfig`. Mutations reject `--json`, print one stable
       `work: policy now <ref>, <ref>` line, single atomic `config.Save`
       (contracts/cli-work-repository.md, resolution-policy.md).
-- [ ] T056 [US5] Ensure the chain (`internal/locator/chain.go`) skips unavailable
+- [X] T056 [US5] Ensure the chain (`internal/locator/chain.go`) skips unavailable
       policy entries and continues — verify against the S11 hand-edited-`work.json`
       case (a `work start <name>` run skips the ghost entry and resolves via the
       seed Locator, no `locator-failed`) (research.md R12, quickstart S11).
-- [ ] T057 [US5] Bare-`<component>` acceptance: `policy add`/`move`/`remove` and
+- [X] T057 [US5] Bare-`<component>` acceptance: `policy add`/`move`/`remove` and
       `locator list` accept an unqualified component when unambiguous across
       installed Locators and echo it back qualified (contracts/resolution-policy.md).
-- [ ] T058 [US5] Extend `internal/cli/repository_test.go` for the `policy` and
+- [X] T058 [US5] Extend `internal/cli/repository_test.go` for the `policy` and
       `locator` grammar, positioning flags, and exit codes.
 
 **Checkpoint**: The full ordered-policy model is inspectable and editable
