@@ -71,6 +71,7 @@ func TestLoadSaveRoundTrip(t *testing.T) {
 	in := &Registry{}
 	in.UpsertComponent(Component{Alias: "work-reference", Name: "local-path-starter", Role: RoleStarter, Entrypoint: "starter", StarterLayer: LayerFallback})
 	in.UpsertConvention(Convention{Name: "freeform", Prefixes: []string{"{slug}"}})
+	in.UpsertPackage(Package{Alias: "work-reference", Origin: OriginLocalPinned, Reference: "/opt/work-reference"})
 	if err := Save(path, in); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -84,5 +85,51 @@ func TestLoadSaveRoundTrip(t *testing.T) {
 	}
 	if len(out.Conventions) != 1 {
 		t.Errorf("round trip conventions = %+v", out.Conventions)
+	}
+	if len(out.Packages) != 1 || out.Packages[0].Alias != "work-reference" || out.Packages[0].Origin != OriginLocalPinned {
+		t.Errorf("round trip packages = %+v", out.Packages)
+	}
+}
+
+func TestUpsertPackageIdempotentAndSorted(t *testing.T) {
+	r := &Registry{}
+	r.UpsertPackage(Package{Alias: "zeta", Origin: OriginLocalPinned, Reference: "/z"})
+	r.UpsertPackage(Package{Alias: "alpha", Origin: OriginRemotePinned, Reference: "https://example.com/a.git@abc"})
+	r.UpsertPackage(Package{Alias: "zeta", Origin: OriginLocalLinked, Reference: "/z2"})
+	if len(r.Packages) != 2 {
+		t.Fatalf("packages = %d, want 2 (upsert must replace, not append)", len(r.Packages))
+	}
+
+	list := r.ListPackages()
+	if len(list) != 2 || list[0].Alias != "alpha" || list[1].Alias != "zeta" {
+		t.Errorf("ListPackages not sorted by alias: %+v", list)
+	}
+	if list[1].Origin != OriginLocalLinked || list[1].Reference != "/z2" {
+		t.Errorf("zeta not replaced by second upsert: %+v", list[1])
+	}
+
+	p, ok := r.PackageByAlias("alpha")
+	if !ok || p.Reference != "https://example.com/a.git@abc" {
+		t.Errorf("PackageByAlias(alpha) = %+v, %v", p, ok)
+	}
+	if _, ok := r.PackageByAlias("nope"); ok {
+		t.Errorf("PackageByAlias(nope) should not be found")
+	}
+}
+
+func TestExistingComponentsAndConventionsUnaffectedByPackages(t *testing.T) {
+	r := &Registry{}
+	r.UpsertComponent(Component{Alias: "a", Name: "s", Role: RoleStarter, Entrypoint: "s", StarterLayer: LayerFallback})
+	r.UpsertConvention(Convention{Name: "freeform", Prefixes: []string{"{slug}"}})
+	r.UpsertPackage(Package{Alias: "a", Origin: OriginLocalPinned, Reference: "/a"})
+
+	if !r.HasComponent("a", "s") {
+		t.Error("HasComponent regressed")
+	}
+	if _, ok := r.ConventionByName("freeform"); !ok {
+		t.Error("ConventionByName regressed")
+	}
+	if got := r.ByRole(RoleStarter); len(got) != 1 {
+		t.Error("ByRole regressed")
 	}
 }

@@ -177,9 +177,9 @@ func writeRawSnap(t *testing.T, ws, area, dirName string, raw []byte) string {
 }
 
 // TestRebuildSkipsEverySkipReason exercises the non-fatal skip classes (FR-024):
-// a file that is not JSON, a schema outside {1,2}, and a document that decodes
-// but fails State.Validate. Every other snapshot still indexes and the rebuild
-// does not error.
+// a file that is not JSON, a schema outside the accepted range, and a document
+// that decodes but fails State.Validate. Every other snapshot still indexes
+// and the rebuild does not error.
 func TestRebuildSkipsEverySkipReason(t *testing.T) {
 	ws := t.TempDir()
 	writeSnap(t, ws, "in-progress", "demo_good", "01GOOD00000000000000000000", "good", "good", "in-progress", "2026-06-01T00:00:00Z")

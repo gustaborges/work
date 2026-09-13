@@ -203,6 +203,121 @@ func TestRunCancelledContext(t *testing.T) {
 	}
 }
 
+// contributionParams returns Params for a contribution-mode run: an
+// already-existing branch in the source repo, checked out directly (no slug,
+// no convention — mirrors what internal/cli/start.go is expected to pass).
+func contributionParams(t *testing.T) Params {
+	t.Helper()
+	p := params(t)
+	gittest.Git(t, p.SourceRepo, "branch", "pr-branch")
+	p.Branch = "pr-branch"
+	p.BaseRefname = "refs/heads/pr-branch"
+	p.BaseBranchShort = "pr-branch"
+	p.Slug = ""
+	p.Convention = ""
+	p.StartMode = work.StartModeContribution
+	return p
+}
+
+func TestRunContributionModeChecksOutExistingBranch(t *testing.T) {
+	p := contributionParams(t)
+	res, err := Run(context.Background(), p)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	snap, err := work.Read(res.SnapshotPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := snap.Validate(); err != nil {
+		t.Fatalf("snapshot invalid: %v", err)
+	}
+	if snap.Work.StartMode != work.StartModeContribution {
+		t.Errorf("StartMode = %q, want %q", snap.Work.StartMode, work.StartModeContribution)
+	}
+	if snap.Work.Slug != "" || snap.Work.BranchConvention != "" {
+		t.Errorf("contribution mode must persist no slug/branch_convention: %+v", snap.Work)
+	}
+	if snap.Work.Branch != "pr-branch" {
+		t.Errorf("Branch = %q, want pr-branch", snap.Work.Branch)
+	}
+
+	head, _ := gitx.Open(res.WorktreePath).CurrentBranch()
+	if head != "pr-branch" {
+		t.Errorf("worktree HEAD = %q, want pr-branch", head)
+	}
+}
+
+func TestRunContributionModeUsesWorktreeAddExisting(t *testing.T) {
+	p := contributionParams(t)
+	// WorktreeAdd would fail outright on an already-existing branch
+	// (`git worktree add -b` rejects it) — contribution mode's whole premise.
+	// Running successfully here proves WorktreeAddExisting (no -b) was used.
+	if _, err := Run(context.Background(), p); err != nil {
+		t.Fatalf("Run: %v (WorktreeAdd -b would have failed on an existing branch)", err)
+	}
+}
+
+func TestRunContributionModeRollbackNeverDeletesBranch(t *testing.T) {
+	p := contributionParams(t)
+	t.Setenv("WORK_FAIL_AT", "snapshot")
+	if _, err := Run(context.Background(), p); diag.ExitCode(err) != 17 {
+		t.Fatalf("exit = %d, want 17 (%v)", diag.ExitCode(err), err)
+	}
+
+	src := gitx.Open(p.SourceRepo)
+	if ok, _ := src.ShowRefVerify("refs/heads/pr-branch"); !ok {
+		t.Error("contribution-mode rollback deleted the pre-existing branch")
+	}
+	// The worktree itself must still be cleaned up.
+	wts, _ := src.WorktreeList()
+	for _, w := range wts {
+		if strings.Contains(w.Path, "pr-branch") {
+			t.Errorf("orphan worktree: %s", w.Path)
+		}
+	}
+}
+
+func TestRunForkAndNewModesUnchangedFromF1(t *testing.T) {
+	for _, mode := range []string{"", work.StartModeNew, work.StartModeFork} {
+		t.Run("mode="+mode, func(t *testing.T) {
+			p := params(t)
+			p.StartMode = mode
+			res, err := Run(context.Background(), p)
+			if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			snap, err := work.Read(res.SnapshotPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantMode := mode
+			if wantMode == "" {
+				wantMode = work.StartModeNew
+			}
+			if snap.Work.StartMode != wantMode {
+				t.Errorf("StartMode = %q, want %q", snap.Work.StartMode, wantMode)
+			}
+			if snap.Work.Slug == "" || snap.Work.BranchConvention == "" {
+				t.Errorf("fork/new mode must keep slug/branch_convention: %+v", snap.Work)
+			}
+
+			// A failure at the worktree step still deletes the newly created
+			// branch (unlike contribution mode).
+			p2 := params(t)
+			p2.StartMode = mode
+			t.Setenv("WORK_FAIL_AT", "snapshot")
+			if _, err := Run(context.Background(), p2); diag.ExitCode(err) != 17 {
+				t.Fatalf("exit = %d, want 17 (%v)", diag.ExitCode(err), err)
+			}
+			if ok, _ := gitx.Open(p2.SourceRepo).ShowRefVerify("refs/heads/" + p2.Branch); ok {
+				t.Error("fork/new mode rollback left the branch it created")
+			}
+		})
+	}
+}
+
 func TestBuildKeepsSnapshotAndRowInSync(t *testing.T) {
 	p := params(t)
 	p.ID = "01AAAAAAAAAAAAAAAAAAAAAAAA"

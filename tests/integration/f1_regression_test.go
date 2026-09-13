@@ -42,7 +42,8 @@ func TestF1QuickstartScenariosStillPresent(t *testing.T) {
 
 // TestF1StartOutputContractUnchanged pins the exact three-line stdout shape F1
 // release 0.1 emits from `work start`, plus the FR-023 stderr notice and the
-// schema-2 snapshot (the single intended additive change).
+// current schema Write emits (schema 3 as of F4 — an additive change over
+// F1's schema 1, never a behavioural one).
 func TestF1StartOutputContractUnchanged(t *testing.T) {
 	needSeed(t)
 	bin := buildWorkBin(t)
@@ -85,7 +86,7 @@ func TestF1StartOutputContractUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(snap), `"schema": 2`) {
-		t.Errorf("snapshot is not schema 2 (the one intended F2 change):\n%s", snap)
+	if !strings.Contains(string(snap), `"schema": 3`) {
+		t.Errorf("snapshot is not schema 3 (the one intended F4 change):\n%s", snap)
 	}
 }

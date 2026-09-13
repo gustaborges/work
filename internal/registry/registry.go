@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 
 	"github.com/gustaborges/work/internal/atomicfile"
 )
@@ -47,10 +48,20 @@ type Convention struct {
 	Prefixes []string `json:"prefixes"`
 }
 
+// Package is one installed plugin package's record (F4). Identity is Alias.
+// Every Component/Convention registered from this package carries the same
+// Alias — Package is a new parent record, not a new identity scheme.
+type Package struct {
+	Alias     string `json:"alias"`
+	Origin    string `json:"origin"`    // one of the Origin* constants
+	Reference string `json:"reference"` // absolute source path (local kinds), or "<source>@<sha>" (remote)
+}
+
 // Registry is the whole registry.json document.
 type Registry struct {
 	Components  []Component  `json:"components"`
 	Conventions []Convention `json:"conventions"`
+	Packages    []Package    `json:"packages,omitempty"`
 }
 
 // Roles / layers used by queries.
@@ -58,6 +69,13 @@ const (
 	RoleStarter           = "starter"
 	RoleRepositoryLocator = "repository-locator"
 	LayerFallback         = "fallback"
+)
+
+// Package origin kinds (F4, ADR-0002).
+const (
+	OriginLocalLinked  = "local-linked"
+	OriginLocalPinned  = "local-pinned"
+	OriginRemotePinned = "remote-pinned"
 )
 
 // Load reads registry.json. A missing file yields an empty Registry.
@@ -112,6 +130,34 @@ func (r *Registry) UpsertConvention(c Convention) {
 		}
 	}
 	r.Conventions = append(r.Conventions, c)
+}
+
+// UpsertPackage inserts or replaces the entry keyed by Alias.
+func (r *Registry) UpsertPackage(p Package) {
+	for i := range r.Packages {
+		if r.Packages[i].Alias == p.Alias {
+			r.Packages[i] = p
+			return
+		}
+	}
+	r.Packages = append(r.Packages, p)
+}
+
+// PackageByAlias returns the package registered under alias.
+func (r *Registry) PackageByAlias(alias string) (Package, bool) {
+	for _, p := range r.Packages {
+		if p.Alias == alias {
+			return p, true
+		}
+	}
+	return Package{}, false
+}
+
+// ListPackages returns a copy of the registered packages, sorted by alias.
+func (r *Registry) ListPackages() []Package {
+	out := slices.Clone(r.Packages)
+	slices.SortFunc(out, func(a, b Package) int { return strings.Compare(a.Alias, b.Alias) })
+	return out
 }
 
 // ByRole returns every component with the given role.

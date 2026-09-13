@@ -97,8 +97,8 @@ func TestRunBumpsSnapshotAndProjectionInStep(t *testing.T) {
 	if snap.Work.LastAccessedAt != want {
 		t.Errorf("snapshot last_accessed_at = %q, want %q", snap.Work.LastAccessedAt, want)
 	}
-	if snap.Schema != 2 {
-		t.Errorf("snapshot schema = %d, want 2", snap.Schema)
+	if snap.Schema != 3 {
+		t.Errorf("snapshot schema = %d, want 3", snap.Schema)
 	}
 	row, _, err := db.Get(id)
 	if err != nil {

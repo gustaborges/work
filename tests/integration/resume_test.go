@@ -107,13 +107,13 @@ func TestResumeOrderingAndReposition(t *testing.T) {
 		t.Errorf("WORK_CD_FILE = %q, want %q", got, want)
 	}
 
-	// alpha is now schema 2 and the most recently accessed of the three.
+	// alpha is now schema 3 and the most recently accessed of the three.
 	st, err := work.Read(filepath.Join(alphaDir, "work-state.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Schema != 2 {
-		t.Errorf("alpha snapshot schema = %d, want 2", st.Schema)
+	if st.Schema != 3 {
+		t.Errorf("alpha snapshot schema = %d, want 3", st.Schema)
 	}
 	aAcc := st.Work.LastAccessedAt
 	if aAcc <= snapAccessed(t, filepath.Join(ws, "in-progress", "demo_bravo")) ||
