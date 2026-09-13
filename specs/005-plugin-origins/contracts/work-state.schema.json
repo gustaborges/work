@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://work.dev/schemas/work-state/3.json",
+  "title": "work-state.json (schema 3) — F4",
+  "description": "Canonical, self-contained snapshot of a Work. Authority over the Work's persisted state (ADR-0013). Written only by the core, atomically (temp + rename). Plugins never read or write this file. Schema 3 is an additive superset of schema 2: start_mode gains 'contribution' and 'fork', and slug and branch_convention both become required unless start_mode == 'contribution' (in which case both MUST be absent, since contribution mode never runs the slug or convention steps — FR-020), mirroring the archived_at-iff-archived conditional schema 2 already established. Readers accept schema 1, 2, or 3; writers always emit 3 (see specs/002-daily-cycle/contracts/work-state.schema.json for schema 2 and specs/001-first-local-work/contracts/work-state.schema.json for schema 1).",
+  "type": "object",
+  "required": ["schema", "work", "meta", "links"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": 3,
+      "description": "Schema version. F4 emits 3. A schema-1 or schema-2 file is also a valid input (see their own contracts)."
+    },
+    "work": {
+      "type": "object",
+      "description": "Core-governed domain state. Plugins cannot create or write keys here.",
+      "required": [
+        "id",
+        "status",
+        "start_mode",
+        "starter",
+        "branch",
+        "base_branch",
+        "created_at",
+        "last_accessed_at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Opaque, sortable, stable identity generated at creation (ULID). Unchanged from F1/F2."
+        },
+        "slug": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Short human-readable identifier chosen by the user at creation. Required in 'new' and 'fork' mode (unchanged meaning from F1/F2). MUST be absent in 'contribution' mode: the slug step never runs (FR-020) — the branch and directory naming both derive from the Starter-resolved branch instead."
+        },
+        "status": {
+          "enum": ["in-progress", "archived"],
+          "description": "Unchanged from F2."
+        },
+        "archived_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339 UTC. Present if and only if status == 'archived'. Unchanged from F2."
+        },
+        "start_mode": {
+          "enum": ["new", "contribution", "fork"],
+          "description": "'new': start_modes was absent from the Starter response (unchanged F1/F3 meaning). 'fork': start_modes was present and the user selected fork — the identical new-Work journey as 'new', just Starter-provided. 'contribution': start_modes was present and the user selected contribution — the Starter-resolved branch was checked out directly, never created by this Work."
+        },
+        "starter": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Logical name of the Starter that resolved the source. Unchanged from F1, now may name a plugin-provided Starter (qualified '<alias>/<name>' when the bare name collides across enabled packages)."
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1,
+          "description": "In 'new'/'fork' mode: the branch this Work created. In 'contribution' mode: the pre-existing branch the Starter resolved and this Work checked out (never created, never deleted on rollback)."
+        },
+        "base_branch": {
+          "type": "string",
+          "minLength": 1,
+          "description": "In 'new'/'fork' mode: short name of the base ref the branch was started from. In 'contribution' mode: the same value as 'branch' — there is no separate base, since no new branch was created; the field still records what was checked out."
+        },
+        "branch_convention": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Resolved convention name. Required in 'new' and 'fork' mode (unchanged meaning from F1/F2). MUST be absent in 'contribution' mode: branch convention is neither an input nor an output of contribution mode (ADD §7/§8, FR-020)."
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339 UTC. Set once at creation. Unchanged from F1/F2."
+        },
+        "last_accessed_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339 UTC. Unchanged mutability rules from F2."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "archived" } } },
+          "then": { "required": ["archived_at"] },
+          "else": { "not": { "required": ["archived_at"] } }
+        },
+        {
+          "if": { "properties": { "start_mode": { "const": "contribution" } } },
+          "then": { "not": { "anyOf": [{ "required": ["branch_convention"] }, { "required": ["slug"] }] } },
+          "else": { "required": ["slug", "branch_convention"] }
+        }
+      ]
+    },
+    "meta": {
+      "type": "object",
+      "description": "Extensible metadata published by components. Empty in F4 (a Starter's meta output is accepted on the wire but not yet persisted — F5 scope).",
+      "additionalProperties": true
+    },
+    "links": {
+      "type": "object",
+      "description": "First-class external relations, one value per semantic key. Empty in F4 (a Starter's links output is accepted on the wire but not yet persisted — F5 scope).",
+      "additionalProperties": { "type": "string" }
+    }
+  },
+  "examples": [
+    {
+      "schema": 3,
+      "work": {
+        "id": "01JB0K3M7Q8ZC4X2N6R9WFD5AE",
+        "slug": "add-retry-logic",
+        "status": "in-progress",
+        "start_mode": "new",
+        "starter": "local-path-starter",
+        "branch": "add-retry-logic",
+        "base_branch": "main",
+        "branch_convention": "freeform",
+        "created_at": "2026-09-12T14:03:11Z",
+        "last_accessed_at": "2026-09-12T14:03:11Z"
+      },
+      "meta": {},
+      "links": {}
+    },
+    {
+      "schema": 3,
+      "work": {
+        "id": "01JB0K7Q3M8ZC4X2N6R9WFD5AF",
+        "slug": "review-pr-212",
+        "status": "in-progress",
+        "start_mode": "fork",
+        "starter": "github-plugin/github-pull-request-starter",
+        "branch": "feature/review-pr-212",
+        "base_branch": "feature/source-branch",
+        "branch_convention": "gitflow",
+        "created_at": "2026-09-12T15:00:00Z",
+        "last_accessed_at": "2026-09-12T15:00:00Z"
+      },
+      "meta": {},
+      "links": {}
+    },
+    {
+      "schema": 3,
+      "work": {
+        "id": "01JB0K9X5N8ZC4X2N6R9WFD5AG",
+        "status": "in-progress",
+        "start_mode": "contribution",
+        "starter": "github-plugin/github-pull-request-starter",
+        "branch": "feature/source-branch",
+        "base_branch": "feature/source-branch",
+        "created_at": "2026-09-12T15:05:00Z",
+        "last_accessed_at": "2026-09-12T15:05:00Z"
+      },
+      "meta": {},
+      "links": {}
+    }
+  ]
+}
