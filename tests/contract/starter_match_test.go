@@ -156,3 +156,57 @@ func TestStarterMatchContract(t *testing.T) {
 		}
 	})
 }
+
+// TestValidateResponseContract pins starter-protocol.md's structural rules
+// (research R9): checked before any Work materialization, on the typed
+// Reference the core actually consumes — so this needs no subprocess fixture,
+// only the shapes ipc decoding could hand back from any Starter, well-behaved
+// or not.
+func TestValidateResponseContract(t *testing.T) {
+	t.Run("unrecognized start mode is starter-response-invalid (37)", func(t *testing.T) {
+		err := starter.ValidateResponse(starter.Reference{
+			BaseBranch: "main",
+			StartModes: []string{"rebase"},
+		})
+		if diag.Token(err) != diag.StarterResponseInvalid.Token {
+			t.Fatalf("err = %v, want token %q", err, diag.StarterResponseInvalid.Token)
+		}
+		if diag.ExitCode(err) != 37 {
+			t.Fatalf("exit code = %d, want 37", diag.ExitCode(err))
+		}
+	})
+
+	t.Run("contribution without base_branch is starter-response-invalid (37)", func(t *testing.T) {
+		err := starter.ValidateResponse(starter.Reference{
+			StartModes: []string{"contribution"},
+		})
+		if diag.Token(err) != diag.StarterResponseInvalid.Token {
+			t.Fatalf("err = %v, want token %q", err, diag.StarterResponseInvalid.Token)
+		}
+		if diag.ExitCode(err) != 37 {
+			t.Fatalf("exit code = %d, want 37", diag.ExitCode(err))
+		}
+	})
+
+	t.Run("contribution with a base_branch is valid", func(t *testing.T) {
+		err := starter.ValidateResponse(starter.Reference{
+			BaseBranch: "feature/source-branch",
+			StartModes: []string{"contribution", "fork"},
+		})
+		if err != nil {
+			t.Fatalf("ValidateResponse: %v", err)
+		}
+	})
+
+	t.Run("absent start_modes is valid", func(t *testing.T) {
+		if err := starter.ValidateResponse(starter.Reference{}); err != nil {
+			t.Fatalf("ValidateResponse: %v", err)
+		}
+	})
+
+	t.Run("fork alone with no base_branch is valid (FR-023 prompts for one)", func(t *testing.T) {
+		if err := starter.ValidateResponse(starter.Reference{StartModes: []string{"fork"}}); err != nil {
+			t.Fatalf("ValidateResponse: %v", err)
+		}
+	})
+}

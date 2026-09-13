@@ -242,6 +242,11 @@ func TestRunContributionModeChecksOutExistingBranch(t *testing.T) {
 	if snap.Work.Branch != "pr-branch" {
 		t.Errorf("Branch = %q, want pr-branch", snap.Work.Branch)
 	}
+	// Contribution mode reuses the one base_branch field for the checked-out
+	// branch itself — there is no separate base to record (ADD §7, T047).
+	if snap.Work.BaseBranch != snap.Work.Branch {
+		t.Errorf("BaseBranch = %q, want it to equal Branch %q in contribution mode", snap.Work.BaseBranch, snap.Work.Branch)
+	}
 
 	head, _ := gitx.Open(res.WorktreePath).CurrentBranch()
 	if head != "pr-branch" {

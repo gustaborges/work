@@ -4,7 +4,11 @@
 // with a plugin-installed specific Starter matching the argument, the full
 // new-Work journey completes exactly as an F1 direct-path/name resolution
 // would — the specific Starter was invoked (not the reference fallback), and
-// work.starter names it.
+// work.starter names it. specific-starter's start_modes/base_branch are
+// consumed starting Phase 5 (US3): TestStartByPluginStarterFullJourney below
+// selects "fork" at the resulting Mode step to keep exercising the ordinary
+// new-Work journey end to end; contribution/fork-specific coverage lives in
+// start_modes_test.go.
 package integration
 
 import (
@@ -34,10 +38,10 @@ func installPluginFixture(t *testing.T, bin string, env []string, fixture string
 // (^demo-pr-1$) matches the SOURCE argument directly — no fallback, no
 // selection step — and the resulting Work is indistinguishable in shape from
 // an F1 direct-path/name creation, except work.starter naming the plugin
-// Starter that actually ran (quickstart S7, SC-002). specific-starter's
-// response also carries base_branch/start_modes, which Phase 4 reads but does
-// not yet act on (consumption lands in Phase 5, research R8) — so the
-// journey below is the ordinary new-Work one, driven by the usual flags.
+// Starter that actually ran (quickstart S7, SC-002) and work.start_mode
+// reflecting the chosen mode (Phase 5 consumes start_modes/base_branch:
+// selecting "fork" at the Mode step runs the identical new-Work journey,
+// using the Starter's base_branch with no base-branch prompt, FR-024).
 func TestStartByPluginStarterFullJourney(t *testing.T) {
 	needSeed(t)
 	bin := buildWorkBin(t)
@@ -48,11 +52,17 @@ func TestStartByPluginStarterFullJourney(t *testing.T) {
 	root := filepath.Join(homeDir, "src")
 	repo := filepath.Join(root, "demo-pr-1")
 	makeRepo(t, repo)
+	gitIn(t, repo, "branch", "feature/source-branch")
 	writeRepositoryRoots(t, workHome, root)
 	ws := filepath.Join(homeDir, "ws")
 
 	c := newConsole(t, bin, env, "start", "demo-pr-1",
-		"--workspace", ws, "--base", "main", "--slug", "guided", "--prefix", "{slug}", "--yes")
+		"--workspace", ws, "--slug", "guided", "--prefix", "{slug}", "--yes")
+	c.expect("Mode")
+	c.expect("contribution")
+	c.expect("fork")
+	c.send("\x1b[B") // the fixture lists "contribution" first; move down to "fork"
+	c.send("\r")
 	c.expect("work: created ")
 	if code := c.wait(); code != 0 {
 		t.Fatalf("start via plugin starter exited %d, want 0\n%s", code, c.screen())
@@ -81,8 +91,8 @@ func TestStartByPluginStarterFullJourney(t *testing.T) {
 	if st.Schema != 3 {
 		t.Errorf("schema = %d, want 3", st.Schema)
 	}
-	if st.Work.StartMode != "new" {
-		t.Errorf("start_mode = %q, want %q (start_modes consumption lands in Phase 5)", st.Work.StartMode, "new")
+	if st.Work.StartMode != "fork" {
+		t.Errorf("start_mode = %q, want %q", st.Work.StartMode, "fork")
 	}
 	if st.Work.Starter != "specific-starter" {
 		t.Errorf("starter = %q, want the plugin Starter's bare name (no collision to qualify)", st.Work.Starter)
