@@ -1,0 +1,31 @@
+# `work plugin list [--json]` (F4, US1): empty before any install, populated
+# after, sorted by alias, and pure (never mutates) — contracts/cli-work-plugin.md.
+
+# Empty before any install.
+work plugin list
+! stdout .
+work plugin list --json
+stdout '^\[\]$'
+
+# After installing two packages, list is sorted by alias and shows every
+# component/convention.
+preparepluginfixture colliding-starter ZEBRA
+work plugin install $ZEBRA --as zebra-plugin
+preparepluginfixture specific-starter APPLE
+work plugin install $APPLE --as apple-plugin
+
+work plugin list
+stdout '(?m)^apple-plugin  local-pinned  '
+stdout '(?m)^zebra-plugin  local-pinned  '
+stdout '  specific-starter \(starter\)'
+
+work plugin list --json
+stdout '"alias": "apple-plugin"'
+stdout '"alias": "zebra-plugin"'
+stdout '"conventions": \['
+
+# Purity: list never mutates the registry.
+cp $WORK_HOME/state/registry.json before.json
+work plugin list
+work plugin list --json
+cmp $WORK_HOME/state/registry.json before.json

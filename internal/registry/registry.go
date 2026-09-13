@@ -49,12 +49,19 @@ type Convention struct {
 }
 
 // Package is one installed plugin package's record (F4). Identity is Alias.
-// Every Component/Convention registered from this package carries the same
-// Alias — Package is a new parent record, not a new identity scheme.
+// Every Component registered from this package carries the same Alias —
+// Package is a new parent record, not a new identity scheme. Conventions
+// names the convention names this package's manifest declared, for `work
+// plugin list`: registry.Convention itself carries no Alias (its identity
+// stays a bare Name, unchanged — two packages declaring the same convention
+// name are independent catalog data, never disambiguated the way component
+// names are), so Package is where a package's own declared convention names
+// are recorded.
 type Package struct {
-	Alias     string `json:"alias"`
-	Origin    string `json:"origin"`    // one of the Origin* constants
-	Reference string `json:"reference"` // absolute source path (local kinds), or "<source>@<sha>" (remote)
+	Alias       string   `json:"alias"`
+	Origin      string   `json:"origin"`                // one of the Origin* constants
+	Reference   string   `json:"reference"`             // absolute source path (local kinds), or "<source>@<sha>" (remote)
+	Conventions []string `json:"conventions,omitempty"` // convention names this package's manifest declared
 }
 
 // Registry is the whole registry.json document.

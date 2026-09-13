@@ -1,0 +1,52 @@
+# `work plugin install` (F4, US1): local pinned/linked, remote pinned,
+# alias/fallback conflicts, invalid manifest, every documented exit code
+# (contracts/cli-work-plugin.md §Contract tests).
+
+# Local pinned: a real copy, not a symlink.
+preparepluginfixture specific-starter SRC
+work plugin install $SRC
+stdout 'work: installed specific-starter \(local-pinned\)'
+stdout 'work: components: specific-starter \(starter\)'
+
+# Local linked: plugins/<alias>/source is a symlink, not a copy.
+preparepluginfixture specific-starter SRC2
+work plugin install $SRC2 --as linked-alias --link
+stdout 'work: installed linked-alias \(local-linked\)'
+
+# --link + remote is rejected before any I/O.
+! work plugin install https://example.com/x.git --link
+stderr 'error: usage:'
+
+# Remote pinned: a local file:// remote, no network. Reference records the
+# pinned commit.
+preparepluginremote colliding-starter REMOTE
+work plugin install $REMOTE --as remote-alias
+stdout 'work: installed remote-alias \(remote-pinned\)'
+
+work plugin list
+stdout 'remote-alias  remote-pinned  file://.*@[0-9a-f]+'
+
+# Alias conflict: a different origin under the same alias fails and registers
+# nothing; the original entry is unaffected.
+preparepluginfixture colliding-starter SRC3
+! work plugin install $SRC3 --as specific-starter
+stderr 'error: plugin-alias-conflict:'
+
+# Idempotent reinstall: same origin, same alias, succeeds again.
+work plugin install $SRC
+stdout 'work: installed specific-starter \(local-pinned\)'
+
+# Fallback conflict: a second fallback Starter under a different alias fails.
+preparepluginfixture fallback-starter-a FBA
+work plugin install $FBA
+preparepluginfixture fallback-starter-b FBB
+! work plugin install $FBB
+stderr 'error: plugin-fallback-conflict:'
+
+# Invalid manifest: nothing registered.
+preparepluginfixture invalid-manifest BAD
+! work plugin install $BAD
+stderr 'error: plugin-invalid:'
+
+work plugin list
+! stdout 'invalid-manifest'
