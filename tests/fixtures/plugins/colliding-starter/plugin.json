@@ -1,0 +1,13 @@
+{
+  "name": "colliding-starter",
+  "version": "1.0.0",
+  "components": [
+    {
+      "name": "colliding-starter",
+      "role": "starter",
+      "entrypoint": "starter",
+      "pattern": "^demo-pr-\\d+$"
+    }
+  ],
+  "conventions": []
+}
