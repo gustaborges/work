@@ -199,10 +199,10 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	// never reaches internal/locator (ADR-0014); every other shape resolves
 	// through the policy (contracts/cli-work-start.md §Interactive flow).
 	//
-	// The Starter to invoke is resolved fresh from SOURCE itself (F4,
-	// research R7): zero or one pattern match is wired end to end here; a
-	// collision (>= 2 matches) has no interactive picker yet (that lands with
-	// US4) and is always fatal in this phase.
+	// The Starter to invoke is resolved fresh from SOURCE itself (F4, research
+	// R7): a collision (>= 2 pattern matches) is resolved by an explicit,
+	// unmemoized present.Select interactively, or fails starter-ambiguous (36)
+	// non-interactively (ADR-0004, US4).
 	validatePath := func(ctx context.Context, s string) error {
 		s = strings.TrimSpace(s)
 		if s == "" {

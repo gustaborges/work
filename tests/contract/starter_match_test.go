@@ -143,6 +143,44 @@ func TestStarterMatchContract(t *testing.T) {
 		}
 	})
 
+	t.Run("collision returns an Ambiguous outcome naming both, never memoized", func(t *testing.T) {
+		plugins := t.TempDir()
+		reg := registerFixtureStarter(t, plugins, "demo", "specific-starter")
+		registerFixtureStarterInto(t, reg, plugins, "collide", "colliding-starter")
+
+		comp, out, err := starter.Match(reg, "demo-pr-1")
+		if err != nil {
+			t.Fatalf("Match: %v", err)
+		}
+		if out.Ambiguous == nil {
+			t.Fatalf("Ambiguous = nil, want both colliding components")
+		}
+		if len(out.Ambiguous) != 2 {
+			t.Fatalf("Ambiguous = %+v, want exactly 2 colliding components", out.Ambiguous)
+		}
+		if comp.Alias != "" || comp.Name != "" {
+			t.Fatalf("Component = %+v, want the zero value on an ambiguous outcome — neither invoked yet", comp)
+		}
+		seen := map[string]bool{}
+		for _, c := range out.Ambiguous {
+			seen[c.Alias] = true
+		}
+		if !seen["demo"] || !seen["collide"] {
+			t.Fatalf("Ambiguous = %+v, want both demo and collide named", out.Ambiguous)
+		}
+
+		// Match is a pure function with no state: the identical collision run
+		// again returns the same Ambiguous outcome rather than remembering
+		// whichever component a caller previously chose (FR-012, SC-006).
+		_, out2, err := starter.Match(reg, "demo-pr-1")
+		if err != nil {
+			t.Fatalf("Match (second run): %v", err)
+		}
+		if len(out2.Ambiguous) != 2 {
+			t.Fatalf("second Match Ambiguous = %+v, want 2 again (not memoized)", out2.Ambiguous)
+		}
+	})
+
 	t.Run("no match and no fallback is starter-not-matched (35)", func(t *testing.T) {
 		plugins := t.TempDir()
 		reg := registerFixtureStarter(t, plugins, "demo", "specific-starter")

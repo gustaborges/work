@@ -497,38 +497,38 @@ Branch: `feature/005-plugin-origins-p5-us4-collision`, cut from Phase 5 tip.
 
 ### Tests for User Story 4
 
-- [ ] T053 [P] [US4] `tests/contract/starter_match_test.go`: `specific-starter`
+- [X] T053 [P] [US4] `tests/contract/starter_match_test.go`: `specific-starter`
       + `colliding-starter` both matching one argument → `Outcome.Ambiguous`
       naming both, neither invoked yet; running the same collision twice with
       different choices shows both runs ask again (no memoization anywhere on
       disk, SC-006).
-- [ ] T054 [P] [US4] `tests/integration/starter_collision_test.go` (PTY): with
+- [X] T054 [P] [US4] `tests/integration/starter_collision_test.go` (PTY): with
       both fixtures installed and matching, interactive `work start
       demo-pr-1` shows a Starter selector (no ranking) **before** the SOURCE
       step's own validation runs; only the chosen component is invoked;
       running it twice may pick a different Starter each time (quickstart
       S11).
-- [ ] T055 [P] [US4] Non-interactive collision case (extend
+- [X] T055 [P] [US4] Non-interactive collision case (extend
       `tests/integration/starter_collision_test.go` or a new txtar): explicit
       `SOURCE` matching both fixtures → exit 36 (`starter-ambiguous`) naming
       both colliding Starters, no selector opened, no Work created (US4 AC4).
-- [ ] T056 [P] [US4] Non-interactive no-match case: no fallback registered and
+- [X] T056 [P] [US4] Non-interactive no-match case: no fallback registered and
       no pattern matches → exit 35 (`starter-not-matched`), actionable message,
       no Work created (quickstart S12).
 
 ### Implementation for User Story 4
 
-- [ ] T057 [US4] `internal/cli/start.go`: on `starter.Match` returning an
+- [X] T057 [US4] `internal/cli/start.go`: on `starter.Match` returning an
       `Ambiguous` outcome, interactively call `present.Select[registry.Component]`
       ("Starter", listing alias/display name, no ranking) **before** the
       SOURCE step's own path/name validation runs; invoke exactly the chosen
       component; the choice is not remembered for a later step or invocation
       (FR-012, SC-006).
-- [ ] T058 [US4] `internal/cli/start.go`: non-interactively (or an explicit
+- [X] T058 [US4] `internal/cli/start.go`: non-interactively (or an explicit
       `SOURCE` with no TTY), map an `Ambiguous` outcome to `starter-ambiguous`
       (36) naming the colliding Starters, opening no selector and creating no
       Work (FR-012's non-interactive clause, US4 AC4).
-- [ ] T059 [US4] `internal/cli/start.go`: no pattern match and no registered
+- [X] T059 [US4] `internal/cli/start.go`: no pattern match and no registered
       fallback maps to `starter-not-matched` (35) with an actionable "enable or
       install a Starter" message, no Work created (FR-013).
 
