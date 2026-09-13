@@ -56,9 +56,12 @@ fork-mode creation from US3 to be independently testable.
 Branch: `feature/005-plugin-origins-p1-foundational` (shared with Phase 2), cut
 from `feature/005-plugin-origins-specs-00` tip.
 
-- [ ] T001 Confirm base/target branch with the user, then
+- [X] T001 Confirm base/target branch with the user, then
       `git switch feature/005-plugin-origins-specs-00 && git pull && git switch -c feature/005-plugin-origins-p1-foundational`.
-- [ ] T002 [P] Create `tests/fixtures/plugins/specific-starter/` and
+      (User confirmed: `feature/005-plugin-origins-specs-00` does not exist in
+      this worktree; work directly on `f4-plugins` instead of cutting a new
+      phase branch.)
+- [X] T002 [P] Create `tests/fixtures/plugins/specific-starter/` and
       `tests/fixtures/plugins/colliding-starter/`: each a `plugin.json` +
       `main.go` Starter entrypoint reading `{"arg":"<token>"}` on stdin and
       writing the extended response shape from `contracts/starter-protocol.md`
@@ -71,13 +74,13 @@ from `feature/005-plugin-origins-specs-00` tip.
       token, for US4. Neither declares `accepts` or a `key` (those belong to
       other roles — `internal/plugin`'s role-field rules still apply to
       fixtures).
-- [ ] T003 [P] Create `tests/fixtures/plugins/invalid-manifest/` (a `plugin.json`
+- [X] T003 [P] Create `tests/fixtures/plugins/invalid-manifest/` (a `plugin.json`
       with one `starter` component carrying a `key` field — forbidden for that
       role per `internal/plugin`'s `roleRules`, spec US1 AC4 — never meant to
       build or run) and `tests/fixtures/plugins/fallback-starter-a/` +
       `fallback-starter-b/` (each a valid, buildable `role: starter` component
       with an empty `pattern`, for FR-011/quickstart S6).
-- [ ] T004 [P] Add `tests/fixtures/plugins/plugins.go`: `Prepare(t *testing.T,
+- [X] T004 [P] Add `tests/fixtures/plugins/plugins.go`: `Prepare(t *testing.T,
       fixture string) string` — copies `tests/fixtures/plugins/<fixture>` into a
       `t.TempDir()`, `go build`s its `main.go` into the entrypoint name its
       `plugin.json` declares (`.exe` suffix on Windows), and returns the
