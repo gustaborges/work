@@ -25,6 +25,7 @@ import (
 	"github.com/gustaborges/work/internal/reporef"
 	"github.com/gustaborges/work/internal/shellintegration"
 	"github.com/gustaborges/work/internal/starter"
+	"github.com/gustaborges/work/internal/work"
 	"github.com/gustaborges/work/internal/workhome"
 	"github.com/gustaborges/work/internal/workspace"
 )
@@ -168,6 +169,16 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		// SOURCE (F4) — the reference fallback in F1/F3, or a plugin-provided
 		// specific Starter once one is installed and matches.
 		chosenStarter registry.Component
+		// starterBaseBranch and starterStartModes are the F4 fields of the
+		// matched Starter's response (contracts/starter-protocol.md),
+		// populated once validatePath's Invoke succeeds. Consumed by
+		// resolveBase/resolveContribution and the interactive Mode step below.
+		starterBaseBranch string
+		starterStartModes []string
+		// startMode is the resolved work.start_mode: left empty (create.Run
+		// defaults it to "new") when the Starter offered no start_modes, or
+		// set to the Mode step's answer otherwise (FR-021/FR-022).
+		startMode string
 	)
 
 	// locatorDeps feeds internal/locator.Resolve from the loaded config: the
@@ -202,10 +213,27 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			return present.Fatal(merr) // starter-not-matched: no input text fixes a missing fallback
 		}
 		if outcome.Ambiguous != nil {
-			return present.Fatal(diag.Newf(diag.StarterAmbiguous,
-				"%d Starters matched this argument", len(outcome.Ambiguous)).
-				WithSummary("More than one Starter matched this argument.").
-				WithHint("Only one matching Starter can be installed at a time until collision selection ships."))
+			// Non-interactively (or an explicit SOURCE with no TTY), a collision
+			// is always fatal — no selector opened, no Work created (FR-012's
+			// non-interactive clause, US4 AC4). Interactively, present.Select
+			// (the same standalone picker internal/cli/resume.go uses) resolves
+			// it before SOURCE's own validation continues; the choice is never
+			// memoized (FR-012, SC-006). This runs safely only for an
+			// argv-provided SOURCE, resolved eagerly before any present.Wizard
+			// is constructed — validatePath is also reused as the interactive
+			// path-prompt's own Validate, where a nested full-screen picker
+			// would conflict with the already-running wizard program.
+			if !interactive {
+				return present.Fatal(diag.Newf(diag.StarterAmbiguous,
+					"%d Starters matched this argument", len(outcome.Ambiguous)).
+					WithSummary("More than one Starter matched this argument.").
+					WithHint("Pick one interactively, or narrow the argument so only one Starter's pattern matches."))
+			}
+			chosen, serr := present.Select(ctx, pio, starterSelectSpec(outcome.Ambiguous))
+			if serr != nil {
+				return present.Fatal(serr) // Ctrl-C/Esc at the picker -> diag.Cancelled
+			}
+			comp = chosen
 		}
 		chosenStarter = comp
 
@@ -216,6 +244,11 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			}
 			return present.Fatal(err)
 		}
+		if verr := starter.ValidateResponse(ref); verr != nil {
+			return present.Fatal(verr)
+		}
+		starterBaseBranch = ref.BaseBranch
+		starterStartModes = ref.StartModes
 
 		if ref.Path != "" {
 			normalized, verr := reporef.ValidatePath(ref.Path)
@@ -308,12 +341,26 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		return nil
 	}
 
-	// resolveBaseFlag turns --base into a Choice once the repository path is
-	// known. The explicit state marker, rather than a property of Choice, is the
-	// sole resolution guard; an empty refname can therefore never cause a valid
-	// choice to be resolved again.
-	resolveBaseFlag := func() error {
-		if !f.baseSet || baseResolved || repoPath == "" {
+	// resolveBase turns --base, or a Starter-supplied base_branch (F4,
+	// FR-023/FR-024), into a Choice once the repository path is known: an
+	// explicit flag takes priority (unchanged F1/F3 behaviour); absent that, a
+	// Starter's base_branch is used directly so the base-branch step never
+	// renders. Neither present leaves base unresolved for the interactive step
+	// to prompt for. The explicit state marker, rather than a property of
+	// Choice, is the sole resolution guard; an empty refname can therefore
+	// never cause a valid choice to be resolved again — safe to call
+	// speculatively at multiple points in the flow.
+	resolveBase := func() error {
+		if baseResolved || repoPath == "" {
+			return nil
+		}
+		refname := ""
+		switch {
+		case f.baseSet:
+			refname = f.base
+		case starterBaseBranch != "":
+			refname = starterBaseBranch
+		default:
 			return nil
 		}
 		choices, err := basebranch.List(gitx.Open(repoPath))
@@ -323,11 +370,36 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		if len(choices) == 0 {
 			return diag.New(diag.NoBaseBranch, "the repository has no selectable base branch")
 		}
-		base, err = basebranch.Resolve(choices, f.base)
+		base, err = basebranch.Resolve(choices, refname)
 		if err == nil {
 			baseResolved = true
 		}
 		return err
+	}
+
+	// resolveContribution finalizes slug/branch/base once the Mode step
+	// resolves to "contribution" (research R12, FR-020): branch is exactly the
+	// branch the Starter resolved — base_branch doubles as the checkout
+	// target, ADD §7's single field serving both purposes — slug stays empty,
+	// and no prefix/convention step ever renders. It always resolves from
+	// starterBaseBranch, never from --base: the checked-out branch in this
+	// mode comes from the Starter, not the user, even if --base was also
+	// given (contracts/starter-protocol.md).
+	resolveContribution := func() error {
+		choices, err := basebranch.List(gitx.Open(repoPath))
+		if err != nil {
+			return err
+		}
+		if len(choices) == 0 {
+			return diag.New(diag.NoBaseBranch, "the repository has no selectable base branch")
+		}
+		b, err := basebranch.Resolve(choices, starterBaseBranch)
+		if err != nil {
+			return err
+		}
+		base, baseResolved = b, true
+		slug, branch = "", base.Short
+		return nil
 	}
 
 	// Resolve every value an explicit flag or the SOURCE argument already
@@ -347,6 +419,16 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		if ambiguityPending && !interactive {
 			return ambiguousErr()
 		}
+		// start_modes presence has no non-interactive mode-selection flag in
+		// F4 (Out of Scope, contracts/cli-work-start.md §New clause: start
+		// modes) — a non-interactive invocation against such a Starter
+		// response fails with an actionable usage error rather than silently
+		// defaulting to a mode.
+		if len(starterStartModes) > 0 && !interactive {
+			return diag.New(diag.Usage,
+				"this Starter offers a start-mode choice (contribution/fork); no non-interactive flag selects one yet").
+				WithHint("Run `work start` in an interactive terminal to choose a mode.")
+		}
 	}
 
 	switch {
@@ -359,8 +441,12 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 
 	// Slug validation needs the repository (for the collision check), so it can
 	// only run eagerly once the path is known — otherwise the slug becomes a
-	// wizard step whose build runs the same closure after the path step.
-	if f.slugSet && repoPath != "" {
+	// wizard step whose build runs the same closure after the path step. When
+	// the Starter offered start_modes, the mode itself isn't resolved yet (it
+	// is a wizard step below) and contribution mode never runs slug at all —
+	// so eager validation is deferred to the slug step's own build closure,
+	// which re-checks the resolved mode first (FR-020).
+	if f.slugSet && repoPath != "" && len(starterStartModes) == 0 {
 		if err := validateSlug(ctx, f.slug); err != nil {
 			if underlying, fatal := present.IsFatal(err); fatal {
 				return underlying
@@ -371,7 +457,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		}
 	}
 
-	if err := resolveBaseFlag(); err != nil {
+	if err := resolveBase(); err != nil {
 		return err
 	}
 
@@ -426,8 +512,26 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			return candidateSelectSpec(candidates), nil
 		}))
 
+		// A conditional Mode step (F4, contracts/cli-work-start.md §New
+		// clause: start modes): rendered only when the resolved Starter
+		// offered start_modes, listing exactly those values and no others
+		// (ADR-0004). Absent start_modes, it silently resolves to "new" — the
+		// unchanged F1/F3 journey — with no step shown.
+		steps = append(steps, present.SelectStep("mode", func(present.Answers) (present.SelectSpec[string], error) {
+			if len(starterStartModes) == 0 {
+				return present.SelectSpec[string]{}, present.StepResolved(work.StartModeNew)
+			}
+			return present.SelectSpec[string]{
+				Title:   "Mode",
+				Options: stringOptions(starterStartModes),
+			}, nil
+		}))
+
 		if prefix == "" && len(prefixes) > 1 {
-			steps = append(steps, present.SelectStep("prefix", func(present.Answers) (present.SelectSpec[string], error) {
+			steps = append(steps, present.SelectStep("prefix", func(a present.Answers) (present.SelectSpec[string], error) {
+				if a.String("mode") == work.StartModeContribution {
+					return present.SelectSpec[string]{}, present.StepResolved("")
+				}
 				return present.SelectSpec[string]{
 					Title:   "Branch prefix",
 					Options: stringOptions(prefixes),
@@ -437,15 +541,25 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 
 		if branch == "" {
 			steps = append(steps, present.InputStep("slug", func(a present.Answers) (present.InputSpec, error) {
-				if p := a.String("prefix"); p != "" {
-					prefix = p
-				}
-				// The Repository step (immediately before this one) resolves an
+				// The Repository step (immediately before Mode) resolves an
 				// ambiguous match; sync it here — before this step's own build
-				// runs — so the slug's collision check below sees the chosen
-				// repository, not the pre-selection empty repoPath.
+				// runs — so the collision check below (and resolveContribution,
+				// which needs repoPath) sees the chosen repository, not the
+				// pre-selection empty repoPath.
 				if rv, ok := a.Value("repository").(locator.Candidate); ok && rv.Path != "" {
 					repoPath, repoName = rv.Path, filepath.Base(rv.Path)
+				}
+				// Contribution mode never runs slug/convention/prefix (FR-020):
+				// branch is exactly the Starter-resolved branch, checked out
+				// directly.
+				if a.String("mode") == work.StartModeContribution {
+					if err := resolveContribution(); err != nil {
+						return present.InputSpec{}, present.Fatal(err)
+					}
+					return present.InputSpec{}, present.StepResolved(slug)
+				}
+				if p := a.String("prefix"); p != "" {
+					prefix = p
 				}
 				// --slug can only be resolved here (not eagerly) when SOURCE was
 				// prompted: the collision check needs the repository path.
@@ -473,8 +587,13 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 
 		if base.Refname == "" {
 			steps = append(steps, present.SelectStep("base", func(present.Answers) (present.SelectSpec[basebranch.Choice], error) {
-				if f.baseSet {
-					if err := resolveBaseFlag(); err != nil {
+				// A Starter-supplied base_branch is used directly, same as
+				// --base: no prompt (FR-024). Contribution mode never reaches
+				// here unresolved — starterBaseBranch is always non-empty by
+				// the time a Starter can offer it, so this branch already
+				// covers that mode with no separate check.
+				if f.baseSet || starterBaseBranch != "" {
+					if err := resolveBase(); err != nil {
 						return present.SelectSpec[basebranch.Choice]{}, err
 					}
 					return present.SelectSpec[basebranch.Choice]{}, present.StepResolved(base)
@@ -510,15 +629,22 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 
 		if needConfirm {
 			steps = append(steps, present.ConfirmStep("confirm", func(a present.Answers) (present.ConfirmSpec, error) {
-				if bv, ok := a.Value("base").(basebranch.Choice); ok {
-					base = bv
-				}
-				if err := resolveBaseFlag(); err != nil {
-					return present.ConfirmSpec{}, err
+				mode := a.String("mode")
+				if mode == work.StartModeContribution {
+					if err := resolveContribution(); err != nil {
+						return present.ConfirmSpec{}, err
+					}
+				} else {
+					if bv, ok := a.Value("base").(basebranch.Choice); ok {
+						base = bv
+					}
+					if err := resolveBase(); err != nil {
+						return present.ConfirmSpec{}, err
+					}
 				}
 				return present.ConfirmSpec{
 					Title:  "Create Work",
-					Impact: startImpact(repoPath, repoName, base, branch, workspaceRoot),
+					Impact: startImpact(repoPath, repoName, base, branch, workspaceRoot, mode),
 					Accept: "Create",
 					Reject: "Cancel",
 				}, nil
@@ -530,6 +656,9 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			if err != nil {
 				return err
 			}
+			if mv := ans.String("mode"); mv != "" {
+				startMode = mv
+			}
 			if bv, ok := ans.Value("base").(basebranch.Choice); ok {
 				base = bv
 				baseResolved = true
@@ -540,7 +669,11 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		}
 	}
 
-	if err := resolveBaseFlag(); err != nil {
+	if startMode == work.StartModeContribution {
+		if err := resolveContribution(); err != nil {
+			return err
+		}
+	} else if err := resolveBase(); err != nil {
 		return err
 	}
 
@@ -550,6 +683,13 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		if err := workspace.Persist(home, workspaceRoot); err != nil {
 			return err
 		}
+	}
+
+	// Contribution mode never runs the convention step (FR-020): work-state
+	// schema 3 requires branch_convention to be absent exactly then.
+	conventionValue := convention.Freeform
+	if startMode == work.StartModeContribution {
+		conventionValue = ""
 	}
 
 	// 9. Materialize.
@@ -562,8 +702,9 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		Branch:          branch,
 		BaseRefname:     base.Refname,
 		BaseBranchShort: base.Short,
-		Convention:      convention.Freeform,
+		Convention:      conventionValue,
 		Starter:         starterLogicalName(reg, chosenStarter),
+		StartMode:       startMode,
 	})
 	if err != nil {
 		return err
@@ -755,6 +896,23 @@ func candidateSelectSpec(candidates []locator.Candidate) present.SelectSpec[loca
 	}
 }
 
+// starterSelectSpec builds the Starter collision picker (US4, ADR-0004): no
+// ranking, primary line the qualified "<alias>/<name>" (the same form
+// starterLogicalName persists when a bare name would otherwise collide), no
+// secondary line. The choice is never memoized — Select is called fresh on
+// every collision (FR-012, SC-006).
+func starterSelectSpec(candidates []registry.Component) present.SelectSpec[registry.Component] {
+	opts := make([]present.Option[registry.Component], len(candidates))
+	for i, c := range candidates {
+		opts[i] = present.Option[registry.Component]{Value: c, Primary: c.Alias + "/" + c.Name}
+	}
+	return present.SelectSpec[registry.Component]{
+		Title:   "Starter",
+		Options: opts,
+		Receipt: func(o present.Option[registry.Component]) string { return o.Value.Alias + "/" + o.Value.Name },
+	}
+}
+
 // baseBranchSpec builds the base-branch selector: the choices grouped into
 // Local / Remote tabs (the tab bar is hidden when only one scope is present),
 // filterable, and hash-free — the short object name is deliberately not shown as
@@ -782,10 +940,18 @@ func baseBranchSpec(choices []basebranch.Choice) present.SelectSpec[basebranch.C
 	}
 }
 
-// startImpact is the confirmation preview: the resolved repository, base branch
-// (short name only), branch, workspace root, and target directory.
-func startImpact(repoPath, repoName string, base basebranch.Choice, branch, workspaceRoot string) string {
+// startImpact is the confirmation preview: the resolved repository, base
+// branch (short name only), branch, workspace root, and target directory. In
+// contribution mode there is no separate base to show — the preview names the
+// existing branch being checked out instead of a new one being created from a
+// base (contracts/cli-work-start.md §New clause: start modes).
+func startImpact(repoPath, repoName string, base basebranch.Choice, branch, workspaceRoot, mode string) string {
 	dirPath := filepath.Join(workspaceRoot, "in-progress", repoName+"_"+strings.ReplaceAll(branch, "/", "-"))
+	if mode == work.StartModeContribution {
+		return fmt.Sprintf(
+			"  repository: %s\n  branch:     %s (existing, checked out)\n  workspace:  %s\n  directory:  %s",
+			repoPath, branch, workspaceRoot, dirPath)
+	}
 	return fmt.Sprintf(
 		"  repository: %s\n  base:       %s\n  branch:     %s\n  workspace:  %s\n  directory:  %s",
 		repoPath, base.Short, branch, workspaceRoot, dirPath)

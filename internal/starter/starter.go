@@ -15,6 +15,7 @@ import (
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/ipc"
 	"github.com/gustaborges/work/internal/registry"
+	"github.com/gustaborges/work/internal/work"
 )
 
 // LogicalName is the stable name recorded in work.starter for the seed Starter.
@@ -127,4 +128,35 @@ func Invoke(pluginsDir string, c registry.Component, arg string) (Reference, err
 		BaseBranch:   resp.BaseBranch,
 		StartModes:   resp.StartModes,
 	}, nil
+}
+
+// ValidateResponse enforces the structural rules starter-protocol.md places on
+// a Starter's response beyond what Invoke's JSON decoding already checks
+// (research R9): every StartModes value must be work.StartModeFork or
+// work.StartModeContribution, and StartModes containing StartModeContribution
+// requires a non-empty BaseBranch — contribution mode never prompts for one,
+// so an absent base branch here can never be filled in later. Both violations
+// are starter-response-invalid (37), the same failure shape as a malformed
+// response, checked before any Work materialization.
+func ValidateResponse(ref Reference) error {
+	hasContribution := false
+	for _, m := range ref.StartModes {
+		switch m {
+		case work.StartModeFork:
+		case work.StartModeContribution:
+			hasContribution = true
+		default:
+			return diag.Newf(diag.StarterResponseInvalid,
+				"the Starter returned an unrecognized start mode %q", m).
+				WithSummary("The Starter's response is structurally invalid.").
+				WithHint("This is a bug in the installed Starter, not something fixable from the command line.")
+		}
+	}
+	if hasContribution && ref.BaseBranch == "" {
+		return diag.New(diag.StarterResponseInvalid,
+			"the Starter offered contribution mode with no base branch to check out").
+			WithSummary("The Starter's response is structurally invalid.").
+			WithHint("This is a bug in the installed Starter, not something fixable from the command line.")
+	}
+	return nil
 }

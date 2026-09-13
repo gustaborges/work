@@ -419,7 +419,7 @@ Branch: `feature/005-plugin-origins-p4-us3-modes`, cut from Phase 4 tip.
 
 ### Tests for User Story 3
 
-- [ ] T044 [P] [US3] `tests/integration/start_modes_test.go` (PTY): with
+- [X] T044 [P] [US3] `tests/integration/start_modes_test.go` (PTY): with
       `specific-starter` returning `start_modes:["contribution","fork"]` +
       `base_branch`, the Mode step offers exactly those two; selecting **fork**
       skips the base-branch prompt (already supplied) then runs the full
@@ -427,15 +427,15 @@ Branch: `feature/005-plugin-origins-p4-us3-modes`, cut from Phase 4 tip.
       selecting **contribution** shows no slug/convention/prefix step, checks
       out the existing branch, and persists `start_mode: "contribution"` with
       no `branch_convention` key in `work-state.json` (quickstart S8, S9).
-- [ ] T045 [P] [US3] Extend the same test file for S10: contribution mode
+- [X] T045 [P] [US3] Extend the same test file for S10: contribution mode
       cancelled mid-confirmation leaves no worktree/dir/snapshot/index entry,
       and the Starter-resolved branch still exists in the source repository.
-- [ ] T046 [P] [US3] `tests/contract/starter_match_test.go`: an unrecognized
+- [X] T046 [P] [US3] `tests/contract/starter_match_test.go`: an unrecognized
       `start_modes` value, and `"contribution"` present with no `base_branch`,
       both → `starter-response-invalid` (37); a response carrying `meta`/
       `links` still creates a Work whose `work-state.json` `meta`/`links` stay
       `{}` (unconsumed, research R8).
-- [ ] T047 [P] [US3] Extend `internal/create/create_test.go`: in contribution
+- [X] T047 [P] [US3] Extend `internal/create/create_test.go`: in contribution
       mode, `base_branch` in the built snapshot equals `branch` (the
       Starter-resolved branch checked out directly — there is no separate
       base); confirm (by reading, not editing) that
@@ -445,32 +445,32 @@ Branch: `feature/005-plugin-origins-p4-us3-modes`, cut from Phase 4 tip.
 
 ### Implementation for User Story 3
 
-- [ ] T048 [US3] `internal/cli/start.go` (research R9): immediately after
+- [X] T048 [US3] `internal/cli/start.go` (research R9): immediately after
       `Invoke`, validate the raw response shape before any Work
       materialization — `start_modes` containing a value outside
       `{"contribution","fork"}`, or containing `"contribution"` with no
       `base_branch`, both fail `starter-response-invalid` (37).
-- [ ] T049 [US3] `internal/cli/start.go`: once the repository is resolved
+- [X] T049 [US3] `internal/cli/start.go`: once the repository is resolved
       (and disambiguated, if needed), when the Starter response carries
       `start_modes`, add a `present.SelectStep` ("Mode") offering exactly those
       values and no others; when `base_branch` is present, use it directly and
       skip the base-branch prompt (FR-024); when absent, prompt as today
       (FR-023) — but only in fork/new modes (contribution's missing
       `base_branch` is already rejected by T048).
-- [ ] T050 [US3] `internal/cli/start.go`: branch the journey on the
+- [X] T050 [US3] `internal/cli/start.go`: branch the journey on the
       selected/implied mode. `"new"`/`"fork"`: unchanged
       slug/convention/prefix/confirmation sequence; `work.start_mode` set to
       the resolved value. `"contribution"`: skip slug, convention, and prefix
       entirely; the confirmation preview names the branch being checked out,
       not a base+new-branch pair; `Branch` and `BaseBranchShort` in
       `create.Params` both equal the Starter-resolved branch.
-- [ ] T051 [US3] `internal/cli/start.go` non-interactive path: `start_modes`
+- [X] T051 [US3] `internal/cli/start.go` non-interactive path: `start_modes`
       presence has no non-interactive mode-selection flag in F4 (Out of
       Scope) — a non-interactive invocation against such a Starter response
       fails with an actionable usage error rather than silently defaulting to
       a mode (documented gap, `contracts/cli-work-start.md` §New clause: start
       modes).
-- [ ] T052 [US3] `internal/cli/start.go`: pass the resolved `StartMode` into
+- [X] T052 [US3] `internal/cli/start.go`: pass the resolved `StartMode` into
       `create.Params.StartMode` (Phase 2's `WorktreeAddExisting` branch/
       compensator, T019, is now exercised end to end); verify via T045 that a
       failure/cancellation never deletes a contribution-mode branch (SC-009,
