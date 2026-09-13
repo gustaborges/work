@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -341,5 +342,118 @@ func TestRevParse(t *testing.T) {
 	}
 	if len(full) != 40 && len(full) != 64 {
 		t.Errorf("RevParse(HEAD) = %q, want a full object name", full)
+	}
+}
+
+func TestRemotesAndRemoteURL(t *testing.T) {
+	repo := newRepo(t)
+	r := Open(repo)
+
+	if names, err := r.Remotes(); err != nil || len(names) != 0 {
+		t.Fatalf("Remotes(none) = %v, %v", names, err)
+	}
+	if _, ok, err := r.RemoteURL("origin"); err != nil || ok {
+		t.Fatalf("RemoteURL(absent) = ok=%v, err=%v, want ok=false, err=nil", ok, err)
+	}
+
+	git(t, repo, "remote", "add", "origin", "https://example.com/project.git")
+	names, err := r.Remotes()
+	if err != nil || !slices.Contains(names, "origin") {
+		t.Fatalf("Remotes() = %v, %v, want [origin]", names, err)
+	}
+	url, ok, err := r.RemoteURL("origin")
+	if err != nil || !ok || url != "https://example.com/project.git" {
+		t.Fatalf("RemoteURL(origin) = %q, %v, %v", url, ok, err)
+	}
+}
+
+func TestRootCommitsSingleRoot(t *testing.T) {
+	repo := newRepo(t)
+	hashes, err := Open(repo).RootCommits()
+	if err != nil {
+		t.Fatalf("RootCommits: %v", err)
+	}
+	if len(hashes) != 1 {
+		t.Fatalf("RootCommits = %v, want exactly 1", hashes)
+	}
+	want, _ := Open(repo).RevParse("HEAD")
+	if hashes[0] != want {
+		t.Errorf("RootCommits = %v, want [%s]", hashes, want)
+	}
+}
+
+func TestRootCommitsMergedUnrelatedHistories(t *testing.T) {
+	repoA := newRepo(t)
+	repoB := newRepo(t)
+	// newRepo's commits are otherwise byte-identical (same fixed author/
+	// committer identity and date, same message): rewrite B's message so the
+	// two root commits actually hash differently.
+	git(t, repoB, "commit", "-q", "--amend", "--allow-empty", "-m", "init-b")
+	rootA, _ := Open(repoA).RevParse("HEAD")
+	rootB, _ := Open(repoB).RevParse("HEAD")
+
+	git(t, repoA, "remote", "add", "other", repoB)
+	git(t, repoA, "fetch", "-q", "other")
+	git(t, repoA, "merge", "-q", "--allow-unrelated-histories", "-m", "merge unrelated", "other/main")
+
+	hashes, err := Open(repoA).RootCommits()
+	if err != nil {
+		t.Fatalf("RootCommits: %v", err)
+	}
+	want := []string{rootA, rootB}
+	slices.Sort(want)
+	slices.Sort(hashes)
+	if !slices.Equal(hashes, want) {
+		t.Errorf("RootCommits = %v, want %v (sorted)", hashes, want)
+	}
+}
+
+func TestIsShallowAndDiscoverRepoRoot(t *testing.T) {
+	repo := newRepo(t)
+	r := Open(repo)
+
+	if shallow, err := r.IsShallow(); err != nil || shallow {
+		t.Fatalf("IsShallow(full clone) = %v, %v, want false", shallow, err)
+	}
+
+	sub := filepath.Join(repo, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root, err := DiscoverRepoRoot(sub)
+	if err != nil {
+		t.Fatalf("DiscoverRepoRoot: %v", err)
+	}
+	if mustEval(t, root) != mustEval(t, repo) {
+		t.Errorf("DiscoverRepoRoot(sub) = %q, want %q", root, repo)
+	}
+
+	// A local-path source clone ignores --depth (git treats it as a fast local
+	// hardlink clone); force the file:// transport to actually get a shallow
+	// clone to check IsShallow against.
+	clone := filepath.Join(t.TempDir(), "shallow")
+	cmd := exec.Command("git", "clone", "-q", "--depth", "1", "file://"+repo, clone)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git clone --depth 1 file://: %v\n%s", err, out)
+	}
+	if shallow, err := Open(clone).IsShallow(); err != nil || !shallow {
+		t.Errorf("IsShallow(shallow clone) = %v, %v, want true", shallow, err)
+	}
+}
+
+func TestClone(t *testing.T) {
+	repo := newRepo(t)
+	want, _ := Open(repo).RevParse("HEAD")
+
+	dest := filepath.Join(t.TempDir(), "cloned")
+	head, err := Clone(repo, dest)
+	if err != nil {
+		t.Fatalf("Clone: %v", err)
+	}
+	if head != want {
+		t.Errorf("Clone head = %q, want %q", head, want)
+	}
+	if _, err := os.Stat(filepath.Join(dest, ".git")); err != nil {
+		t.Errorf("clone destination has no .git: %v", err)
 	}
 }

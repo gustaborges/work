@@ -102,7 +102,7 @@ phase.** Same branch as Phase 1.
 
 ### Diagnostics
 
-- [ ] T005 Add categories `PluginInvalid` (`plugin-invalid`, 31),
+- [X] T005 Add categories `PluginInvalid` (`plugin-invalid`, 31),
       `PluginAliasConflict` (`plugin-alias-conflict`, 32),
       `PluginFallbackConflict` (`plugin-fallback-conflict`, 33),
       `PluginInstallFailed` (`plugin-install-failed`, 34),
@@ -112,25 +112,25 @@ phase.** Same branch as Phase 1.
       `ConventionUnknown` (`convention-unknown`, 38) to
       `internal/diag/diag.go`, appended to `All` after `RepositoryAmbiguous`,
       per data-model.md §11 / research R18.
-- [ ] T006 [P] Extend the `diag` table test in `internal/diag/diag_test.go` to
+- [X] T006 [P] Extend the `diag` table test in `internal/diag/diag_test.go` to
       assert codes 31–38 and their tokens, and that codes 0/2/10–30 and every
       existing token are unchanged.
 
 ### Registry
 
-- [ ] T007 [P] Add `Package{Alias, Origin, Reference}` and a `Packages
+- [X] T007 [P] Add `Package{Alias, Origin, Reference}` and a `Packages
       []Package` field to `Registry` in `internal/registry/registry.go`, plus
       `Origin` constants (`OriginLocalLinked`, `OriginLocalPinned`,
       `OriginRemotePinned`), `UpsertPackage` (keyed by `Alias`),
       `PackageByAlias`, and `ListPackages` (sorted by alias), per data-model.md
       §2, research R5.
-- [ ] T008 [P] Extend `internal/registry/registry_test.go`: `Packages`
+- [X] T008 [P] Extend `internal/registry/registry_test.go`: `Packages`
       upsert/lookup/sorted-list, JSON round-trip, and that existing
       `Components`/`Conventions` behaviour is unchanged.
 
 ### `gitx` additions
 
-- [ ] T009 [P] Add to `internal/gitx/gitx.go`: `Repo.Remotes() ([]string,
+- [X] T009 [P] Add to `internal/gitx/gitx.go`: `Repo.Remotes() ([]string,
       error)` (`git remote`); `Repo.RemoteURL(name string) (string, bool,
       error)` (`git remote get-url <name>`, `ok=false` on a clean non-zero
       exit); `Repo.RootCommits() ([]string, error)` (`git rev-list
@@ -140,7 +140,7 @@ phase.** Same branch as Phase 1.
       --show-toplevel`); package-level `Clone(source, dest string) (headSHA
       string, err error)` (`git clone --depth 1 <source> <dest>`, then `git -C
       <dest> rev-parse HEAD`), per research R13/R3.
-- [ ] T010 [P] Unit tests in `internal/gitx/gitx_test.go` for
+- [X] T010 [P] Unit tests in `internal/gitx/gitx_test.go` for
       `Remotes`/`RemoteURL` (present/absent), `RootCommits` (single commit, and
       a merged-unrelated-histories fixture yielding two roots),
       `IsShallow`/`DiscoverRepoRoot`, and `Clone` (against a local `file://`
@@ -148,13 +148,13 @@ phase.** Same branch as Phase 1.
 
 ### `internal/repoidentity`
 
-- [ ] T011 [P] Create `internal/repoidentity/repoidentity.go`:
+- [X] T011 [P] Create `internal/repoidentity/repoidentity.go`:
       `Identify(repo gitx.Repo) (string, error)` implementing ADR-0011's three
       ordered layers — (1) the `origin` remote's fetch URL if configured; (2)
       else `RootCommits()`, sorted lexicographically and `+`-joined, if any
       exist; (3) else the absolute, symlink-resolved `repo.Dir` — per
       data-model.md §9, research R13.
-- [ ] T012 [P] Unit tests `internal/repoidentity/repoidentity_test.go`:
+- [X] T012 [P] Unit tests `internal/repoidentity/repoidentity_test.go`:
       origin-remote repos; no-remote repos (single root commit, and a
       merged-unrelated-histories composite key sorted deterministically
       regardless of merge order); a shallow clone with no remote (path
@@ -163,32 +163,32 @@ phase.** Same branch as Phase 1.
 
 ### `internal/repoconv`
 
-- [ ] T013 [P] Add `Home.BranchConventionsFile() string` (`<root>/state/
+- [X] T013 [P] Add `Home.BranchConventionsFile() string` (`<root>/state/
       branch_conventions.json`) to `internal/workhome/workhome.go`.
-- [ ] T014 [P] Create `internal/repoconv/repoconv.go`: `Entry{Identity,
+- [X] T014 [P] Create `internal/repoconv/repoconv.go`: `Entry{Identity,
       Convention}`; `Load`/`Save` (atomic via `internal/atomicfile`,
       missing-file-yields-empty, mirroring `registry.Load`/`Save`);
       `Get(identity string) (string, bool)`; `Set(identity, convention
       string)` upserting by `Identity`, per data-model.md §8, research R14.
-- [ ] T015 [P] Unit tests `internal/repoconv/repoconv_test.go`: get/set against
+- [X] T015 [P] Unit tests `internal/repoconv/repoconv_test.go`: get/set against
       a temp state file; an unknown identity returns `("", false)`, never an
       error; `Set` overwrites an existing entry for the same identity;
       idempotent reload after `Save`.
 
 ### `work-state.json` schema 3
 
-- [ ] T016 In `internal/work/state.go`: bump `Schema` to `3`; add
+- [X] T016 In `internal/work/state.go`: bump `Schema` to `3`; add
       `StartModeFork = "fork"` and `StartModeContribution = "contribution"`
       alongside the existing `StartModeNew`; give `WorkSection.Slug` and
       `.BranchConvention` `omitempty` JSON tags (both may now be legitimately
       absent); update the package doc comment for the schema-2→3 change per
       data-model.md §6, research R10.
-- [ ] T017 Update `Validate()` in `internal/work/state.go`: `start_mode` ∈
+- [X] T017 Update `Validate()` in `internal/work/state.go`: `start_mode` ∈
       `{"new","contribution","fork"}`; `slug` and `branch_convention` both
       required + non-empty **unless** `start_mode == "contribution"`, in which
       case both **must be absent**; `base_branch` stays required in every mode;
       the schema-1/2 `archived_at` conditional rule is unchanged.
-- [ ] T018 [P] Extend `internal/work/state_test.go`: `Validate` accepts
+- [X] T018 [P] Extend `internal/work/state_test.go`: `Validate` accepts
       `contribution` with `slug`/`branch_convention` absent and rejects it with
       either present; accepts `fork`/`new` with both required; schema 1/2
       documents still `Decode` cleanly (regression); `Write` always emits
@@ -196,20 +196,20 @@ phase.** Same branch as Phase 1.
 
 ### `internal/create` existing-branch path
 
-- [ ] T019 Add `Params.StartMode string` to `internal/create/create.go`. In
+- [X] T019 Add `Params.StartMode string` to `internal/create/create.go`. In
       `Run`'s step 3, when `StartMode == "contribution"`, call
       `repo.WorktreeAddExisting(worktreePath, p.Branch)` (no new branch) instead
       of `WorktreeAdd`, and push a compensator that calls only
       `repo.WorktreeRemove(worktreePath)` — **never** `repo.BranchDelete` — per
       research R12; every other `StartMode` value keeps the existing
       `WorktreeAdd` + worktree-then-branch-delete compensator.
-- [ ] T020 Update `build()` in `internal/create/create.go`: set
+- [X] T020 Update `build()` in `internal/create/create.go`: set
       `ws.StartMode` from `p.StartMode` (defaulting to `work.StartModeNew` when
       empty, preserving today's behaviour); leave `ws.Slug` and
       `ws.BranchConvention` empty when `p.StartMode == "contribution"`
       (`p.Slug`/`p.Convention` are expected empty from the caller in that mode —
       `create` does not itself decide the mode, only materializes it, FR-022).
-- [ ] T021 [P] Unit tests `internal/create/create_test.go`: the
+- [X] T021 [P] Unit tests `internal/create/create_test.go`: the
       contribution-mode path calls `WorktreeAddExisting`, not `WorktreeAdd`; a
       simulated failure after that step unwinds the worktree but leaves the
       pre-existing branch intact; checking out an already-existing branch

@@ -32,7 +32,7 @@ stdout '^work: archived 1 of 1$'
 exists $WS/archived/${TODAY}-src_bravo/work-state.json
 ! exists $WS/archived/${TODAY}-src_bravo/worktree
 grep '"status": "archived"' $WS/archived/${TODAY}-src_bravo/work-state.json
-grep '"schema": 2' $WS/archived/${TODAY}-src_bravo/work-state.json
+grep '"schema": 3' $WS/archived/${TODAY}-src_bravo/work-state.json
 activeorder alpha
 verifycoherent
 

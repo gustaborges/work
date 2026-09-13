@@ -48,14 +48,15 @@ func TestResolveDefault(t *testing.T) {
 func TestAccessors(t *testing.T) {
 	h := At("/base")
 	cases := map[string]string{
-		h.ConfigDir():           "/base/config",
-		h.ConfigFile():          "/base/config/work.json",
-		h.PluginsDir():          "/base/plugins",
-		h.StateDir():            "/base/state",
-		h.RegistryFile():        "/base/state/registry.json",
-		h.DBFile():              "/base/state/work.db",
-		h.LocksDir():            "/base/state/locks",
-		h.LockPath("bootstrap"): "/base/state/locks/bootstrap.lock",
+		h.ConfigDir():             "/base/config",
+		h.ConfigFile():            "/base/config/work.json",
+		h.PluginsDir():            "/base/plugins",
+		h.StateDir():              "/base/state",
+		h.RegistryFile():          "/base/state/registry.json",
+		h.BranchConventionsFile(): "/base/state/branch_conventions.json",
+		h.DBFile():                "/base/state/work.db",
+		h.LocksDir():              "/base/state/locks",
+		h.LockPath("bootstrap"):   "/base/state/locks/bootstrap.lock",
 	}
 	for got, want := range cases {
 		if filepath.ToSlash(got) != want {

@@ -34,6 +34,14 @@ func TestCategoryTable(t *testing.T) {
 		{RepositoryCandidateInvalid, "repository-candidate-invalid", 28},
 		{LocatorFailed, "locator-failed", 29},
 		{RepositoryAmbiguous, "repository-ambiguous", 30},
+		{PluginInvalid, "plugin-invalid", 31},
+		{PluginAliasConflict, "plugin-alias-conflict", 32},
+		{PluginFallbackConflict, "plugin-fallback-conflict", 33},
+		{PluginInstallFailed, "plugin-install-failed", 34},
+		{StarterNotMatched, "starter-not-matched", 35},
+		{StarterAmbiguous, "starter-ambiguous", 36},
+		{StarterResponseInvalid, "starter-response-invalid", 37},
+		{ConventionUnknown, "convention-unknown", 38},
 	}
 
 	if len(want) != len(All) {

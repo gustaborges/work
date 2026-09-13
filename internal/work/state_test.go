@@ -59,20 +59,21 @@ func TestValidateRejects(t *testing.T) {
 	}
 
 	cases := map[string]func(*State){
-		"missing id":                          func(s *State) { s.Work.ID = "" },
-		"missing slug":                        func(s *State) { s.Work.Slug = "" },
-		"missing starter":                     func(s *State) { s.Work.Starter = "" },
-		"missing branch":                      func(s *State) { s.Work.Branch = "" },
-		"missing base_branch":                 func(s *State) { s.Work.BaseBranch = "" },
-		"missing convention":                  func(s *State) { s.Work.BranchConvention = "" },
-		"missing created_at":                  func(s *State) { s.Work.CreatedAt = "" },
-		"unknown status":                      func(s *State) { s.Work.Status = "paused" },
-		"archived on schema 1":                func(s *State) { s.Work.Status = "archived" },
-		"bad start_mode":                      func(s *State) { s.Work.StartMode = "contribution" },
-		"bad timestamp":                       func(s *State) { s.Work.CreatedAt = "yesterday" },
-		"unsupported schema":                  func(s *State) { s.Schema = 3 },
-		"archived without archived_at":        func(s *State) { s.Schema = 2; s.Work.Status = "archived" },
-		"archived_at without archived status": func(s *State) { s.Schema = 2; s.Work.ArchivedAt = "2026-09-06T18:22:00Z" },
+		"missing id":                                func(s *State) { s.Work.ID = "" },
+		"missing slug":                              func(s *State) { s.Work.Slug = "" },
+		"missing starter":                           func(s *State) { s.Work.Starter = "" },
+		"missing branch":                            func(s *State) { s.Work.Branch = "" },
+		"missing base_branch":                       func(s *State) { s.Work.BaseBranch = "" },
+		"missing convention":                        func(s *State) { s.Work.BranchConvention = "" },
+		"missing created_at":                        func(s *State) { s.Work.CreatedAt = "" },
+		"unknown status":                            func(s *State) { s.Work.Status = "paused" },
+		"archived on schema 1":                      func(s *State) { s.Work.Status = "archived" },
+		"contribution with slug/convention present": func(s *State) { s.Work.StartMode = "contribution" },
+		"unknown start_mode":                        func(s *State) { s.Work.StartMode = "rebase" },
+		"bad timestamp":                             func(s *State) { s.Work.CreatedAt = "yesterday" },
+		"unsupported schema":                        func(s *State) { s.Schema = 4 },
+		"archived without archived_at":              func(s *State) { s.Schema = 2; s.Work.Status = "archived" },
+		"archived_at without archived status":       func(s *State) { s.Schema = 2; s.Work.ArchivedAt = "2026-09-06T18:22:00Z" },
 	}
 	for name, mutate := range cases {
 		s := base()
@@ -93,8 +94,8 @@ func TestWriteReadRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read: %v", err)
 	}
-	// A schema-1 document is upgraded to schema 2 in place on the first write.
-	if out.Work != in.Work || out.Schema != 2 {
+	// A schema-1 document is upgraded to schema 3 in place on the first write.
+	if out.Work != in.Work || out.Schema != 3 {
 		t.Errorf("round trip mismatch: %+v vs %+v (schema %d)", out.Work, in.Work, out.Schema)
 	}
 
@@ -127,9 +128,57 @@ func TestDecodeSchemaRules(t *testing.T) {
 	}
 
 	// Unsupported schema version.
-	future := strings.Replace(schemaExample, `"schema": 1`, `"schema": 3`, 1)
+	future := strings.Replace(schemaExample, `"schema": 1`, `"schema": 4`, 1)
 	if _, err := Decode([]byte(future)); err == nil {
-		t.Error("Decode: want error on schema 3")
+		t.Error("Decode: want error on schema 4")
+	}
+}
+
+func TestDecodeAcceptsSchema3ContributionMode(t *testing.T) {
+	const contributionExample = `{
+  "schema": 3,
+  "work": {
+    "id": "01JB0K9X5N8ZC4X2N6R9WFD5AG",
+    "status": "in-progress",
+    "start_mode": "contribution",
+    "starter": "github-plugin/github-pull-request-starter",
+    "branch": "feature/source-branch",
+    "base_branch": "feature/source-branch",
+    "created_at": "2026-09-12T15:05:00Z",
+    "last_accessed_at": "2026-09-12T15:05:00Z"
+  },
+  "meta": {},
+  "links": {}
+}`
+	s, err := Decode([]byte(contributionExample))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if err := s.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if s.Work.Slug != "" || s.Work.BranchConvention != "" {
+		t.Errorf("contribution mode: slug/branch_convention should be absent, got %+v", s.Work)
+	}
+
+	// The inverse: contribution mode with slug present is rejected.
+	bad := strings.Replace(contributionExample, `"status": "in-progress",`, `"status": "in-progress", "slug": "x",`, 1)
+	s2, err := Decode([]byte(bad))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if err := s2.Validate(); err == nil {
+		t.Error("Validate: want error on contribution mode with slug present")
+	}
+
+	// fork mode requires slug/branch_convention like new mode.
+	fork := strings.Replace(contributionExample, `"start_mode": "contribution",`, `"start_mode": "fork",`, 1)
+	s3, err := Decode([]byte(fork))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if err := s3.Validate(); err == nil {
+		t.Error("Validate: want error on fork mode with slug/branch_convention absent")
 	}
 }
 
@@ -145,7 +194,7 @@ func TestArchivedRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read: %v", err)
 	}
-	if out.Schema != 2 || out.Work.Status != StatusArchived {
+	if out.Schema != 3 || out.Work.Status != StatusArchived {
 		t.Fatalf("archived snapshot: schema %d status %q", out.Schema, out.Work.Status)
 	}
 	if out.Work.ArchivedAt != "2026-09-06T18:22:00Z" || out.Work.LastAccessedAt != "2026-09-06T18:22:00Z" {
