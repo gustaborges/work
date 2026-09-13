@@ -1,6 +1,7 @@
 package starter
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/workhome"
 	"github.com/gustaborges/work/seed"
+	fixtures "github.com/gustaborges/work/tests/fixtures/plugins"
 )
 
 func seededHome(t *testing.T) (workhome.Home, *registry.Registry) {
@@ -145,5 +147,132 @@ func TestInvokeDoesNotRequireAPath(t *testing.T) {
 	plugins, c := buildTestdataStarter(t, "nameonly")
 	if _, err := Invoke(plugins, c, "x"); err != nil {
 		t.Fatalf("Invoke: %v", err)
+	}
+}
+
+// buildPluginFixtureStarter builds one of tests/fixtures/plugins/{specific-
+// starter,colliding-starter} and installs it as a registered Starter
+// component under a fresh plugins directory, returning the plugins dir and
+// the component — mirrors buildTestdataStarter but sources from the F4
+// fixture tree, whose "specific-starter" carries a real pattern/base_branch/
+// start_modes response (contracts/starter-protocol.md).
+func buildPluginFixtureStarter(t *testing.T, fixture, alias string) (string, registry.Component) {
+	t.Helper()
+	dir := fixtures.Prepare(t, fixture)
+	manifestBytes, err := os.ReadFile(filepath.Join(dir, "plugin.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m struct {
+		Components []struct {
+			Name       string `json:"name"`
+			Entrypoint string `json:"entrypoint"`
+			Pattern    string `json:"pattern"`
+		} `json:"components"`
+	}
+	if err := json.Unmarshal(manifestBytes, &m); err != nil {
+		t.Fatal(err)
+	}
+	c0 := m.Components[0]
+
+	plugins := t.TempDir()
+	src := filepath.Join(plugins, alias, "source")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	name := c0.Entrypoint
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	data, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, name), data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	c := registry.Component{Alias: alias, Name: c0.Name, Role: registry.RoleStarter, Entrypoint: c0.Entrypoint, Pattern: c0.Pattern}
+	return plugins, c
+}
+
+func TestMatchZeroSpecificMatchesFallsBackToFallback(t *testing.T) {
+	_, reg := seededHome(t)
+	_, specific := buildPluginFixtureStarter(t, "specific-starter", "demo")
+	reg.UpsertComponent(specific)
+
+	got, out, err := Match(reg, "not-a-match")
+	if err != nil {
+		t.Fatalf("Match: %v", err)
+	}
+	if out.Ambiguous != nil {
+		t.Errorf("Ambiguous = %v, want nil", out.Ambiguous)
+	}
+	if got.Name != LogicalName {
+		t.Errorf("Matched %q, want the fallback %q", got.Name, LogicalName)
+	}
+}
+
+func TestMatchOneSpecificMatchInvokedDirectly(t *testing.T) {
+	_, reg := seededHome(t)
+	_, specific := buildPluginFixtureStarter(t, "specific-starter", "demo")
+	reg.UpsertComponent(specific)
+
+	got, out, err := Match(reg, "demo-pr-1")
+	if err != nil {
+		t.Fatalf("Match: %v", err)
+	}
+	if out.Ambiguous != nil {
+		t.Errorf("Ambiguous = %v, want nil", out.Ambiguous)
+	}
+	if got.Alias != "demo" || got.Name != specific.Name {
+		t.Errorf("Matched %+v, want the specific Starter", got)
+	}
+}
+
+func TestMatchNoMatchAndNoFallbackIsStarterNotMatched(t *testing.T) {
+	reg := &registry.Registry{}
+	_, specific := buildPluginFixtureStarter(t, "specific-starter", "demo")
+	reg.UpsertComponent(specific)
+
+	_, _, err := Match(reg, "not-a-match")
+	if diag.Token(err) != diag.StarterNotMatched.Token {
+		t.Fatalf("err = %v, want token %q", err, diag.StarterNotMatched.Token)
+	}
+}
+
+func TestMatchTwoSpecificMatchesIsAmbiguous(t *testing.T) {
+	_, reg := seededHome(t)
+	_, specific := buildPluginFixtureStarter(t, "specific-starter", "demo")
+	_, colliding := buildPluginFixtureStarter(t, "colliding-starter", "other")
+	reg.UpsertComponent(specific)
+	reg.UpsertComponent(colliding)
+
+	got, out, err := Match(reg, "demo-pr-1")
+	if err != nil {
+		t.Fatalf("Match: %v", err)
+	}
+	if got.Name != "" || got.Alias != "" {
+		t.Errorf("Matched = %+v, want zero value on an ambiguous outcome", got)
+	}
+	if len(out.Ambiguous) != 2 {
+		t.Fatalf("Ambiguous = %+v, want 2 candidates", out.Ambiguous)
+	}
+}
+
+// TestInvokeParsesBaseBranchAndStartModes asserts BaseBranch/StartModes are
+// read off the wire (F4) — not yet consumed by any caller in this phase
+// (consumption lands in Phase 5, research R8).
+func TestInvokeParsesBaseBranchAndStartModes(t *testing.T) {
+	plugins, c := buildPluginFixtureStarter(t, "specific-starter", "demo")
+	ref, err := Invoke(plugins, c, "demo-pr-1")
+	if err != nil {
+		t.Fatalf("Invoke: %v", err)
+	}
+	if ref.BaseBranch != "feature/source-branch" {
+		t.Errorf("BaseBranch = %q", ref.BaseBranch)
+	}
+	if len(ref.StartModes) != 2 || ref.StartModes[0] != "contribution" || ref.StartModes[1] != "fork" {
+		t.Errorf("StartModes = %v", ref.StartModes)
 	}
 }
