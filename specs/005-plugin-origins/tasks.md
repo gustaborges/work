@@ -352,16 +352,16 @@ Branch: `feature/005-plugin-origins-p3-us2-start`, cut from Phase 3 tip.
 
 ### Tests for User Story 2
 
-- [ ] T037 [P] [US2] `tests/contract/starter_match_test.go` (NEW): `Match`
+- [X] T037 [P] [US2] `tests/contract/starter_match_test.go` (NEW): `Match`
       against fixture Starters — one specific match invoked directly with no
       selection step; zero matches fall back to the reference Starter;
       no match and no fallback → `starter-not-matched` (35). (Ambiguous/
       collision cases land in Phase 6.)
-- [ ] T038 [P] [US2] Extend `internal/starter/starter_test.go` for the widened
+- [X] T038 [P] [US2] Extend `internal/starter/starter_test.go` for the widened
       `Reference`: `BaseBranch`/`StartModes` are read from the wire response but
       not yet consumed by any caller in this phase (consumption lands in
       Phase 5).
-- [ ] T039 [P] [US2] `tests/integration/start_by_plugin_starter_test.go` (PTY):
+- [X] T039 [P] [US2] `tests/integration/start_by_plugin_starter_test.go` (PTY):
       with `specific-starter` installed and matching `demo-pr-1`, `work start
       demo-pr-1` completes the full new-Work journey; the specific Starter was
       invoked, not the reference fallback; `work.starter` names it (qualified
@@ -372,7 +372,7 @@ Branch: `feature/005-plugin-origins-p3-us2-start`, cut from Phase 3 tip.
 
 ### Implementation for User Story 2
 
-- [ ] T040 [US2] `internal/starter/starter.go`: add `Match(reg
+- [X] T040 [US2] `internal/starter/starter.go`: add `Match(reg
       *registry.Registry, arg string) (registry.Component, Outcome, error)` —
       compile (`regexp.MustCompile`) and evaluate every registered `starter`
       component's non-empty `Pattern` against `arg`; zero matches →
@@ -381,17 +381,17 @@ Branch: `feature/005-plugin-origins-p3-us2-start`, cut from Phase 3 tip.
       [...]}` for the caller to handle (research R7; the caller-side collision
       UI is Phase 6's job — this phase only needs the zero/one-match path
       wired end to end).
-- [ ] T041 [US2] `internal/starter/starter.go`: widen `Reference` (or the
+- [X] T041 [US2] `internal/starter/starter.go`: widen `Reference` (or the
       `Invoke` return type) with `BaseBranch string` and `StartModes
       []string`, both already present-but-unread on `ipc.StarterResponse`;
       `Meta`/`Links` stay unexposed (research R8).
-- [ ] T042 [US2] `internal/cli/start.go`: replace the `starter.Select(reg)`
+- [X] T042 [US2] `internal/cli/start.go`: replace the `starter.Select(reg)`
       call in the SOURCE step with `starter.Match(reg, source)`; wire the
       zero/one-match outcomes into the existing `validatePath` closure
       unchanged in every other respect; qualify `work.starter` as
       `<alias>/<name>` only when the bare name would collide with another
       enabled Starter (quickstart S7).
-- [ ] T043 [US2] Regression check: with only the reference package installed
+- [X] T043 [US2] Regression check: with only the reference package installed
       (no specific Starters), `Match` always falls back to
       `registry.StarterFallback()` with zero specific patterns evaluated —
       `work start <path>` stays byte-identical to F3 (contract test + existing

@@ -131,11 +131,6 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		return diag.Wrap(diag.BootstrapFailed, err, "cannot read the component registry")
 	}
 
-	starterComp, err := starter.Select(reg)
-	if err != nil {
-		return err
-	}
-
 	catalog := convention.Load(reg)
 	prefixes, err := catalog.Prefixes(convention.Freeform)
 	if err != nil {
@@ -169,6 +164,10 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		workspaceRoot    string
 		candidates       []locator.Candidate
 		ambiguityPending bool
+		// chosenStarter is the Starter internal/starter.Match resolved for
+		// SOURCE (F4) — the reference fallback in F1/F3, or a plugin-provided
+		// specific Starter once one is installed and matches.
+		chosenStarter registry.Component
 	)
 
 	// locatorDeps feeds internal/locator.Resolve from the loaded config: the
@@ -188,12 +187,29 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	// (FR-005, S4). A path reference short-circuits to reporef.ValidatePath and
 	// never reaches internal/locator (ADR-0014); every other shape resolves
 	// through the policy (contracts/cli-work-start.md §Interactive flow).
+	//
+	// The Starter to invoke is resolved fresh from SOURCE itself (F4,
+	// research R7): zero or one pattern match is wired end to end here; a
+	// collision (>= 2 matches) has no interactive picker yet (that lands with
+	// US4) and is always fatal in this phase.
 	validatePath := func(ctx context.Context, s string) error {
 		s = strings.TrimSpace(s)
 		if s == "" {
 			return errors.New("a path or name is required")
 		}
-		ref, err := starter.Invoke(home.PluginsDir(), starterComp, s)
+		comp, outcome, merr := starter.Match(reg, s)
+		if merr != nil {
+			return present.Fatal(merr) // starter-not-matched: no input text fixes a missing fallback
+		}
+		if outcome.Ambiguous != nil {
+			return present.Fatal(diag.Newf(diag.StarterAmbiguous,
+				"%d Starters matched this argument", len(outcome.Ambiguous)).
+				WithSummary("More than one Starter matched this argument.").
+				WithHint("Only one matching Starter can be installed at a time until collision selection ships."))
+		}
+		chosenStarter = comp
+
+		ref, err := starter.Invoke(home.PluginsDir(), comp, s)
 		if err != nil {
 			if retryable(err, diag.InvalidPath, diag.UnusableRepo) {
 				return err // shown in-frame; the user can correct it
@@ -547,7 +563,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		BaseRefname:     base.Refname,
 		BaseBranchShort: base.Short,
 		Convention:      convention.Freeform,
-		Starter:         starter.LogicalName,
+		Starter:         starterLogicalName(reg, chosenStarter),
 	})
 	if err != nil {
 		return err
@@ -688,6 +704,24 @@ func retryable(err error, cats ...diag.Category) bool {
 		return false
 	}
 	return slices.Contains(cats, d.Category)
+}
+
+// starterLogicalName is the value persisted to work.starter: c's bare Name,
+// unless another registered Starter shares that same bare name, in which
+// case it is qualified as "<alias>/<name>" to stay unambiguous (F4, quickstart
+// S7). The reference fallback's name never collides in practice, so this is a
+// no-op for F1/F3 callers.
+func starterLogicalName(reg *registry.Registry, c registry.Component) string {
+	count := 0
+	for _, other := range reg.ByRole(registry.RoleStarter) {
+		if other.Name == c.Name {
+			count++
+		}
+	}
+	if count > 1 {
+		return c.Alias + "/" + c.Name
+	}
+	return c.Name
 }
 
 // stringOptions wraps plain strings as single-line select options.
