@@ -1,24 +1,26 @@
 // Package bootstrap installs the embedded reference package into the Work home
-// on first use, through the same pipeline any plugin would take. It is
-// idempotent and self-repairing: identity is the logical component name plus a
-// content digest, never a "seeded" flag, so any number of concurrent or
-// interrupted runs converge to exactly one usable record of each component.
+// on first use, through the same pipeline any plugin would take: its own
+// install() stages and swaps the package in via internal/plugininstall's
+// shared staging/swap primitives (ADR-0003, research R1), the same ones
+// `work plugin install` uses. It is idempotent and self-repairing: identity
+// is the logical component name plus a content digest, never a "seeded"
+// flag, so any number of concurrent or interrupted runs converge to exactly
+// one usable record of each component.
 package bootstrap
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/lockfile"
 	"github.com/gustaborges/work/internal/plugin"
+	"github.com/gustaborges/work/internal/plugininstall"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/workhome"
 	"github.com/gustaborges/work/seed"
@@ -40,12 +42,14 @@ const (
 
 // stagePrefix names the temp directories install() stages the package in
 // before the atomic swap. A process killed mid-install can leave one behind;
-// install() sweeps stale ones on its next run.
-const stagePrefix = ".work-reference-"
+// install() sweeps stale ones on its next run. Delegated to
+// internal/plugininstall so the staging/swap sequence is literally the same
+// code `work plugin install` uses (ADR-0003 "same pipeline", research R1).
+var stagePrefix = plugininstall.StagePrefix(Alias)
 
 // backupSuffix names the previous package while a replacement is in progress.
 // A restart restores it when the replacement did not reach its destination.
-const backupSuffix = ".old"
+const backupSuffix = plugininstall.BackupSuffix
 
 // installCheckpoint, when non-nil, is invoked at each named phase of install()
 // so tests can simulate an interruption. It is always nil in production.
@@ -98,7 +102,7 @@ func EnsureSeed(h workhome.Home) error {
 		return diag.Wrap(diag.BootstrapFailed, err, "cannot read the component registry")
 	}
 
-	if err := recoverInterruptedSwap(h); err != nil {
+	if err := plugininstall.RecoverInterruptedSwap(h.PluginsDir(), Alias); err != nil {
 		return diag.Wrap(diag.BootstrapFailed, err, "cannot recover the previous reference package")
 	}
 
@@ -162,7 +166,7 @@ func install(h workhome.Home, digest string, seedPolicy bool) error {
 
 	// Sweep any staging dir a previously-killed install left behind, so an
 	// interrupted run never accumulates partial directories (SC-007, FR-005).
-	sweepStaleStaging(h)
+	plugininstall.SweepStaleStaging(h.PluginsDir(), Alias)
 
 	// Stage the whole package in a temp dir, then replace the destination through
 	// a recoverable rename sequence.
@@ -200,14 +204,14 @@ func install(h workhome.Home, digest string, seedPolicy bool) error {
 
 	dest := filepath.Join(h.PluginsDir(), Alias)
 	backup := dest + backupSuffix
-	if err := moveDestinationAside(dest, backup); err != nil {
+	if err := plugininstall.MoveDestinationAside(dest, backup); err != nil {
 		return diag.Wrap(diag.BootstrapFailed, err, "cannot prepare the existing reference package for replacement")
 	}
 	if err := checkpoint("dest-backed-up"); err != nil {
 		return diag.Wrap(diag.BootstrapFailed, err, "interrupted while replacing the reference package")
 	}
 	if err := os.Rename(staging, dest); err != nil {
-		if restoreErr := restoreDestination(backup, dest); restoreErr != nil {
+		if restoreErr := plugininstall.RestoreDestination(backup, dest); restoreErr != nil {
 			return diag.Wrapf(diag.BootstrapFailed, err,
 				"cannot install the reference package (and cannot restore the previous package: %v)", restoreErr)
 		}
@@ -254,65 +258,6 @@ func setPolicySeeded(path string) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
-}
-
-// recoverInterruptedSwap restores the previous package when a process died
-// after moving it aside but before the staged replacement reached dest. A
-// leftover backup beside a valid destination is safe to discard.
-func recoverInterruptedSwap(h workhome.Home) error {
-	dest := filepath.Join(h.PluginsDir(), Alias)
-	backup := dest + backupSuffix
-
-	_, destErr := os.Lstat(dest)
-	_, backupErr := os.Lstat(backup)
-	switch {
-	case errors.Is(destErr, os.ErrNotExist) && backupErr == nil:
-		return os.Rename(backup, dest)
-	case destErr == nil && backupErr == nil:
-		return os.RemoveAll(backup)
-	case destErr != nil && !errors.Is(destErr, os.ErrNotExist):
-		return destErr
-	case backupErr != nil && !errors.Is(backupErr, os.ErrNotExist):
-		return backupErr
-	}
-	return nil
-}
-
-func moveDestinationAside(dest, backup string) error {
-	if _, err := os.Lstat(dest); errors.Is(err, os.ErrNotExist) {
-		return nil
-	} else if err != nil {
-		return err
-	}
-	if _, err := os.Lstat(backup); err == nil {
-		return errors.New("previous-package backup already exists")
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	return os.Rename(dest, backup)
-}
-
-func restoreDestination(backup, dest string) error {
-	if _, err := os.Lstat(backup); errors.Is(err, os.ErrNotExist) {
-		return nil
-	} else if err != nil {
-		return err
-	}
-	return os.Rename(backup, dest)
-}
-
-// sweepStaleStaging removes staging directories orphaned by a killed install.
-// A best-effort cleanup: anything it cannot remove is retried on the next run.
-func sweepStaleStaging(h workhome.Home) {
-	entries, err := os.ReadDir(h.PluginsDir())
-	if err != nil {
-		return
-	}
-	for _, e := range entries {
-		if e.IsDir() && strings.HasPrefix(e.Name(), stagePrefix) {
-			_ = os.RemoveAll(filepath.Join(h.PluginsDir(), e.Name()))
-		}
-	}
 }
 
 func registerComponents(h workhome.Home, manifest *plugin.Manifest) error {

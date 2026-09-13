@@ -242,7 +242,7 @@ Branch: `feature/005-plugin-origins-p2-us1-install`, cut from Phase 2 tip.
 
 ### Tests for User Story 1
 
-- [ ] T022 [P] [US1] `internal/plugininstall/plugininstall_test.go`: local
+- [X] T022 [P] [US1] `internal/plugininstall/plugininstall_test.go`: local
       pinned copy vs. `--link` symlink (content never duplicated on disk in the
       linked case, SC-003); remote pinned install records the cloned `HEAD`
       commit as the reference; default alias vs. `--as`; alias collision
@@ -251,60 +251,60 @@ Branch: `feature/005-plugin-origins-p2-us1-install`, cut from Phase 2 tip.
       time (FR-011); a manifest violating role rules rejects the whole install
       with zero partial registration (SC-005); `--link` with a remote source
       rejected before any I/O (FR-002).
-- [ ] T023 [P] [US1] `tests/integration/plugin_install.txtar`: local
+- [X] T023 [P] [US1] `tests/integration/plugin_install.txtar`: local
       pinned/linked, remote pinned (a local `file://` remote, no network),
       `--link`+remote (exit 2), alias conflict (exit 32) then idempotent
       reinstall (exit 0), fallback conflict (exit 33), invalid manifest
       (exit 31) — every case and exit code from
       `contracts/cli-work-plugin.md` §Contract tests.
-- [ ] T024 [P] [US1] `tests/integration/plugin_list.txtar`: empty list (before
+- [X] T024 [P] [US1] `tests/integration/plugin_list.txtar`: empty list (before
       any install); list after install, text and `--json` shapes; sorted by
       alias; purity (no mutation, exit 0 always).
-- [ ] T025 [P] [US1] `internal/cli/plugin_test.go`: `work plugin` bare-command
+- [X] T025 [P] [US1] `internal/cli/plugin_test.go`: `work plugin` bare-command
       help-only-parent behaviour (`Args: cobra.NoArgs`, grouped help, exit 0 in
       every stream configuration) structurally identical to `repository_test.go`
       (research R17); `--json` on the bare command rejected as usage (exit 2).
 
 ### Implementation for User Story 1
 
-- [ ] T026 [US1] Extract `stagePrefix`/`backupSuffix`/`moveDestinationAside`/
+- [X] T026 [US1] Extract `stagePrefix`/`backupSuffix`/`moveDestinationAside`/
       `restoreDestination`/`recoverInterruptedSwap`/`sweepStaleStaging` from
       `internal/bootstrap/bootstrap.go` into `internal/plugininstall/swap.go`,
       generalized over an arbitrary alias/plugins-dir instead of hardcoding
       `bootstrap.Alias` (research R1).
-- [ ] T027 [US1] Update `internal/bootstrap/bootstrap.go`'s `install()` to call
+- [X] T027 [US1] Update `internal/bootstrap/bootstrap.go`'s `install()` to call
       `internal/plugininstall`'s extracted staging/swap primitives instead of
       owning its own copy; `EnsureSeed`'s public behaviour and every existing
       `bootstrap_test.go`/`stress_test.go` case stay green unchanged (ADR-0003
       "same pipeline," made literal).
-- [ ] T028 [US1] `internal/plugininstall/install.go`: source classification
+- [X] T028 [US1] `internal/plugininstall/install.go`: source classification
       duplicating `seed/starter/main.go`'s `looksLikePath` heuristic (path
       separator, `.`/`..`/`~`/drive-letter prefix, or an existing filesystem
       entry ⇒ local; else remote) — an independent, self-contained copy per
       research R4, not a shared package.
-- [ ] T029 [US1] `internal/plugininstall/link.go`: local `--link` install
+- [X] T029 [US1] `internal/plugininstall/link.go`: local `--link` install
       creates `plugins/<alias>/source` as a directory symlink (junction on
       Windows) to the original path — no copy, no `EntrypointPath` change
       anywhere (research R2).
-- [ ] T030 [US1] `internal/plugininstall/install.go`: local non-`--link`
+- [X] T030 [US1] `internal/plugininstall/install.go`: local non-`--link`
       install copies the source tree into staging (a pinned copy); remote
       install runs `gitx.Clone` (shallow) into a temp dir, records its `HEAD`
       SHA as the pinned reference, and stages the tree minus `.git` (research
       R3).
-- [ ] T031 [US1] `internal/plugininstall/install.go`: alias resolution
+- [X] T031 [US1] `internal/plugininstall/install.go`: alias resolution
       (`--as`, else manifest `name`) and collision detection — compare the
       resulting alias's existing `Package.Reference`'s *origin identity*
       (absolute local path, or remote source URL ignoring the pinned SHA); a
       differing origin fails `plugin-alias-conflict` (32) naming both; an
       identical origin under the same alias is an idempotent reinstall
       (research R5).
-- [ ] T032 [US1] `internal/plugininstall/install.go`: fallback-Starter
+- [X] T032 [US1] `internal/plugininstall/install.go`: fallback-Starter
       uniqueness — a manifest declaring a fallback Starter (`role: starter`,
       empty `pattern`) fails `plugin-fallback-conflict` (33) when
       `registry.StarterFallback()` already returns a component from a
       *different* alias; reinstalling the same alias's own fallback is not a
       conflict (research R6).
-- [ ] T033 [US1] `internal/plugininstall/install.go`: assemble the full
+- [X] T033 [US1] `internal/plugininstall/install.go`: assemble the full
       pipeline — classify `SOURCE`; reject `--link`+remote before any I/O
       (`usage`, 2); obtain content (T028–T030); `plugin.Parse` + full
       validation, failing `plugin-invalid` (31) with nothing registered on any
@@ -313,18 +313,18 @@ Branch: `feature/005-plugin-origins-p2-us1-install`, cut from Phase 2 tip.
       `registry.Component` per manifest component + one `registry.Convention`
       per manifest convention; any other I/O/clone/staging failure →
       `plugin-install-failed` (34).
-- [ ] T034 [US1] `internal/cli/plugin.go`: `work plugin` help-only parent
+- [X] T034 [US1] `internal/cli/plugin.go`: `work plugin` help-only parent
       (`GroupID = groupAdmin`, `Args: cobra.NoArgs`, `--json` rejected,
       `RunE` calls `cmd.Help()`), structurally identical to
       `internal/cli/repository.go` (research R17); register its children
       (`install`, `list`) and wire `newPluginCmd()` into
       `internal/cli/root.go` with `GroupID = groupAdmin`.
-- [ ] T035 [US1] `internal/cli/plugin_install.go`: `work plugin install
+- [X] T035 [US1] `internal/cli/plugin_install.go`: `work plugin install
       <SOURCE> [--link] [--as <ALIAS>]`, delegating to `internal/plugininstall`;
       stdout `work: installed <alias> (<origin>)` +
       `work: components: <name> (<role>)[, ...]`; exit codes 0/2/31/32/33/34
       per `contracts/cli-work-plugin.md`.
-- [ ] T036 [US1] `internal/cli/plugin_list.go`: `work plugin list [--json]`,
+- [X] T036 [US1] `internal/cli/plugin_list.go`: `work plugin list [--json]`,
       read-only, sorted-by-alias text block (`<alias>  <origin>  <reference>` +
       indented component lines) and the documented `--json` array shape;
       mutates nothing (FR-034).
