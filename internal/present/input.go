@@ -19,7 +19,10 @@ type InputSpec struct {
 	Title       string
 	Description string
 	Initial     string
-	Validate    func(context.Context, string) error
+	// InitialError, when set, is shown as the field's live error until the
+	// first edit, so a step reached after a failed earlier attempt can say why.
+	InitialError string
+	Validate     func(context.Context, string) error
 	// Receipt formats the accepted value for the compact receipt. nil ⇒ the
 	// value itself (or "••••" when Secret).
 	Receipt func(accepted string) string
@@ -77,6 +80,7 @@ func newInputModel(ctx context.Context, io IO, spec InputSpec) inputModel {
 		ctx:       ctx,
 		value:     v,
 		cursorAt:  len(v),
+		curErr:    spec.InitialError,
 	}
 }
 

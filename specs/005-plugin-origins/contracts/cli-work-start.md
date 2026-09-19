@@ -34,7 +34,15 @@ SOURCE
   **before** the SOURCE step's own validation runs, listing the colliding
   components (display name/alias, no ranking). The chosen Starter is then
   invoked exactly as a single match would be. The choice is not remembered
-  for the next `present.Wizard` step or the next invocation.
+  for the next invocation. Within one invocation it is kept only for the
+  argument it was made for: the Starter selector never opens inside a running
+  `present.Wizard`, so re-submitting the SOURCE field unchanged reuses that
+  choice, while an edited value that collides again fails in-field ("N
+  Starters match ...; run `work start <arg>` to choose one").
+- A Starter-provided reference that cannot be resolved (a Starter failure, or
+  `no-repository-found` from the Locators) is never a silent fallback. The
+  SOURCE field opens with that failure shown as an in-field error, and
+  re-submitting the field shows the resulting error in-field again.
 
 ### Non-interactive / explicit-argv flow
 
@@ -109,6 +117,7 @@ F1/F3 (worktree removed, branch deleted).
 |---|---|
 | S1 — single-pattern match, no start_modes | full new-Work journey via the specific Starter; identical stdout/snapshot shape to a direct-path F1 creation |
 | S2 — collision, interactive | Starter selector appears before SOURCE resolves; only the chosen one invoked |
+| S2b — collision, SOURCE from argv, reference not located | Starter selector once; SOURCE field opens with the resolution error; Enter re-validates in-field with no second selector and no hang |
 | S3 — collision, non-interactive | exit 36, no Work, no selector |
 | S4 — start_modes present, fork selected | full slug/convention/prefix sequence; `start_mode: "fork"` persisted |
 | S5 — start_modes present, contribution selected | no slug/convention/prefix steps; existing branch checked out; `start_mode: "contribution"`, no `branch_convention` persisted |

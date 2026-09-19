@@ -75,6 +75,7 @@ Two installed plugins each declare a specific recognition pattern, and both happ
 2. **Given** the selection prompt, **When** the user picks one Starter, **Then** only that Starter is invoked, and the pipeline continues exactly as in User Story 2 from that point.
 3. **Given** the same collision, **When** the user runs `work start <argument>` again in a later invocation, **Then** Work asks the same question again; the earlier choice is not remembered or reused.
 4. **Given** a non-interactive invocation that hits a collision, **When** resolution would need a choice, **Then** the command fails with actionable output naming the colliding Starters, and opens no selector.
+5. **Given** a collision already resolved for the argument, **When** the Starter's reference cannot be located and the user is left at the interactive SOURCE field, **Then** the field shows why resolution failed, and re-submitting shows a field error instead of asking the Starter question again.
 
 ---
 
@@ -137,6 +138,7 @@ A repository already has a remembered branch convention from an earlier fork-mod
 
 - **FR-016**: A successful Starter response MUST be interpreted as, at most, a transient Repository Reference (`path`, `git_fetch_urls`, `name`, `query`), plus optional `base_branch`, `start_modes`, `meta`, and `links`; only the `repository` fields feed resolution.
 - **FR-017**: The Repository Reference from any Starter — reference-package or plugin-provided — MUST be resolved through the identical resolution pipeline (direct-path validation, or the ordered Repository Resolution Policy) with no Starter-specific or plugin-specific resolution path.
+- **FR-017a**: When a Starter-provided reference cannot be resolved, an interactive `work start` MUST show why in the field that asks for a replacement; it MUST NOT fall back to that prompt silently, and it MUST NOT reopen the Starter selector from within that prompt.
 - **FR-018**: Before any Work materialization, resolution MUST produce exactly one valid, accessible local Git repository; any resolution outcome other than a single valid repository MUST end `work start` the same way regardless of which Starter produced the reference, and MUST leave no partial state.
 
 **Start modes**

@@ -171,6 +171,14 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		workspaceRoot    string
 		candidates       []locator.Candidate
 		ambiguityPending bool
+		// wizardActive is true once the interactive wizard runs: a nested
+		// present.Select cannot open then, so validatePath reuses the collision
+		// choice already made for pickedFor instead of asking again.
+		wizardActive bool
+		pickedFor    string
+		// initialSourceErr is why the argv SOURCE did not resolve before the
+		// wizard opened; the path step shows it instead of failing silently.
+		initialSourceErr error
 		// chosenStarter is the Starter internal/starter.Match resolved for
 		// SOURCE (F4) — the reference fallback in F1/F3, or a plugin-provided
 		// specific Starter once one is installed and matches.
@@ -245,11 +253,19 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 					WithSummary("More than one Starter matched this argument.").
 					WithHint("Pick one interactively, or narrow the argument so only one Starter's pattern matches."))
 			}
-			chosen, serr := present.Select(ctx, pio, starterSelectSpec(outcome.Ambiguous))
-			if serr != nil {
-				return present.Fatal(serr) // Ctrl-C/Esc at the picker -> diag.Cancelled
+			if wizardActive {
+				if s != pickedFor || chosenStarter.Name == "" {
+					return fmt.Errorf("%d Starters match %q; run `work start %s` to choose one", len(outcome.Ambiguous), s, s)
+				}
+				comp = chosenStarter
+			} else {
+				chosen, serr := present.Select(ctx, pio, starterSelectSpec(outcome.Ambiguous))
+				if serr != nil {
+					return present.Fatal(serr) // Ctrl-C/Esc at the picker -> diag.Cancelled
+				}
+				comp = chosen
+				pickedFor = s
 			}
-			comp = chosen
 		}
 		chosenStarter = comp
 
@@ -456,6 +472,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			if underlying, fatal := present.IsFatal(err); fatal {
 				return underlying
 			}
+			initialSourceErr = err
 			if !interactive {
 				return err
 			}
@@ -549,13 +566,15 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 
 	if interactive {
 		var steps []present.Step
+		wizardActive = true
 
 		if repoPath == "" && !ambiguityPending {
 			steps = append(steps, present.InputStep("path", func(present.Answers) (present.InputSpec, error) {
 				return present.InputSpec{
-					Title:    "Local repository path",
-					Initial:  strings.TrimSpace(source),
-					Validate: validatePath,
+					Title:        "Local repository path",
+					Initial:      strings.TrimSpace(source),
+					Validate:     validatePath,
+					InitialError: initialSourceErrText(initialSourceErr),
 					Receipt: func(accepted string) string {
 						if repoPath != "" {
 							return repoPath
@@ -1079,4 +1098,11 @@ func startImpact(repoPath, repoName string, base basebranch.Choice, branch, work
 	return fmt.Sprintf(
 		"  repository: %s\n  base:       %s\n  branch:     %s\n  workspace:  %s\n  directory:  %s",
 		repoPath, base.Short, branch, workspaceRoot, dirPath)
+}
+
+func initialSourceErrText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
