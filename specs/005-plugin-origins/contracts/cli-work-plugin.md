@@ -48,10 +48,16 @@ interactive `work plugin` hub and `enable|disable|update|uninstall` are F7
    (`plugin-invalid`, exit 31).
 4. Resolve the alias (`--as`, else the manifest's `name`). If the registry
    already has a `Package` at that alias whose origin identity (absolute
-   local path, or remote source URL ignoring the pinned SHA) differs, fail
-   naming the alias and the conflicting origin — nothing registered
-   (`plugin-alias-conflict`, exit 32). The same origin under the same alias
-   is an idempotent reinstall.
+   local path, or remote source URL ignoring the pinned SHA) differs, fail —
+   nothing registered (`plugin-alias-conflict`, exit 32). The same origin
+   under the same alias is an idempotent reinstall. The user-facing message
+   depends on where the alias came from and never shows the existing
+   package's path or origin (it stays in the `WORK_DEBUG` message only):
+
+   | Alias came from | Summary | Hint |
+   |---|---|---|
+   | manifest `name` (no `--as`) | `Plugin "<name>" was not installed: its name collides with the name of a plugin already installed.` | `Install it under another name: work plugin install "<source>" --as <alias>, or remove the existing plugin first: work plugin uninstall <alias>` |
+   | `--as <alias>` | `Plugin "<name>" was not installed: the alias "<alias>" you proposed with --as conflicts with a plugin already installed under that alias.` | `Choose a different alias: work plugin install "<source>" --as <alias>` |
 5. If the manifest declares a fallback Starter (`role: starter`, empty
    `pattern`) and a *different* alias already has one registered, fail —
    nothing registered (`plugin-fallback-conflict`, exit 33).

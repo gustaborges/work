@@ -1,6 +1,7 @@
 package plugininstall
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -285,4 +286,66 @@ func registrySnapshot(reg *registry.Registry) string {
 		fmt.Fprintf(&b, "%s/%s\n", c.Alias, c.Name)
 	}
 	return b.String()
+}
+
+func conflictError(t *testing.T, err error) *diag.Error {
+	t.Helper()
+	wantToken(t, err, diag.PluginAliasConflict)
+	var de *diag.Error
+	if !errors.As(err, &de) {
+		t.Fatalf("not a *diag.Error: %v", err)
+	}
+	return de
+}
+
+func TestInstallAliasConflictFromPluginNameMessage(t *testing.T) {
+	srcA := fixtures.Prepare(t, "specific-starter")
+	srcB := fixtures.Prepare(t, "colliding-starter")
+	plugins := t.TempDir()
+	reg := &registry.Registry{}
+	if _, err := Install(plugins, reg, srcA, Options{Alias: "colliding-starter"}); err != nil {
+		t.Fatalf("first install: %v", err)
+	}
+
+	_, err := Install(plugins, reg, srcB, Options{})
+	de := conflictError(t, err)
+
+	for _, want := range []string{`"colliding-starter"`, "name collides", "not installed"} {
+		if !strings.Contains(de.Summary, want) {
+			t.Errorf("summary %q missing %q", de.Summary, want)
+		}
+	}
+	for _, want := range []string{"--as <alias>", "work plugin uninstall colliding-starter"} {
+		if !strings.Contains(de.Hint, want) {
+			t.Errorf("hint %q missing %q", de.Hint, want)
+		}
+	}
+	if strings.Contains(de.Summary+de.Hint, srcA) {
+		t.Errorf("message leaks the existing plugin's path: %s / %s", de.Summary, de.Hint)
+	}
+}
+
+func TestInstallAliasConflictFromExplicitAliasMessage(t *testing.T) {
+	srcA := fixtures.Prepare(t, "specific-starter")
+	srcB := fixtures.Prepare(t, "colliding-starter")
+	plugins := t.TempDir()
+	reg := &registry.Registry{}
+	if _, err := Install(plugins, reg, srcA, Options{Alias: "x"}); err != nil {
+		t.Fatalf("first install: %v", err)
+	}
+
+	_, err := Install(plugins, reg, srcB, Options{Alias: "x"})
+	de := conflictError(t, err)
+
+	for _, want := range []string{`"colliding-starter"`, `alias "x"`, "--as"} {
+		if !strings.Contains(de.Summary, want) {
+			t.Errorf("summary %q missing %q", de.Summary, want)
+		}
+	}
+	if strings.Contains(de.Hint, "uninstall") {
+		t.Errorf("explicit-alias hint should only offer another alias: %q", de.Hint)
+	}
+	if strings.Contains(de.Summary+de.Hint, srcA) {
+		t.Errorf("message leaks the existing plugin's path: %s / %s", de.Summary, de.Hint)
+	}
 }

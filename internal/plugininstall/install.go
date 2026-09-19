@@ -1,6 +1,7 @@
 package plugininstall
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -68,10 +69,7 @@ func Install(pluginsDir string, reg *registry.Registry, source string, opts Opti
 	}
 
 	if existing, ok := reg.PackageByAlias(alias); ok && existingIdentity(existing) != identity {
-		return Result{}, diag.Newf(diag.PluginAliasConflict,
-			"alias %q is already installed from %s", alias, existing.Reference).
-			WithSummary("Another package is already registered under this alias.").
-			WithHint("Choose a different --as alias, or uninstall the existing package first.")
+		return Result{}, aliasConflict(manifest.Name, alias, strings.TrimSpace(opts.Alias) != "", existing.Reference, source)
 	}
 
 	for _, c := range manifest.Components {
@@ -250,4 +248,21 @@ func copyTree(src, dst string) error {
 		}
 		return os.WriteFile(target, data, info.Mode().Perm())
 	})
+}
+
+// aliasConflict builds the plugin-alias-conflict error. When the alias came
+// from the manifest name the plugin itself is what collides; when the user
+// proposed it with --as, the proposed alias is what collides. The existing
+// package's location is deliberately kept out of the user-facing text and
+// only retained in the debug message.
+func aliasConflict(name, alias string, explicit bool, existingRef, source string) *diag.Error {
+	err := diag.Newf(diag.PluginAliasConflict, "alias %q is already installed from %s", alias, existingRef)
+	if explicit {
+		return err.
+			WithSummary(fmt.Sprintf("Plugin %q was not installed: the alias %q you proposed with --as conflicts with a plugin already installed under that alias.", name, alias)).
+			WithHint(fmt.Sprintf("Choose a different alias: work plugin install %q --as <alias>", source))
+	}
+	return err.
+		WithSummary(fmt.Sprintf("Plugin %q was not installed: its name collides with the name of a plugin already installed.", name)).
+		WithHint(fmt.Sprintf("Install it under another name: work plugin install %q --as <alias>, or remove the existing plugin first: work plugin uninstall %s", source, alias))
 }

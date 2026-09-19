@@ -295,7 +295,9 @@ Branch: `feature/005-plugin-origins-p2-us1-install`, cut from Phase 2 tip.
       (`--as`, else manifest `name`) and collision detection — compare the
       resulting alias's existing `Package.Reference`'s *origin identity*
       (absolute local path, or remote source URL ignoring the pinned SHA); a
-      differing origin fails `plugin-alias-conflict` (32) naming both; an
+      differing origin fails `plugin-alias-conflict` (32) with the plugin-name
+      or `--as`-alias message from the contract, never showing the existing
+      path; an
       identical origin under the same alias is an idempotent reinstall
       (research R5).
 - [X] T032 [US1] `internal/plugininstall/install.go`: fallback-Starter
