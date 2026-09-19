@@ -90,8 +90,8 @@ work plugin install "file://$REMOTE" --as remote-demo
 work plugin install "$FIXTURES/colliding-starter" --as remote-demo   # different origin, same alias as S2
 ```
 
-**Expect**: exit 32 (`plugin-alias-conflict`), names `remote-demo` and both
-origins; `work plugin list` unchanged from S2. Then:
+**Expect**: exit 32 (`plugin-alias-conflict`), the message names the plugin and
+`remote-demo` as the proposed `--as` alias that conflicts (no installation path shown); `work plugin list` unchanged from S2. Then:
 
 ```bash
 work plugin install "file://$REMOTE" --as remote-demo   # same origin, same alias
