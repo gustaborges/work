@@ -555,25 +555,25 @@ Branch: `feature/005-plugin-origins-p6-us5-convention`, cut from Phase 6 tip.
 
 ### Tests for User Story 5
 
-- [ ] T060 [P] [US5] `tests/integration/convention_memory_test.go` (PTY): with
+- [X] T060 [P] [US5] `tests/integration/convention_memory_test.go` (PTY): with
       `specific-starter`'s `gitflow` convention installed alongside the
       reference `freeform` (2 enabled), the first fork-mode `work start`
       against a repository shows a Convention step once and memoizes the
       choice; a second clone of the same repository shows no step and reuses
       the memoized choice via `work convention show` (quickstart S13).
-- [ ] T061 [P] [US5] `tests/integration/convention_show_set.txtar`: `show`
+- [X] T061 [P] [US5] `tests/integration/convention_show_set.txtar`: `show`
       unset (text `work: convention not set` / `--json`
       `{"convention":null}`) and set (after T060, from any clone); `set nope`
       → exit 38, nothing persisted; `set gitflow` → exit 0, subsequent `show`
       reflects it; every subcommand outside a git repository → exit 2, no
       crash; `show` never mutates state (FR-028).
-- [ ] T062 [P] [US5] `tests/integration/convention_hub_test.go` (PTY): `work
+- [X] T062 [P] [US5] `tests/integration/convention_hub_test.go` (PTY): `work
       convention` with no subcommand, interactive, inside a repository with
       2+ enabled conventions — shows the current choice, changing it persists
       immediately and prints the `work: (equivalent: \`work convention set
       <name>\`)` receipt; leaving it unchanged persists nothing; non-interactive
       bare command fails usage (exit 2), opening no selector (quickstart S14).
-- [ ] T063 [P] [US5] Extend `internal/cli/start_test.go` (or a new file) for
+- [X] T063 [P] [US5] Extend `internal/cli/start_test.go` (or a new file) for
       the generalized convention step: a repository with exactly one enabled
       convention shows no step and silently memoizes it; 2+ enabled and
       unmemoized shows one `present.SelectStep` before the prefix step;
@@ -582,7 +582,7 @@ Branch: `feature/005-plugin-origins-p6-us5-convention`, cut from Phase 6 tip.
 
 ### Implementation for User Story 5
 
-- [ ] T064 [US5] `internal/cli/start.go`: generalize the convention step off
+- [X] T064 [US5] `internal/cli/start.go`: generalize the convention step off
       the hardcoded `convention.Freeform` (research R15) — build the catalog
       via `convention.Load(reg)`; outside contribution mode, resolve the
       current repository's identity (`repoidentity.Identify`) and look up a
@@ -593,7 +593,7 @@ Branch: `feature/005-plugin-origins-p6-us5-convention`, cut from Phase 6 tip.
       memoizing the accepted choice (`repoconv.Set`) before the wizard
       advances. Contribution mode skips this block entirely (unchanged from
       Phase 5).
-- [ ] T065 [US5] `internal/cli/convention.go`: the `work convention` parent —
+- [X] T065 [US5] `internal/cli/convention.go`: the `work convention` parent —
       shared repository-identity resolution (`gitx.DiscoverRepoRoot` +
       `repoidentity.Identify`), failing "not inside a git repository" (usage,
       2) outside a repo; interactive no-subcommand form opens a
@@ -602,16 +602,16 @@ Branch: `feature/005-plugin-origins-p6-us5-convention`, cut from Phase 6 tip.
       persists it and prints the equivalent `work convention set <name>`
       receipt (ADR-0019); non-interactive no-subcommand form fails usage
       (exit 2), opening no hub.
-- [ ] T066 [US5] `internal/cli/convention_show.go`: `work convention show
+- [X] T066 [US5] `internal/cli/convention_show.go`: `work convention show
       [--json]` — read-only; stdout `work: convention <name>` or `work:
       convention not set`; `--json` shape `{"identity":"<key>",
       "convention":"<name>"|null}`.
-- [ ] T067 [US5] `internal/cli/convention_set.go`: `work convention set
+- [X] T067 [US5] `internal/cli/convention_set.go`: `work convention set
       <CONVENTION>` — looks up `CONVENTION` across every installed package's
       registered conventions; not found → `convention-unknown` (38), nothing
       persisted; found → `repoconv.Set`, stdout `work: convention set to
       <name>`.
-- [ ] T068 [US5] Register `newConventionCmd()` in `internal/cli/root.go` with
+- [X] T068 [US5] Register `newConventionCmd()` in `internal/cli/root.go` with
       `GroupID = groupAdmin`.
 
 **Checkpoint**: Branch convention choice is a first-class, per-repository,
@@ -625,39 +625,39 @@ independently functional. F1–F3 suites green. Merge forward.
 **Purpose**: Compatibility sweep, presentation parity, docs. Branch:
 `feature/005-plugin-origins-p7-polish`, cut from Phase 7 tip.
 
-- [ ] T069 [P] Presentation parity sweep: `NO_COLOR=1`/`TERM=dumb`/redirected
+- [X] T069 [P] Presentation parity sweep: `NO_COLOR=1`/`TERM=dumb`/redirected
       streams carry zero ANSI for `work plugin install/list`, `work convention
       show/set`, and every new `present.Select`/`present.SelectStep` inside
       `work start` (extend `tests/integration/no_color_env.txtar`/
       `no_ansi_when_piped.txtar`/`stream_separation_test.go`).
-- [ ] T070 [P] `tests/integration/plugin_failures.txtar`: categories 31–38 each
+- [X] T070 [P] `tests/integration/plugin_failures.txtar`: categories 31–38 each
       reachable as a distinct, actionable, no-partial-state exit
       (`plugin-invalid`, `plugin-alias-conflict`, `plugin-fallback-conflict`,
       `plugin-install-failed`, `starter-not-matched`, `starter-ambiguous`,
       `starter-response-invalid`, `convention-unknown`) in one script-readable
       sweep.
-- [ ] T071 [P] Extend `tests/integration/help_inventory.txtar` (or its `_test.go`
+- [X] T071 [P] Extend `tests/integration/help_inventory.txtar` (or its `_test.go`
       companion): `work plugin` and `work convention` each appear exactly once,
       under **Administration**.
-- [ ] T072 Full regression run: F1 `quickstart.md` S1–S12, F2 S1–S13, F2.5
+- [X] T072 Full regression run: F1 `quickstart.md` S1–S12, F2 S1–S13, F2.5
       Q1–Q12, F3 S1–S13 all green with no stdout/token/mutation/exit-code diff
       (SC-010); `tests/contract/starter_test.go` (the seed binary contract)
       stays untouched and green.
-- [ ] T073 [P] Run this spec's `quickstart.md` S1–S14 end to end and record any
+- [X] T073 [P] Run this spec's `quickstart.md` S1–S14 end to end and record any
       deviation.
-- [ ] T074 [P] CI matrix sanity: the `--link` directory-symlink path exercised
+- [X] T074 [P] CI matrix sanity: the `--link` directory-symlink path exercised
       on `ubuntu-latest`, `macos-latest`, `windows-latest`; confirm the
       Windows-Developer-Mode constraint is documented in code comments
       (research R2) rather than silently failing.
-- [ ] T075 [P] Refresh the managed Spec Kit agent-context section via
+- [X] T075 [P] Refresh the managed Spec Kit agent-context section via
       `/speckit-agent-context-update` (or the skill) so `AGENTS.md`/`CLAUDE.md`
       reflect the shipped `internal/plugininstall`, `internal/repoidentity`,
       `internal/repoconv`, `work plugin`, and `work convention` surface.
-- [ ] T076 [P] Update `docs/add/add-0001-work-system-architecture.md`
+- [X] T076 [P] Update `docs/add/add-0001-work-system-architecture.md`
       cross-references and any `docs/` command inventory to list `work plugin`
       and `work convention`; confirm ADR-0000/0002/0003/0004/0006/0011/0012
       need no text edit (plan Phase 0 note).
-- [ ] T077 Code-quality pass on `internal/plugininstall`, `internal/repoidentity`,
+- [X] T077 Code-quality pass on `internal/plugininstall`, `internal/repoidentity`,
       `internal/repoconv`, `internal/starter`, `internal/create`, and the new
       `internal/cli/plugin*.go`/`convention*.go` (comments preserve *why* per
       CLAUDE.md; no process metadata in comments; public API documented).

@@ -1,0 +1,55 @@
+# T061 — `work convention show|set` (US5; FR-027-FR-029, contracts/cli-work-convention.md).
+
+gitrepo src
+cd $WORK/src
+
+# show, unset: exit 0, stable "not set" line, never mutates (FR-028).
+work convention show
+stdout 'work: convention not set'
+! exists $WORK/dothome/state/branch_conventions.json
+
+work convention show --json
+stdout '"identity"'
+stdout '"convention": *null'
+
+# set, unknown: exit 38, nothing persisted.
+! work convention set nope
+stderr 'error: convention-unknown:'
+! exists $WORK/dothome/state/branch_conventions.json
+
+# --json is rejected on the set mutation.
+! work convention set freeform --json
+stderr 'error: usage:'
+
+# set, ok: exit 0; show now reflects it, from text and --json alike.
+work convention set freeform
+stdout 'work: convention set to freeform'
+
+work convention show
+stdout 'work: convention freeform'
+
+work convention show --json
+stdout '"convention": *"freeform"'
+
+# set again (idempotent overwrite) still succeeds.
+work convention set freeform
+stdout 'work: convention set to freeform'
+
+# missing CONVENTION argument: exit 2, usage.
+! work convention set
+stderr 'error: usage:'
+
+# Outside a repository, every subcommand and the bare hub form fail
+# identically (contracts/cli-work-convention.md §Repository identity
+# resolution).
+cd $WORK
+! work convention show
+stderr 'error: usage: not inside a git repository; run from any clone'
+! work convention set freeform
+stderr 'error: usage: not inside a git repository; run from any clone'
+
+# The bare form is non-interactive here (no TTY): it never reaches identity
+# resolution or opens a hub, failing with the same actionable usage error
+# `work start` gives for a missing required value.
+! work convention
+stderr 'error: usage:'
