@@ -121,3 +121,13 @@ func TestPluginInstallRejectsJSON(t *testing.T) {
 		t.Fatalf("exit = %d, want 2", code)
 	}
 }
+
+func TestPluginInstallMissingSourceIsUsage(t *testing.T) {
+	_, errb, code := runWork(t, "plugin", "install")
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2\nstderr: %s", code, errb)
+	}
+	if !strings.Contains(errb, "missing SOURCE argument") {
+		t.Errorf("stderr lacks the usage message: %q", errb)
+	}
+}

@@ -120,3 +120,21 @@ func TestRenderDiagnosticWorkDebugAppendsCauseChain(t *testing.T) {
 		t.Errorf("WORK_DEBUG changed the human line: %q", loud.String())
 	}
 }
+
+func TestRenderDiagnosticWorkDebugShowsSingleNonDiagError(t *testing.T) {
+	t.Setenv("WORK_DEBUG", "1")
+	var b bytes.Buffer
+	renderDiagnostic(&b, strings.NewReader(""), true, errors.New("kaboom"))
+	if !strings.Contains(b.String(), "kaboom") {
+		t.Errorf("WORK_DEBUG hid an unwrapped non-diag error: %q", b.String())
+	}
+}
+
+func TestRenderDiagnosticWorkDebugDoesNotDuplicateBareDiagError(t *testing.T) {
+	t.Setenv("WORK_DEBUG", "1")
+	var b bytes.Buffer
+	renderDiagnostic(&b, strings.NewReader(""), true, diag.New(diag.TargetNotFound, "no Work has that id"))
+	if b.String() != "✘ no Work has that id\n" {
+		t.Errorf("bare diag error changed under WORK_DEBUG: %q", b.String())
+	}
+}
