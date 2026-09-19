@@ -15,8 +15,8 @@ import (
 // [--as <ALIAS>]` (contracts/cli-work-plugin.md).
 func newPluginInstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "install <SOURCE>",
-		Short:         "Install a plugin package from a local path or a remote source",
+		Use:   "install <SOURCE>",
+		Short: "Install a plugin package from a local path or a remote source",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return diag.New(diag.Usage, "missing SOURCE argument: run `work plugin install <source> [--link] [--as <alias>]`")
