@@ -85,6 +85,7 @@ func TestRenderDiagnosticInteractiveHumanFallsBackToMsg(t *testing.T) {
 }
 
 func TestRenderDiagnosticInteractiveNonDiag(t *testing.T) {
+	t.Setenv("WORK_DEBUG", "")
 	var b bytes.Buffer
 	code := renderDiagnostic(&b, strings.NewReader(""), true, errors.New("kaboom"))
 	want := "✘ something went wrong\n  → run with WORK_DEBUG=1 for details\n"
@@ -102,6 +103,7 @@ func TestRenderDiagnosticInteractiveNonDiag(t *testing.T) {
 func TestRenderDiagnosticWorkDebugAppendsCauseChain(t *testing.T) {
 	err := diag.Wrap(diag.BootstrapFailed, errors.New("permission denied"), "cannot open the lookup index")
 
+	t.Setenv("WORK_DEBUG", "")
 	var quiet bytes.Buffer
 	renderDiagnostic(&quiet, strings.NewReader(""), true, err)
 	if strings.Contains(quiet.String(), "permission denied") {
