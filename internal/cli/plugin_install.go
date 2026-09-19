@@ -17,7 +17,12 @@ func newPluginInstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "install <SOURCE>",
 		Short:         "Install a plugin package from a local path or a remote source",
-		Args:          cobra.ExactArgs(1),
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return diag.New(diag.Usage, "missing SOURCE argument: run `work plugin install <source> [--link] [--as <alias>]`")
+			}
+			return nil
+		},
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
