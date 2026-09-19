@@ -64,4 +64,45 @@ stdout '^work: archived 1 of 1$'
 ! stderr '\x1b'
 ! stderr 'Archive Works'
 
+# F4: work plugin install/list — no escapes, no interactive control.
+preparepluginfixture specific-starter PLUGINSRC
+work plugin install $PLUGINSRC
+stdout 'work: installed specific-starter'
+! stdout '\x1b'
+! stderr '\x1b'
+
+work plugin list
+stdout 'specific-starter'
+! stdout '\x1b'
+! stderr '\x1b'
+
+work plugin list --json
+! stdout '\x1b'
+
+work plugin
+stdout 'install'
+! stdout '\x1b'
+
+# F4: work convention show/set — no escapes, no interactive hub. Identity is
+# resolved from the current directory, so this runs from inside a repo. The
+# earlier `work start` already memoized "freeform" silently (the only
+# convention enabled at that point).
+cd $WORK/src
+work convention show
+stdout 'work: convention freeform'
+! stdout '\x1b'
+! stderr '\x1b'
+
+work convention set freeform
+stdout 'work: convention set to freeform'
+! stdout '\x1b'
+
+work convention show --json
+! stdout '\x1b'
+
+! work convention
+stderr 'error: usage:'
+! stdout '\x1b'
+! stderr '\x1b'
+
 verifycoherent

@@ -57,18 +57,30 @@ func TestStartByPluginStarterFullJourney(t *testing.T) {
 	ws := filepath.Join(homeDir, "ws")
 
 	c := newConsole(t, bin, env, "start", "demo-pr-1",
-		"--workspace", ws, "--slug", "guided", "--prefix", "{slug}", "--yes")
+		"--workspace", ws, "--slug", "guided", "--yes")
 	c.expect("Mode")
 	c.expect("contribution")
 	c.expect("fork")
 	c.send("\x1b[B") // the fixture lists "contribution" first; move down to "fork"
+	c.send("\r")
+	// specific-starter's manifest declares a "gitflow" convention alongside
+	// the reference package's "freeform" (2 enabled): a fresh repository's
+	// first fork-mode use requires an explicit Convention choice (F4, US5).
+	// Which one is irrelevant to this test, so accept whichever is focused,
+	// then whichever prefix that convention offers.
+	c.expect("Convention")
+	c.send("\r")
+	c.expect("Branch prefix")
 	c.send("\r")
 	c.expect("work: created ")
 	if code := c.wait(); code != 0 {
 		t.Fatalf("start via plugin starter exited %d, want 0\n%s", code, c.screen())
 	}
 
-	dir := filepath.Join(ws, "in-progress", "demo-pr-1_guided")
+	// The directory name embeds the derived branch, which depends on which of
+	// the 2 enabled conventions (freeform/gitflow) the Convention step's
+	// default focus accepted — glob for it rather than assuming one.
+	dir := globOneInProgress(t, ws, "demo-pr-1_*guided")
 	wt := filepath.Join(dir, "worktree")
 	if _, err := os.Stat(wt); err != nil {
 		t.Fatalf("worktree not materialized at %s: %v", wt, err)

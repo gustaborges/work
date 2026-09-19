@@ -22,6 +22,8 @@ import (
 	"github.com/gustaborges/work/internal/present"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/repoconfig"
+	"github.com/gustaborges/work/internal/repoconv"
+	"github.com/gustaborges/work/internal/repoidentity"
 	"github.com/gustaborges/work/internal/reporef"
 	"github.com/gustaborges/work/internal/shellintegration"
 	"github.com/gustaborges/work/internal/starter"
@@ -133,9 +135,13 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	}
 
 	catalog := convention.Load(reg)
-	prefixes, err := catalog.Prefixes(convention.Freeform)
+
+	// convStore is the per-repository-identity branch-convention memory
+	// (ADR-0011, research R14): loaded once, read/written by resolveConvention
+	// and the interactive Convention step below.
+	convStore, err := repoconv.Load(home.BranchConventionsFile())
 	if err != nil {
-		return err
+		return diag.Wrap(diag.BootstrapFailed, err, "cannot read the branch convention memory")
 	}
 
 	// First-run setup (interactive only, before any other step): ensure a
@@ -179,6 +185,16 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		// defaults it to "new") when the Starter offered no start_modes, or
 		// set to the Mode step's answer otherwise (FR-021/FR-022).
 		startMode string
+		// conventionValue is the resolved work.branch_convention (F4, research
+		// R15): stays empty in contribution mode (never consulted); resolved
+		// eagerly once the repository path is known outside contribution mode,
+		// or by the interactive Convention step otherwise.
+		conventionValue string
+		// repoIdentityKey is the ADR-0011 identity computed the first time
+		// resolveConvention runs with a known repository path; reused by the
+		// interactive Convention step to persist an explicit pick without
+		// recomputing it.
+		repoIdentityKey string
 	)
 
 	// locatorDeps feeds internal/locator.Resolve from the loaded config: the
@@ -313,7 +329,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		if err := branchname.ValidateSlug(s); err != nil {
 			return err
 		}
-		derived, err := catalog.DeriveName(convention.Freeform, prefix, s)
+		derived, err := catalog.DeriveName(conventionValue, prefix, s)
 		if err == nil {
 			err = branchname.Validate(derived)
 		}
@@ -402,6 +418,37 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		return nil
 	}
 
+	// resolveConvention determines work.branch_convention once the repository
+	// path is known, outside contribution mode (research R15, ADR-0011): a
+	// memoized per-repository choice if one exists; the catalog's sole entry,
+	// silently adopted and memoized, if there is exactly one; otherwise left
+	// unresolved for the interactive Convention step to prompt for (there is
+	// no non-interactive convention flag in F4, mirroring the start_modes
+	// gap). A no-op once resolved, or before the repository path is known —
+	// safe to call speculatively at multiple points in the flow, exactly like
+	// resolveBase.
+	resolveConvention := func() error {
+		if conventionValue != "" || repoPath == "" {
+			return nil
+		}
+		id, err := repoidentity.Identify(gitx.Open(repoPath))
+		if err != nil {
+			return err
+		}
+		repoIdentityKey = id
+		if v, ok := convStore.Get(id); ok {
+			conventionValue = v
+			return nil
+		}
+		names := conventionNames(reg)
+		if len(names) != 1 {
+			return nil
+		}
+		conventionValue = names[0]
+		convStore.Set(id, conventionValue)
+		return repoconv.Save(home.BranchConventionsFile(), convStore)
+	}
+
 	// Resolve every value an explicit flag or the SOURCE argument already
 	// supplies; the interactive wizard then prompts only for what is missing.
 	if source != "" {
@@ -429,14 +476,33 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 				"this Starter offers a start-mode choice (contribution/fork); no non-interactive flag selects one yet").
 				WithHint("Run `work start` in an interactive terminal to choose a mode.")
 		}
+		// Outside contribution mode (guaranteed here: start_modes is absent,
+		// so the mode is unambiguously "new" — contribution/fork only ever
+		// arise from a Starter's start_modes), the convention can be resolved
+		// as soon as the repository path is known, the same eager-resolution
+		// window F1/F3 already use for slug/base (research R15). F4 adds no
+		// non-interactive flag to pick among 2+ unmemoized conventions,
+		// mirroring the start_modes gap above.
+		if len(starterStartModes) == 0 && !ambiguityPending {
+			if err := resolveConvention(); err != nil {
+				return err
+			}
+			if !interactive && conventionValue == "" {
+				return diag.New(diag.Usage,
+					"more than one branch convention is enabled and none is memoized for this repository").
+					WithHint("run `work start` in an interactive terminal to choose one, or `work convention set <convention>` beforehand")
+			}
+		}
 	}
 
 	switch {
 	case f.prefixSet:
 		prefix = f.prefix
-	case len(prefixes) == 1:
-		// A convention with a single prefix is not a choice.
-		prefix = prefixes[0]
+	case conventionValue != "":
+		if names, perr := catalog.Prefixes(conventionValue); perr == nil && len(names) == 1 {
+			// A convention with a single prefix is not a choice.
+			prefix = names[0]
+		}
 	}
 
 	// Slug validation needs the repository (for the collision check), so it can
@@ -446,7 +512,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	// is a wizard step below) and contribution mode never runs slug at all —
 	// so eager validation is deferred to the slug step's own build closure,
 	// which re-checks the resolved mode first (FR-020).
-	if f.slugSet && repoPath != "" && len(starterStartModes) == 0 {
+	if f.slugSet && repoPath != "" && len(starterStartModes) == 0 && conventionValue != "" {
 		if err := validateSlug(ctx, f.slug); err != nil {
 			if underlying, fatal := present.IsFatal(err); fatal {
 				return underlying
@@ -527,17 +593,65 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			}, nil
 		}))
 
-		if prefix == "" && len(prefixes) > 1 {
-			steps = append(steps, present.SelectStep("prefix", func(a present.Answers) (present.SelectSpec[string], error) {
-				if a.String("mode") == work.StartModeContribution {
-					return present.SelectSpec[string]{}, present.StepResolved("")
+		// A conditional Convention step (F4, contracts/cli-work-start.md §New
+		// clause: convention resolution generalizes, research R15): skipped
+		// entirely in contribution mode; resolved silently via
+		// resolveConvention when memoized or the catalog has exactly one
+		// entry; otherwise a present.SelectStep offering the enabled catalog.
+		// Always present in the step list — its build decides whether to
+		// render, exactly like the Repository/Mode steps above.
+		steps = append(steps, present.SelectStep("convention", func(a present.Answers) (present.SelectSpec[string], error) {
+			if rv, ok := a.Value("repository").(locator.Candidate); ok && rv.Path != "" {
+				repoPath, repoName = rv.Path, filepath.Base(rv.Path)
+			}
+			if a.String("mode") == work.StartModeContribution {
+				return present.SelectSpec[string]{}, present.StepResolved("")
+			}
+			if err := resolveConvention(); err != nil {
+				return present.SelectSpec[string]{}, present.Fatal(err)
+			}
+			if conventionValue != "" {
+				return present.SelectSpec[string]{}, present.StepResolved(conventionValue)
+			}
+			return present.SelectSpec[string]{
+				Title:   "Convention",
+				Options: stringOptions(conventionNames(reg)),
+			}, nil
+		}))
+
+		// The Prefix step is always present too: its own build decides whether
+		// a chosen convention needs a prefix choice, and — the first time a
+		// repository's convention was just picked interactively above — it is
+		// where that pick is persisted, before the wizard advances past this
+		// step (contract's "before the wizard advances" rule): the Convention
+		// step's build cannot itself persist a fresh interactive pick, since
+		// its own build runs before the user has chosen anything.
+		steps = append(steps, present.SelectStep("prefix", func(a present.Answers) (present.SelectSpec[string], error) {
+			if a.String("mode") == work.StartModeContribution {
+				return present.SelectSpec[string]{}, present.StepResolved("")
+			}
+			if conventionValue == "" {
+				conventionValue = a.String("convention")
+				convStore.Set(repoIdentityKey, conventionValue)
+				if err := repoconv.Save(home.BranchConventionsFile(), convStore); err != nil {
+					return present.SelectSpec[string]{}, present.Fatal(err)
 				}
-				return present.SelectSpec[string]{
-					Title:   "Branch prefix",
-					Options: stringOptions(prefixes),
-				}, nil
-			}))
-		}
+			}
+			if prefix != "" {
+				return present.SelectSpec[string]{}, present.StepResolved(prefix)
+			}
+			prefixes, err := catalog.Prefixes(conventionValue)
+			if err != nil {
+				return present.SelectSpec[string]{}, present.Fatal(err)
+			}
+			if len(prefixes) == 1 {
+				return present.SelectSpec[string]{}, present.StepResolved(prefixes[0])
+			}
+			return present.SelectSpec[string]{
+				Title:   "Branch prefix",
+				Options: stringOptions(prefixes),
+			}, nil
+		}))
 
 		if branch == "" {
 			steps = append(steps, present.InputStep("slug", func(a present.Answers) (present.InputSpec, error) {
@@ -685,12 +799,10 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		}
 	}
 
-	// Contribution mode never runs the convention step (FR-020): work-state
-	// schema 3 requires branch_convention to be absent exactly then.
-	conventionValue := convention.Freeform
-	if startMode == work.StartModeContribution {
-		conventionValue = ""
-	}
+	// conventionValue is already resolved by this point: eagerly, by the
+	// Convention/Prefix wizard steps, or left empty in contribution mode
+	// (FR-020) — work-state schema 3 requires branch_convention to be absent
+	// exactly then.
 
 	// 9. Materialize.
 	res, err := create.Run(ctx, create.Params{
@@ -863,6 +975,18 @@ func starterLogicalName(reg *registry.Registry, c registry.Component) string {
 		return c.Alias + "/" + c.Name
 	}
 	return c.Name
+}
+
+// conventionNames returns the enabled branch-convention catalog's names, in
+// registration order (the reference package's "freeform" first, then every
+// plugin-declared convention in install order).
+func conventionNames(reg *registry.Registry) []string {
+	convs := reg.ListConventions()
+	names := make([]string, len(convs))
+	for i, c := range convs {
+		names[i] = c.Name
+	}
+	return names
 }
 
 // stringOptions wraps plain strings as single-line select options.

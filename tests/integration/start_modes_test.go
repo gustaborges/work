@@ -44,11 +44,20 @@ func TestStartModeForkRunsFullJourney(t *testing.T) {
 	bin, env, _, ws := startModesFixture(t)
 
 	c := newConsole(t, bin, env, "start", "demo-pr-1",
-		"--workspace", ws, "--slug", "forked", "--prefix", "{slug}", "--yes")
+		"--workspace", ws, "--slug", "forked", "--yes")
 	c.expect("Mode")
 	c.expect("contribution")
 	c.expect("fork")
 	c.send("\x1b[B") // the fixture lists "contribution" first; move down to "fork"
+	c.send("\r")
+	// specific-starter declares a "gitflow" convention alongside the reference
+	// package's "freeform" (2 enabled): a fresh repository's first fork-mode
+	// use requires an explicit Convention choice (F4, US5). Which one is
+	// irrelevant to this test, so accept whichever is focused, then whichever
+	// prefix that convention offers.
+	c.expect("Convention")
+	c.send("\r")
+	c.expect("Branch prefix")
 	c.send("\r")
 	c.expect("work: created ")
 	if code := c.wait(); code != 0 {
@@ -60,7 +69,10 @@ func TestStartModeForkRunsFullJourney(t *testing.T) {
 		t.Errorf("fork mode must not prompt for a base branch when the Starter supplied one:\n%s", screen)
 	}
 
-	dir := filepath.Join(ws, "in-progress", "demo-pr-1_forked")
+	// The directory name embeds the derived branch, which depends on which of
+	// the 2 enabled conventions (freeform/gitflow) the Convention step's
+	// default focus accepted — glob for it rather than assuming one.
+	dir := globOneInProgress(t, ws, "demo-pr-1_*forked")
 	st := readSnapshot(t, filepath.Join(dir, "work-state.json"))
 	if st.Schema != 3 {
 		t.Errorf("schema = %d, want 3", st.Schema)
@@ -157,6 +169,20 @@ func TestStartModeContributionCancelledLeavesNoTraceAndBranchIntact(t *testing.T
 	if out, err := exec.Command("git", "-C", repo, "branch", "--list", "feature/source-branch").CombinedOutput(); err != nil || len(out) == 0 {
 		t.Errorf("cancelling must leave the pre-existing branch intact: %s (%v)", out, err)
 	}
+}
+
+// globOneInProgress finds the single Work directory under ws/in-progress
+// matching pattern, and fails the test unless there is exactly one.
+func globOneInProgress(t *testing.T, ws, pattern string) string {
+	t.Helper()
+	matches, err := filepath.Glob(filepath.Join(ws, "in-progress", pattern))
+	if err != nil {
+		t.Fatalf("glob %s: %v", pattern, err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("glob %s: want 1 match, got %d: %v", pattern, len(matches), matches)
+	}
+	return matches[0]
 }
 
 type snapshotStateFull struct {

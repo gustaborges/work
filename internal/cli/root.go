@@ -43,6 +43,7 @@ func newRootCmd() *cobra.Command {
 	shellInit := newShellInitCmd()
 	repository := newRepositoryCmd()
 	plugin := newPluginCmd()
+	convention := newConventionCmd()
 
 	start.GroupID = groupDaily
 	resume.GroupID = groupDaily
@@ -50,8 +51,9 @@ func newRootCmd() *cobra.Command {
 	shellInit.GroupID = groupSetup
 	repository.GroupID = groupAdmin
 	plugin.GroupID = groupAdmin
+	convention.GroupID = groupAdmin
 
-	root.AddCommand(start, resume, archive, shellInit, repository, plugin)
+	root.AddCommand(start, resume, archive, shellInit, repository, plugin, convention)
 
 	installHelp(root)
 
