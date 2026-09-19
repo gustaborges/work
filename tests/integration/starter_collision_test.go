@@ -9,9 +9,11 @@
 package integration
 
 import (
+	fixtures "github.com/gustaborges/work/tests/fixtures/plugins"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -117,3 +119,37 @@ func TestStarterCollisionNonInteractiveFailsAmbiguous(t *testing.T) {
 // for this case instead). It is already covered at that level by
 // tests/contract/starter_match_test.go's "no match and no fallback is
 // starter-not-matched (35)" case.
+
+// TestStarterCollisionUnlocatedReferenceStaysInField: a collision resolved
+// from argv whose chosen Starter returns a name no Locator can find leaves the
+// SOURCE field open showing why resolution failed, and re-submitting it
+// reports the same error in-field — the Starter selector
+// never reopens inside the wizard (FR-012, FR-017a, contracts/cli-work-start.md
+// S2b).
+func TestStarterCollisionUnlocatedReferenceStaysInField(t *testing.T) {
+	needSeed(t)
+	bin := buildWorkBin(t)
+	env, homeDir, workHome := ptyEnv(t)
+	installPluginFixture(t, bin, env, "colliding-starter")
+	second := exec.Command(bin, "plugin", "install", fixtures.Prepare(t, "colliding-starter"), "--as", "colliding-two")
+	second.Env = env
+	if out, err := second.CombinedOutput(); err != nil {
+		t.Fatalf("second colliding install: %v\n%s", err, out)
+	}
+
+	root := filepath.Join(homeDir, "src")
+	makeRepo(t, filepath.Join(root, "unrelated"))
+	writeRepositoryRoots(t, workHome, root)
+	ws := filepath.Join(homeDir, "ws")
+
+	c := newConsole(t, bin, env, "start", "demo-pr-3", "--workspace", ws, "--yes")
+	c.expect("Starter")
+	c.send("\r")
+	c.expect("Local repository path")
+	c.expect("no configured repository search root has a clone matching")
+	c.send("\r")
+	c.expect("no configured repository search root has a clone matching")
+	if s := c.screen(); strings.Count(s, "↑/↓ move") > 1 {
+		t.Errorf("Starter selector reopened inside the wizard:\n%s", s)
+	}
+}
