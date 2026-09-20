@@ -695,12 +695,12 @@ another except where noted.
       package stays. Then a `registry.Registry` helper removes an alias's
       components and its previous `Package`'s conventions (`Package.Conventions`)
       before `internal/plugininstall/install.go` registers the new manifest.
-- [ ] T081 [P] [US1] Starter `pattern` validity (FR-004a): failing test first —
+- [X] T081 [P] [US1] Starter `pattern` validity (FR-004a): failing test first —
       a fixture whose `pattern` is `(unclosed` exits 31 with nothing
       registered. Then `internal/plugin/manifest.go` compiles the pattern in
       `parseComponent`; refresh the stale "only reaches the registry through
       internal/plugin" comment in `internal/starter/starter.go`.
-- [ ] T082 [P] [US1] Alias grammar (FR-004b): failing tests first — `--as ..`,
+- [X] T082 [P] [US1] Alias grammar (FR-004b): failing tests first — `--as ..`,
       `--as a/b`, `--as x.old`, and a manifest named `..` exit 31 before
       `plugins/` is touched. Then `internal/plugin/manifest.go` validates
       `name` and `internal/plugininstall/install.go` validates `--as` against

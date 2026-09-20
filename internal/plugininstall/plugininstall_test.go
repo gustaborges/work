@@ -349,3 +349,58 @@ func TestInstallAliasConflictFromExplicitAliasMessage(t *testing.T) {
 		t.Errorf("message leaks the existing plugin's path: %s / %s", de.Summary, de.Hint)
 	}
 }
+
+// writeManifestDir returns a local plugin directory holding only manifest.
+func writeManifestDir(t *testing.T, manifest string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "plugin.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func TestInstallInvalidStarterPatternRegistersNothing(t *testing.T) {
+	src := writeManifestDir(t, `{"name":"p","version":"1","conventions":[],"components":[
+		{"name":"s","role":"starter","entrypoint":"s","pattern":"(unclosed"}]}`)
+	plugins := t.TempDir()
+	reg := &registry.Registry{}
+
+	_, err := Install(plugins, reg, src, Options{})
+	wantToken(t, err, diag.PluginInvalid)
+	if len(reg.Packages) != 0 || len(reg.Components) != 0 {
+		t.Errorf("nothing should be registered: %+v %+v", reg.Packages, reg.Components)
+	}
+}
+
+func TestInstallInvalidAliasIsRejectedBeforePluginStorageIsTouched(t *testing.T) {
+	valid := writeManifestDir(t, `{"name":"p","version":"1","conventions":[],"components":[]}`)
+	for _, alias := range []string{"..", ".", "a/b", "x.old", ".hidden"} {
+		t.Run("as="+alias, func(t *testing.T) {
+			plugins := t.TempDir()
+			reg := &registry.Registry{}
+			_, err := Install(plugins, reg, valid, Options{Alias: alias})
+			wantToken(t, err, diag.PluginInvalid)
+			assertPluginStorageUntouched(t, plugins, reg)
+		})
+	}
+
+	t.Run("manifest name", func(t *testing.T) {
+		src := writeManifestDir(t, `{"name":"..","version":"1","conventions":[],"components":[]}`)
+		plugins := t.TempDir()
+		reg := &registry.Registry{}
+		_, err := Install(plugins, reg, src, Options{})
+		wantToken(t, err, diag.PluginInvalid)
+		assertPluginStorageUntouched(t, plugins, reg)
+	})
+}
+
+func assertPluginStorageUntouched(t *testing.T, plugins string, reg *registry.Registry) {
+	t.Helper()
+	if entries, _ := os.ReadDir(plugins); len(entries) != 0 {
+		t.Errorf("plugin storage was touched: %v", entries)
+	}
+	if len(reg.Packages) != 0 || len(reg.Components) != 0 {
+		t.Errorf("nothing should be registered: %+v %+v", reg.Packages, reg.Components)
+	}
+}
