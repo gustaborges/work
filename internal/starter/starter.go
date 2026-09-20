@@ -9,12 +9,15 @@
 package starter
 
 import (
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/ipc"
 	"github.com/gustaborges/work/internal/registry"
+	"github.com/gustaborges/work/internal/semconv"
 	"github.com/gustaborges/work/internal/work"
 )
 
@@ -92,12 +95,10 @@ func Match(reg *registry.Registry, arg string) (registry.Component, Outcome, err
 // Reference is the subset of a Starter response the core acts on (ADR-0016).
 // The four repository fields are independent and optional; a reference with
 // none of them set is not rejected here — internal/locator classifies that
-// case as no-eligible-locator (FR-005, research R8). BaseBranch and
-// StartModes are F4 additions, already present-but-unread on
-// ipc.StarterResponse (research R8); Meta/Links stay off this type
-// deliberately — persisting them is F5/F6 scope, and keeping them off the
-// type (not merely unused by convention) is what makes "F4 does not consume
-// them" a type constraint rather than a promise.
+// case as no-eligible-locator (FR-005, research R8). Meta and Links carry the
+// context the Starter publishes for the Work; they are checked by
+// ValidateResponse before anything is materialized. Nothing else a Starter
+// emits is reachable through this type.
 type Reference struct {
 	Path         string
 	GitFetchURLs []string
@@ -105,6 +106,8 @@ type Reference struct {
 	Query        string
 	BaseBranch   string
 	StartModes   []string
+	Meta         map[string]any
+	Links        map[string]string
 }
 
 // Invoke runs the Starter entrypoint with arg and returns the repository
@@ -116,9 +119,8 @@ func Invoke(pluginsDir string, c registry.Component, arg string) (Reference, err
 		return Reference{}, diag.Wrap(diag.UnusableRepo, err,
 			"the Starter could not resolve the given source")
 	}
-	// Only the typed reference fields are consumed; meta, links, and any
-	// extra keys the subprocess emitted are deliberately ignored (FR-018
-	// trust boundary).
+	// Only the typed fields are consumed; any extra key the subprocess
+	// emitted is deliberately ignored (FR-018 trust boundary).
 	return Reference{
 		Path:         resp.Repository.Path,
 		GitFetchURLs: resp.Repository.GitFetchURLs,
@@ -126,6 +128,8 @@ func Invoke(pluginsDir string, c registry.Component, arg string) (Reference, err
 		Query:        resp.Repository.Query,
 		BaseBranch:   resp.BaseBranch,
 		StartModes:   resp.StartModes,
+		Meta:         resp.Meta,
+		Links:        resp.Links,
 	}, nil
 }
 
@@ -137,7 +141,12 @@ func Invoke(pluginsDir string, c registry.Component, arg string) (Reference, err
 // so an absent base branch here can never be filled in later. Both violations
 // are starter-response-invalid (37), the same failure shape as a malformed
 // response, checked before any Work materialization.
-func ValidateResponse(ref Reference) error {
+//
+// owner is the publishing plugin's manifest name: every Meta and Links key
+// must be a valid Semantic Conventions key that owner may publish, and every
+// link value a non-empty string. The error names the offending key, never a
+// value.
+func ValidateResponse(ref Reference, owner string) error {
 	hasContribution := false
 	for _, m := range ref.StartModes {
 		switch m {
@@ -156,6 +165,34 @@ func ValidateResponse(ref Reference) error {
 			"the Starter offered contribution mode with no base branch to check out").
 			WithSummary("The Starter's response is structurally invalid.").
 			WithHint("This is a bug in the installed Starter, not something fixable from the command line.")
+	}
+	return validatePublished(ref, owner)
+}
+
+// validatePublished checks the published keys in sorted order so the key a
+// failure names does not depend on map iteration.
+func validatePublished(ref Reference, owner string) error {
+	invalidKey := func(section, key string) error {
+		return diag.Newf(diag.StarterResponseInvalid,
+			"the Starter returned a %s key that is not valid: %q", section, key).
+			WithSummary("The Starter's response is structurally invalid.").
+			WithHint("This is a bug in the installed Starter, not something fixable from the command line.")
+	}
+	for _, key := range slices.Sorted(maps.Keys(ref.Meta)) {
+		if semconv.ValidatePublished(owner, key) != nil {
+			return invalidKey("metadata", key)
+		}
+	}
+	for _, key := range slices.Sorted(maps.Keys(ref.Links)) {
+		if semconv.ValidatePublished(owner, key) != nil {
+			return invalidKey("link", key)
+		}
+		if semconv.ValidLinkValue(ref.Links[key]) != nil {
+			return diag.Newf(diag.StarterResponseInvalid,
+				"the Starter returned an empty value for the link %q", key).
+				WithSummary("The Starter's response is structurally invalid.").
+				WithHint("This is a bug in the installed Starter, not something fixable from the command line.")
+		}
 	}
 	return nil
 }

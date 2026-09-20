@@ -189,6 +189,10 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		// resolveBase/resolveContribution and the interactive Mode step below.
 		starterBaseBranch string
 		starterStartModes []string
+		// starterMeta and starterLinks are the validated context the chosen
+		// Starter published; they seed the Work's first snapshot.
+		starterMeta  map[string]any
+		starterLinks map[string]string
 		// startMode is the resolved work.start_mode: left empty (create.Run
 		// defaults it to "new") when the Starter offered no start_modes, or
 		// set to the Mode step's answer otherwise (FR-021/FR-022).
@@ -276,11 +280,13 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			}
 			return present.Fatal(err)
 		}
-		if verr := starter.ValidateResponse(ref); verr != nil {
+		if verr := starter.ValidateResponse(ref, reg.PluginNameOf(comp.Alias)); verr != nil {
 			return present.Fatal(verr)
 		}
 		starterBaseBranch = ref.BaseBranch
 		starterStartModes = ref.StartModes
+		starterMeta = ref.Meta
+		starterLinks = ref.Links
 
 		if ref.Path != "" {
 			normalized, verr := reporef.ValidatePath(ref.Path)
@@ -838,6 +844,10 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		Convention:      conventionValue,
 		Starter:         starterLogicalName(reg, chosenStarter),
 		StartMode:       startMode,
+
+		Meta:             starterMeta,
+		Links:            starterLinks,
+		StarterComponent: chosenStarter.QualifiedName(),
 	})
 	if err != nil {
 		return err

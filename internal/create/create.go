@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -43,6 +44,12 @@ type Params struct {
 	// already-existing one without creating it, and its rollback never deletes
 	// that branch (research R12).
 	StartMode string
+	// Meta and Links are the context the Starter published, already validated;
+	// they land in the first snapshot. StarterComponent is the Starter's
+	// "<alias>/<name>", recorded as the source of each entry's provenance.
+	Meta             map[string]any
+	Links            map[string]string
+	StarterComponent string
 	// Now, when zero, defaults to time.Now().UTC().
 	Now time.Time
 	// ID, when empty, is generated.
@@ -201,7 +208,7 @@ func Run(ctx context.Context, p Params) (Result, error) {
 	if failPoint("snapshot") {
 		return fail(diag.MaterializationFailed, nil, "injected failure at step: snapshot")
 	}
-	state, row := build(p, dirPath, worktreePath, snapshotPath)
+	state, row, prov := build(p, dirPath, worktreePath, snapshotPath)
 	if err := work.Write(snapshotPath, state); err != nil {
 		return fail(diag.MaterializationFailed, err, "cannot write work-state.json")
 	}
@@ -223,7 +230,7 @@ func Run(ctx context.Context, p Params) (Result, error) {
 	if err := db.Migrate(); err != nil {
 		return fail(diag.MaterializationFailed, err, "cannot migrate the projection database")
 	}
-	if err := db.Upsert(row); err != nil {
+	if err := db.UpsertWithProvenance(row, prov); err != nil {
 		return fail(diag.MaterializationFailed, err, "cannot record the Work")
 	}
 
@@ -242,7 +249,7 @@ func Run(ctx context.Context, p Params) (Result, error) {
 // build produces the canonical work.State and the projection.Work row from one
 // set of inputs so the two can never drift (FR-018). Every governed work.*
 // field originates here and nowhere else.
-func build(p Params, dirPath, worktreePath, snapshotPath string) (*work.State, projection.Work) {
+func build(p Params, dirPath, worktreePath, snapshotPath string) (*work.State, projection.Work, []projection.Provenance) {
 	startMode := p.StartMode
 	if startMode == "" {
 		startMode = work.StartModeNew
@@ -269,8 +276,14 @@ func build(p Params, dirPath, worktreePath, snapshotPath string) (*work.State, p
 	state := &work.State{
 		Schema: work.Schema,
 		Work:   ws,
-		Meta:   map[string]any{},
-		Links:  map[string]string{},
+		Meta:   maps.Clone(p.Meta),
+		Links:  maps.Clone(p.Links),
+	}
+	if state.Meta == nil {
+		state.Meta = map[string]any{}
+	}
+	if state.Links == nil {
+		state.Links = map[string]string{}
 	}
 	row := projection.Work{
 		ID:               ws.ID,
@@ -288,7 +301,27 @@ func build(p Params, dirPath, worktreePath, snapshotPath string) (*work.State, p
 		CreatedAt:        ws.CreatedAt,
 		LastAccessedAt:   ws.LastAccessedAt,
 	}
-	return state, row
+	return state, row, startProvenance(p, ts)
+}
+
+// startProvenance records the Starter as the source of every entry it
+// published, so the index can say where each key came from. Sorted so the
+// rows are written in a reproducible order.
+func startProvenance(p Params, recordedAt string) []projection.Provenance {
+	entry := func(section, key string) projection.Provenance {
+		return projection.Provenance{
+			WorkID: p.ID, Section: section, Key: key,
+			SourceComponent: p.StarterComponent, SourceOperation: "start", RecordedAt: recordedAt,
+		}
+	}
+	var out []projection.Provenance
+	for _, k := range slices.Sorted(maps.Keys(p.Links)) {
+		out = append(out, entry("links", k))
+	}
+	for _, k := range slices.Sorted(maps.Keys(p.Meta)) {
+		out = append(out, entry("meta", k))
+	}
+	return out
 }
 
 // sanitizeBranch makes a branch name safe as a single path segment.

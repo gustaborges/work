@@ -1,0 +1,44 @@
+# F5 — context published and discovered when a Work starts (quickstart S4-S14).
+# The first start persists the workspace, so later starts omit --workspace.
+
+preparepluginfixture context-suite SUITE
+work plugin install $SUITE
+gitrepo src/demo-ctx-1
+work-set-roots $WORK/dothome/config/work.json $WORK/src
+env WS=$WORK/ws
+env WORK_FIXTURE_LOG=$WORK/launches.log
+
+# S4: with no published context the snapshot holds empty objects and no provenance.
+env WORK_FIXTURE_MODE=
+work start demo-ctx-1 --workspace $WS --base main --slug plain --prefix {slug} --yes
+stdout 'work: created [0-9A-HJKMNP-TV-Z]{26}'
+grep '"schema": 3' $WS/in-progress/demo-ctx-1_plain/work-state.json
+grep '"meta": \{\}' $WS/in-progress/demo-ctx-1_plain/work-state.json
+grep '"links": \{\}' $WS/in-progress/demo-ctx-1_plain/work-state.json
+provenancecount 0
+
+# S4: a Starter that publishes context lands it in the first snapshot, with provenance.
+env WORK_FIXTURE_MODE=starter-context
+work start demo-ctx-1 --base main --slug ctx --prefix {slug} --yes
+grep '"github.pull_request.number": 212' $WS/in-progress/demo-ctx-1_ctx/work-state.json
+grep '"github.pull_request": "https://example.test/pr/212"' $WS/in-progress/demo-ctx-1_ctx/work-state.json
+provenance links github.pull_request context-suite/starter start
+provenance meta github.pull_request.number context-suite/starter start
+provenancecount 2
+verifycoherent
+
+# S5: an invalid or foreign key fails before anything is created (exit 37).
+env WORK_FIXTURE_MODE=starter-bad-key
+! work start demo-ctx-1 --base main --slug badkey --prefix {slug} --yes
+stderr 'error: starter-response-invalid: .*"GitHub.PR"'
+! exists $WS/in-progress/demo-ctx-1_badkey
+exec git -C $WORK/src/demo-ctx-1 branch --list badkey
+! stdout .
+
+env WORK_FIXTURE_MODE=starter-foreign-private
+! work start demo-ctx-1 --base main --slug foreign --prefix {slug} --yes
+stderr 'error: starter-response-invalid: .*plugin.someone-else.x'
+! exists $WS/in-progress/demo-ctx-1_foreign
+exec git -C $WORK/src/demo-ctx-1 branch --list foreign
+! stdout .
+provenancecount 2

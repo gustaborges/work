@@ -205,7 +205,7 @@ func TestValidateResponseContract(t *testing.T) {
 		err := starter.ValidateResponse(starter.Reference{
 			BaseBranch: "main",
 			StartModes: []string{"rebase"},
-		})
+		}, "acme")
 		if diag.Token(err) != diag.StarterResponseInvalid.Token {
 			t.Fatalf("err = %v, want token %q", err, diag.StarterResponseInvalid.Token)
 		}
@@ -217,7 +217,7 @@ func TestValidateResponseContract(t *testing.T) {
 	t.Run("contribution without base_branch is starter-response-invalid (37)", func(t *testing.T) {
 		err := starter.ValidateResponse(starter.Reference{
 			StartModes: []string{"contribution"},
-		})
+		}, "acme")
 		if diag.Token(err) != diag.StarterResponseInvalid.Token {
 			t.Fatalf("err = %v, want token %q", err, diag.StarterResponseInvalid.Token)
 		}
@@ -230,20 +230,20 @@ func TestValidateResponseContract(t *testing.T) {
 		err := starter.ValidateResponse(starter.Reference{
 			BaseBranch: "feature/source-branch",
 			StartModes: []string{"contribution", "fork"},
-		})
+		}, "acme")
 		if err != nil {
 			t.Fatalf("ValidateResponse: %v", err)
 		}
 	})
 
 	t.Run("absent start_modes is valid", func(t *testing.T) {
-		if err := starter.ValidateResponse(starter.Reference{}); err != nil {
+		if err := starter.ValidateResponse(starter.Reference{}, "acme"); err != nil {
 			t.Fatalf("ValidateResponse: %v", err)
 		}
 	})
 
 	t.Run("fork alone with no base_branch is valid (FR-023 prompts for one)", func(t *testing.T) {
-		if err := starter.ValidateResponse(starter.Reference{StartModes: []string{"fork"}}); err != nil {
+		if err := starter.ValidateResponse(starter.Reference{StartModes: []string{"fork"}}, "acme"); err != nil {
 			t.Fatalf("ValidateResponse: %v", err)
 		}
 	})
