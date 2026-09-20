@@ -106,9 +106,11 @@ mode and (when applicable) convention — never inferred, never overridden
 
 Every existing rollback guarantee (SC-009/FR-033) is preserved, with one new
 rule: a failure or cancellation during a **contribution**-mode creation
-leaves the checked-out worktree removed but the pre-existing branch intact —
-it was never created by this Work, so there is nothing of the branch itself
-to roll back (research R12). Fork/new-mode rollback is byte-identical to
+leaves the checked-out worktree removed but a branch that existed locally
+before the run intact — it was never created by this Work. When the resolved
+branch existed only as a remote-tracking branch, the run creates a local
+tracking branch (FR-020); that branch *was* created by this run, so rollback
+removes it along with the worktree (research R12). Fork/new-mode rollback is byte-identical to
 F1/F3 (worktree removed, branch deleted).
 
 ## Contract tests (tests/integration/, pty and non-interactive)
@@ -121,7 +123,10 @@ F1/F3 (worktree removed, branch deleted).
 | S3 — collision, non-interactive | exit 36, no Work, no selector |
 | S4 — start_modes present, fork selected | full slug/convention/prefix sequence; `start_mode: "fork"` persisted |
 | S5 — start_modes present, contribution selected | no slug/convention/prefix steps; existing branch checked out; `start_mode: "contribution"`, no `branch_convention` persisted |
-| S6 — contribution cancelled mid-confirmation | worktree/dir/snapshot absent; pre-existing branch still present in the source repo |
+| S5b — contribution, branch only remote-tracking | worktree HEAD is on a local branch tracking the remote one (not detached); `branch` and `base_branch` in the snapshot are the local name, without a remote prefix |
+| S6 — contribution cancelled mid-confirmation | worktree/dir/snapshot absent; pre-existing local branch still present in the source repo |
+| S6b — contribution (remote-only branch) cancelled or failed | worktree/dir/snapshot absent; the local tracking branch this run created is removed again |
+| S6c — slug-less Work in pickers | a contribution Work is listed by its branch, never with a blank name (FR-020a) |
 | S7 — base_branch supplied by Starter (fork) | no base-branch prompt |
 | S8 — base_branch absent (fork) | base-branch prompt, unchanged from F1 |
 | S9 — unrecognized start_modes value | exit 37, no Work |

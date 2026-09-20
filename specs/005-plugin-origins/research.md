@@ -124,6 +124,15 @@ staging/registration pipeline.
 local to the registry, not global; reinstalling the same source is
 idempotent, not a conflict; there is no auto-suffix.
 
+**Amendment (triage of PR #39)**: the alias is also a directory name under
+`plugins/`, so it is constrained to `^[A-Za-z0-9][A-Za-z0-9._-]*$` and may not
+end in `.old` (the swap backup suffix); anything else is `plugin-invalid`
+(FR-004b). The reference package's alias (`work-reference`) is reserved: the
+seed is registered by bootstrap as components only, with no `Package`, so the
+collision check also treats an alias that already owns registered components
+as taken (FR-006). A same-origin reinstall replaces the alias's components
+and previously declared conventions rather than merging into them (FR-006a).
+
 **Alternatives considered**: Key collision purely on `Alias` with no origin
 comparison (any second install under an existing alias is a hard conflict,
 even the same source). Rejected — it would make `work plugin install <path>`
@@ -280,6 +289,17 @@ integrity, not a preservation of it. SC-009 is satisfied here by never
 creating what would need to be deleted, not by the fork/new path's delete-on-
 rollback rule, which only applies to a branch this Work itself brought into
 existence.
+
+**Amendment (triage of PR #39)**: "the already-resolved branch" is not
+always a local branch. On a fresh clone the Starter's `base_branch` is often
+only a remote-tracking ref (`origin/feature/x`); passing that to `git worktree
+add` yields a detached HEAD and persists `origin/feature/x` as the Work's
+branch. Contribution mode therefore checks out the *local* branch name
+(`git worktree add <dir> <name>` lets git create a local branch tracking the
+single matching remote-tracking branch), persists that local name as both
+`branch` and `base_branch`, and its compensator deletes the local branch only
+when this run created it. The "never delete" rule above is scoped to a branch
+that existed locally before the run (spec FR-020, FR-033).
 
 **Alternatives considered**: Reuse `WorktreeAdd` and immediately reset it to
 track the existing branch. Rejected — `git worktree add -b <branch>` fails

@@ -20,7 +20,10 @@ Unchanged field, now load-bearing for the first time outside F1's seed
 
 - Non-empty `pattern` → **specific** layer: evaluated locally (no subprocess)
   against `work start`'s argument, as a Go-syntax regular expression
-  (`regexp.MustCompile`), before any Starter is invoked.
+  (`regexp.Compile`), before any Starter is invoked. A `pattern` that does
+  not compile is rejected at install time (`plugin-invalid`, FR-004a), so
+  every registered `pattern` compiles; `Match` keeps a defensive skip only
+  for a hand-edited registry.
 - Empty/absent `pattern` → **fallback** layer: never pattern-matched; invoked
   only when no specific Starter matches. At most one may be registered
   (`plugin-fallback-conflict` at install time — `cli-work-plugin.md`).

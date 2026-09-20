@@ -47,7 +47,7 @@
         },
         "start_mode": {
           "enum": ["new", "contribution", "fork"],
-          "description": "'new': start_modes was absent from the Starter response (unchanged F1/F3 meaning). 'fork': start_modes was present and the user selected fork — the identical new-Work journey as 'new', just Starter-provided. 'contribution': start_modes was present and the user selected contribution — the Starter-resolved branch was checked out directly, never created by this Work."
+          "description": "'new': start_modes was absent from the Starter response (unchanged F1/F3 meaning). 'fork': start_modes was present and the user selected fork — the identical new-Work journey as 'new', just Starter-provided. 'contribution': start_modes was present and the user selected contribution — the Starter-resolved branch was checked out directly as a local branch, no new branch name was chosen by this Work."
         },
         "starter": {
           "type": "string",
@@ -57,7 +57,7 @@
         "branch": {
           "type": "string",
           "minLength": 1,
-          "description": "In 'new'/'fork' mode: the branch this Work created. In 'contribution' mode: the pre-existing branch the Starter resolved and this Work checked out (never created, never deleted on rollback)."
+          "description": "In 'new'/'fork' mode: the branch this Work created. In 'contribution' mode: the local branch the Starter resolved and this Work checked out, recorded by its local name (never a '<remote>/<name>' reference). A branch that existed locally before the run is never deleted on rollback; a local tracking branch created by the run for a remote-only branch is (FR-020, FR-033)."
         },
         "base_branch": {
           "type": "string",

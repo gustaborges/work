@@ -666,6 +666,57 @@ independently functional. F1–F3 suites green. Merge forward.
 
 ---
 
+## Phase 9: Review Corrections (PR #39 triage)
+
+**Purpose**: Bring the code to the spec amendments made after PR review
+(FR-004a, FR-004b, FR-006 reserved alias, FR-006a, FR-020, FR-020a, FR-033).
+Each task is test-first and lands as its own commit. Independent of one
+another except where noted.
+
+- [ ] T078 [US3] Contribution mode on a remote-only branch (FR-020, FR-033):
+      failing tests first — fresh clone with the branch only under `origin/`
+      yields an attached HEAD on a local tracking branch and a snapshot whose
+      `branch` and `base_branch` are the local name; cancel/failure after the
+      worktree step removes the created tracking branch; a branch that already
+      existed locally is never deleted. Then `internal/cli/start.go`
+      (`resolveContribution`) derives the local name from the remote-tracking
+      `basebranch.Choice`, and `internal/create/create.go` (contribution
+      branch) checks it out via `WorktreeAddExisting` and compensates by
+      deleting the branch only when this run created it.
+- [ ] T079 [P] [US1] Reserved reference alias (FR-006): failing tests first —
+      `--as work-reference` and a manifest named `work-reference` exit 32 with
+      the seed's directory and registry entries unchanged. Then
+      `internal/plugininstall/install.go` treats an alias that already owns
+      registered components (with no `Package`) as a conflict via the existing
+      `aliasConflict`.
+- [ ] T080 [P] [US1] Reinstall replaces exactly (FR-006a): failing tests first
+      — reinstall dropping a component and a convention leaves neither in
+      `work plugin list` or the catalog; a convention shared with another
+      package stays. Then a `registry.Registry` helper removes an alias's
+      components and its previous `Package`'s conventions (`Package.Conventions`)
+      before `internal/plugininstall/install.go` registers the new manifest.
+- [ ] T081 [P] [US1] Starter `pattern` validity (FR-004a): failing test first —
+      a fixture whose `pattern` is `(unclosed` exits 31 with nothing
+      registered. Then `internal/plugin/manifest.go` compiles the pattern in
+      `parseComponent`; refresh the stale "only reaches the registry through
+      internal/plugin" comment in `internal/starter/starter.go`.
+- [ ] T082 [P] [US1] Alias grammar (FR-004b): failing tests first — `--as ..`,
+      `--as a/b`, `--as x.old`, and a manifest named `..` exit 31 before
+      `plugins/` is touched. Then `internal/plugin/manifest.go` validates
+      `name` and `internal/plugininstall/install.go` validates `--as` against
+      the one grammar, sharing a single validator.
+- [ ] T083 [P] [US3] Slug-less Work identity (FR-020a): failing test first —
+      two contribution Works in one repository on different branches render
+      distinct, non-blank names. Then `internal/worklist/worklist.go` falls
+      back to `Branch` when `Slug` is empty, in both `DisplayName` and the
+      disambiguation key.
+- [ ] T084 Add the `contracts/*.md` contract-test rows (S5b, S6b, S6c and the
+      plugin-install rows) to the integration suites, then rerun T072/T073
+      (full regression, quickstart) to confirm F1–F3 suites are unchanged
+      (SC-010).
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase dependencies

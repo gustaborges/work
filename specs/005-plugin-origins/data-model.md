@@ -28,10 +28,14 @@ type Package struct {
     Alias     string // local unique identity; default = manifest name
     Origin    string // "local-linked" | "local-pinned" | "remote-pinned"
     Reference string // absolute source path (local kinds) or "<source>@<sha>" (remote)
+    Conventions []string // convention names this package declared, so a reinstall can retract them
 }
 ```
 
-- Identity: `Alias`, unique within the registry (FR-006).
+- Identity: `Alias`, unique within the registry (FR-006), and matching the
+  alias grammar of FR-004b (it names a directory under `plugins/`). The
+  reference package's alias is reserved though it has no `Package` record
+  (bootstrap registers its components only).
 - `Origin` is exactly one of the three ADR-0002 install kinds; it is what
   `work plugin list` prints as "linked"/"pinned" (US1 AC1/AC2).
 - `Reference` is what changed at install time and what a future update slice
@@ -42,7 +46,11 @@ type Package struct {
   component identity and `Name` convention identity are unchanged; `Package`
   is a new *parent* record, not a new identity scheme.
 - Lifecycle: created by `work plugin install`; read by `work plugin list`;
-  never updated or deleted in F4 (enable/disable/update/uninstall are F7).
+  replaced wholesale by a reinstall of the same origin under the same alias —
+  the alias's components and its previously declared conventions are removed
+  before the new manifest's are registered (FR-006a; a convention another
+  package also declares stays). Never deleted in F4
+  (enable/disable/update/uninstall are F7).
 
 ## 3. Starter (Component) — matching outcome (transient, per `work start` invocation)
 
