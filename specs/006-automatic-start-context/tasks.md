@@ -306,14 +306,14 @@ nothing; 20 repeats produce identical order and results (quickstart S14).
 
 ### Tests for US7
 
-- [ ] T070 [P] [US7] Write `tests/integration/extensions_visibility_test.go` (`//go:build unix`, PTY): an interactive start with `context-suite` shows, after the confirmation receipt and the three stable stdout lines, exactly the contract's progress lines in execution order (`running … (discover)`, `linked <key>`, `running … (import)`, `imported <n> item(s)`) on the UI channel, and a failing component adds one `⚠` warning with a `→` hint; the start wizard (steps, receipts, geometry) is unchanged when extensions are installed.
-- [ ] T071 [P] [US7] Extend `tests/integration/extensions_start.txtar` with S14: with `NO_COLOR=1 TERM=dumb` and with piped/redirected streams the same lines appear with `grep -c $'\x1b'` equal to 0; extension output never appears on stdout (`2>/dev/null` yields exactly the F4 stdout); with only the reference package installed nothing extension-related is printed and `$WORK_FIXTURE_LOG` stays empty (FR-041).
-- [ ] T072 [P] [US7] Extend `tests/integration/stream_separation_test.go` (or a new `extensions_streams_test.go`) asserting progress and warnings are written only to the UI channel, never stdout, and that the exit code is unchanged by any warning.
+- [X] T070 [P] [US7] Write `tests/integration/extensions_visibility_test.go` (`//go:build unix`, PTY): an interactive start with `context-suite` shows, after the confirmation receipt and the three stable stdout lines, exactly the contract's progress lines in execution order (`running … (discover)`, `linked <key>`, `running … (import)`, `imported <n> item(s)`) on the UI channel, and a failing component adds one `⚠` warning with a `→` hint; the start wizard (steps, receipts, geometry) is unchanged when extensions are installed.
+- [X] T071 [P] [US7] Extend `tests/integration/extensions_start.txtar` with S14: with `NO_COLOR=1 TERM=dumb` and with piped/redirected streams the same lines appear with `grep -c $'\x1b'` equal to 0; extension output never appears on stdout (`2>/dev/null` yields exactly the F4 stdout); with only the reference package installed nothing extension-related is printed and `$WORK_FIXTURE_LOG` stays empty (FR-041).
+- [X] T072 [P] [US7] Extend `tests/integration/stream_separation_test.go` (or a new `extensions_streams_test.go`) asserting progress and warnings are written only to the UI channel, never stdout, and that the exit code is unchanged by any warning.
 
 ### Implementation for US7
 
-- [ ] T073 [US7] Review the `Observer` rendering in `internal/cli/diagnostics_border.go` against `contracts/cli-work-start.md`: identical text interactive and not, muted theme token only when interactive, `Warning` token for `⚠`, ASCII fallback for marks, no control sequences when `NO_COLOR` is non-empty, `TERM=dumb`, or a non-TTY; fix any drift found by T070–T072.
-- [ ] T074 [US7] Confirm no new Bubble Tea model, live region, flag, prompt or stdout line was added (`research.md` R13, FR-046); if a check finds one, remove it rather than documenting it.
+- [X] T073 [US7] Review the `Observer` rendering in `internal/cli/diagnostics_border.go` against `contracts/cli-work-start.md`: identical text interactive and not, muted theme token only when interactive, `Warning` token for `⚠`, ASCII fallback for marks, no control sequences when `NO_COLOR` is non-empty, `TERM=dumb`, or a non-TTY; fix any drift found by T070–T072.
+- [X] T074 [US7] Confirm no new Bubble Tea model, live region, flag, prompt or stdout line was added (`research.md` R13, FR-046); if a check finds one, remove it rather than documenting it.
 
 ---
 

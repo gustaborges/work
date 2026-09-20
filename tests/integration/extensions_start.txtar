@@ -95,6 +95,22 @@ stderr 'running context-suite/linker \(discover\)(.|\n)*running context-suite/li
 grep '"github.pull_request": "https://example.test/pr/212-from-linker2"' $WS/in-progress/demo-ctx-1_order/work-state.json
 provenance links github.pull_request context-suite/linker2 discover
 
+# S14: the same lines appear in every mode; with NO_COLOR/TERM=dumb or redirected
+# streams there are no control sequences, and extension output never reaches stdout.
+env NO_COLOR=1 TERM=dumb
+env WORK_FIXTURE_MODE=linker-value,importer-ok,importer2-exit1
+work start demo-ctx-1 --base main --slug plainui --prefix {slug} --yes
+stderr 'work: running context-suite/linker \(discover\)'
+stderr 'work: context-suite/importer: imported 2 item\(s\)'
+stderr 'warning: extension-failed: context-suite/importer2 \(import\)'
+cp stderr plainui.err
+! grep '\x1b' plainui.err
+! stdout 'running'
+! stdout 'warning'
+! stdout 'imported'
+env NO_COLOR=
+env TERM=
+
 # S12: every failure class is exactly one warning; the Work is intact, the start
 # still succeeds and prints the three stable lines, and healthy siblings ran.
 env WORK_FIXTURE_MODE=linker-exit1,linker2-value,importer-empty,importer2-empty
