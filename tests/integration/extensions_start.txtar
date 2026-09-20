@@ -3,13 +3,16 @@
 
 preparepluginfixture context-suite SUITE
 work plugin install $SUITE
+preparepluginfixture restricted-suite RESTRICTED
+work plugin install $RESTRICTED
 gitrepo src/demo-ctx-1
 work-set-roots $WORK/dothome/config/work.json $WORK/src
 env WS=$WORK/ws
 env WORK_FIXTURE_LOG=$WORK/launches.log
 
 # S4: with no published context the snapshot holds empty objects and no provenance.
-env WORK_FIXTURE_MODE=
+# (Linkers and Importers are silenced so only the Starter's context is observed.)
+env WORK_FIXTURE_MODE=linker-none,linker2-none,importer-empty,importer2-empty
 work start demo-ctx-1 --workspace $WS --base main --slug plain --prefix {slug} --yes
 stdout 'work: created [0-9A-HJKMNP-TV-Z]{26}'
 grep '"schema": 3' $WS/in-progress/demo-ctx-1_plain/work-state.json
@@ -18,7 +21,7 @@ grep '"links": \{\}' $WS/in-progress/demo-ctx-1_plain/work-state.json
 provenancecount 0
 
 # S4: a Starter that publishes context lands it in the first snapshot, with provenance.
-env WORK_FIXTURE_MODE=starter-context
+env WORK_FIXTURE_MODE=starter-context,linker-none,linker2-none,importer-empty,importer2-empty
 work start demo-ctx-1 --base main --slug ctx --prefix {slug} --yes
 grep '"github.pull_request.number": 212' $WS/in-progress/demo-ctx-1_ctx/work-state.json
 grep '"github.pull_request": "https://example.test/pr/212"' $WS/in-progress/demo-ctx-1_ctx/work-state.json
@@ -42,3 +45,52 @@ stderr 'error: starter-response-invalid: .*plugin.someone-else.x'
 exec git -C $WORK/src/demo-ctx-1 branch --list foreign
 ! stdout .
 provenancecount 2
+
+# S6: a Linker's value becomes the link, replacing the Starter's, with discover
+# provenance. Stdout is only the three stable lines; progress is on the UI channel.
+env WORK_FIXTURE_MODE=starter-context,linker-value,importer-empty,importer2-empty
+work start demo-ctx-1 --base main --slug found --prefix {slug} --yes
+stdout 'work: created '
+stdout 'work: branch found '
+stdout 'work: path '
+! stdout 'running'
+! stdout 'linked'
+stderr 'work: running context-suite/linker \(discover\)'
+stderr 'work: context-suite/linker: linked github.pull_request'
+! stderr 'example.test'
+grep '"github.pull_request": "https://example.test/pr/212-from-linker"' $WS/in-progress/demo-ctx-1_found/work-state.json
+provenance links github.pull_request context-suite/linker discover
+
+# S6: a Linker with nothing to report is silent; an empty value is a warning and stores nothing.
+env WORK_FIXTURE_MODE=linker-none,linker2-none,importer-empty,importer2-empty
+work start demo-ctx-1 --base main --slug nothing --prefix {slug} --yes
+! stderr 'linked'
+! stderr 'warning:'
+grep '"links": \{\}' $WS/in-progress/demo-ctx-1_nothing/work-state.json
+
+env WORK_FIXTURE_MODE=linker-empty-value,linker2-none,importer-empty,importer2-empty
+work start demo-ctx-1 --base main --slug emptyval --prefix {slug} --yes
+stderr 'warning: extension-response-invalid: context-suite/linker \(discover\) for Work [0-9A-HJKMNP-TV-Z]{26}:'
+grep '"links": \{\}' $WS/in-progress/demo-ctx-1_emptyval/work-state.json
+
+# S7: components that are not eligible are never started, and an eligible one is
+# sent exactly its declared inputs.
+rm $WORK/launches.log
+env WORK_FIXTURE_MODE=linker-none,linker2-none,importer-empty,importer2-empty
+work start demo-ctx-1 --base main --slug launches --prefix {slug} --yes
+! grep 'linker-other-starter' $WORK/launches.log
+! grep 'linker-not-automatic' $WORK/launches.log
+! grep 'linker-unsubscribed' $WORK/launches.log
+! grep 'importer-missing-link' $WORK/launches.log
+! grep 'importer-manual-only' $WORK/launches.log
+grep '"role":"linker","stdin":\{"inputs":\{"worktree_path":"[^"]*"\}\}\}' $WORK/launches.log
+! grep 'starters' $WORK/launches.log
+! grep 'work-state.json' $WORK/launches.log
+
+# S8: two Linkers sharing a key resolve by name order: linker2 runs after linker
+# and its value is stored, with provenance naming it.
+env WORK_FIXTURE_MODE=linker-value,linker2-value,importer-empty,importer2-empty
+work start demo-ctx-1 --base main --slug order --prefix {slug} --yes
+stderr 'running context-suite/linker \(discover\)(.|\n)*running context-suite/linker2 \(discover\)'
+grep '"github.pull_request": "https://example.test/pr/212-from-linker2"' $WS/in-progress/demo-ctx-1_order/work-state.json
+provenance links github.pull_request context-suite/linker2 discover
