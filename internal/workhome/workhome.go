@@ -4,6 +4,8 @@
 package workhome
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -69,6 +71,15 @@ func (h Home) LocksDir() string { return filepath.Join(h.StateDir(), "locks") }
 // suffix is appended automatically.
 func (h Home) LockPath(name string) string {
 	return filepath.Join(h.LocksDir(), name+".lock")
+}
+
+// WorkLockPath is the advisory lockfile that serializes every mutation of one
+// Work (resume, archive, and extension results) by its id. The name is
+// sha256(id) in hex, scoped per Work rather than per repository and branch, so
+// all writers must derive it here to actually exclude each other.
+func (h Home) WorkLockPath(id string) string {
+	sum := sha256.Sum256([]byte(id))
+	return h.LockPath(hex.EncodeToString(sum[:]))
 }
 
 // EnsureLayout creates every directory in the fixed layout. It is idempotent.

@@ -111,8 +111,7 @@ type Reference struct {
 // reference it produced. A non-zero exit or a structurally invalid response is
 // reported as an unusable repository.
 func Invoke(pluginsDir string, c registry.Component, arg string) (Reference, error) {
-	entrypoint := c.EntrypointPath(pluginsDir)
-	resp, err := ipc.InvokeStarter(entrypoint, ipc.StarterInput{Arg: arg})
+	resp, err := ipc.InvokeStarter(c.Target(pluginsDir), ipc.StarterInput{Arg: arg})
 	if err != nil {
 		return Reference{}, diag.Wrap(diag.UnusableRepo, err,
 			"the Starter could not resolve the given source")

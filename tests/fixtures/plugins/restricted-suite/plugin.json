@@ -1,0 +1,52 @@
+{
+  "name": "restricted-suite",
+  "version": "1.0.0",
+  "components": [
+    {
+      "name": "linker-other-starter",
+      "role": "linker",
+      "key": "restricted.other_starter",
+      "entrypoint": "linker-other-starter",
+      "discover": {
+        "automatic": true,
+        "on": [ { "event": "start:finalized", "starters": ["some-other-starter"] } ],
+        "inputs": ["work:worktree_path"]
+      }
+    },
+    {
+      "name": "linker-not-automatic",
+      "role": "linker",
+      "key": "restricted.not_automatic",
+      "entrypoint": "linker-not-automatic",
+      "discover": {
+        "automatic": false,
+        "on": [ { "event": "start:finalized" } ],
+        "inputs": ["work:worktree_path"]
+      }
+    },
+    {
+      "name": "linker-unsubscribed",
+      "role": "linker",
+      "key": "restricted.unsubscribed",
+      "entrypoint": "linker-unsubscribed",
+      "discover": {
+        "automatic": true,
+        "inputs": ["work:worktree_path"]
+      }
+    },
+    {
+      "name": "importer-missing-link",
+      "role": "importer",
+      "entrypoint": "importer-missing-link",
+      "on": [ { "event": "start:finalized" } ],
+      "inputs": ["link:restricted.absent"]
+    },
+    {
+      "name": "importer-manual-only",
+      "role": "importer",
+      "entrypoint": "importer-manual-only",
+      "manual": { "display_name": "Manual Only" }
+    }
+  ],
+  "conventions": []
+}
