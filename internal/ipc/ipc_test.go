@@ -66,8 +66,8 @@ func TestRunNonZeroExit(t *testing.T) {
 	if err == nil {
 		t.Fatal("Run: want error on non-zero exit")
 	}
-	if res.ExitCode != 3 {
-		t.Errorf("ExitCode = %d, want 3", res.ExitCode)
+	if res.ExitCode != 3 || !res.Exited {
+		t.Errorf("ExitCode = %d, Exited = %v, want 3, true", res.ExitCode, res.Exited)
 	}
 	if res.Stderr == "" {
 		t.Errorf("Stderr empty, want captured diagnostics")
@@ -257,5 +257,15 @@ func TestInvokeImporter(t *testing.T) {
 	res, err := InvokeImporter(context.Background(), Target{Path: echo}, ImporterInput{OutputDir: "/o"})
 	if err == nil || res.ExitCode != 3 || errors.Is(err, ErrInvalidResponse) {
 		t.Errorf("non-zero exit: res=%+v err=%v", res, err)
+	}
+}
+
+func TestRunMissingEntrypointDidNotExit(t *testing.T) {
+	res, err := Run(Target{Path: filepath.Join(t.TempDir(), "absent")}, nil)
+	if err == nil {
+		t.Fatal("Run: want error for a missing entrypoint")
+	}
+	if res.Exited || res.ExitCode != -1 {
+		t.Errorf("Exited = %v, ExitCode = %d, want a start failure (false, -1)", res.Exited, res.ExitCode)
 	}
 }

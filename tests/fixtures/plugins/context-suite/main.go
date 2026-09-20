@@ -160,6 +160,14 @@ func runImporter(role, mode string, stdin []byte, stdout io.Writer) error {
 	case "garbage":
 		_, err := io.WriteString(stdout, "this is not json")
 		return err
+	case "hang":
+		// Leave partial output behind, then never finish: an interrupt must
+		// discard it and still remove the stage.
+		if err := put("notes/partial.md", "partial\n"); err != nil {
+			return err
+		}
+		time.Sleep(time.Hour)
+		return nil
 	case "mixed":
 		if err := put("notes/clean.md", "clean\n"); err != nil {
 			return err

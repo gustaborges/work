@@ -89,7 +89,7 @@ func classify(err error, res ipc.Result) string {
 	switch {
 	case errors.Is(err, ipc.ErrInvalidResponse):
 		return diag.WarnExtensionResponseInvalid
-	case res.ExitCode > 0:
+	case res.Exited:
 		return diag.WarnExtensionFailed
 	default:
 		return diag.WarnExtensionStartFailed

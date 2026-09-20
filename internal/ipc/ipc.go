@@ -125,12 +125,15 @@ type ImporterInput struct {
 }
 
 // Result is the raw outcome of running an entrypoint. ExitCode is -1 when the
-// process could not be started or was killed. Stderr holds at most the last
-// 4 KiB the process wrote.
+// process could not be started or was killed. Exited is true when the process
+// did start and ended unsuccessfully — by a non-zero status or by a signal —
+// which is how a failure to run is told apart from a failure to start. Stderr
+// holds at most the last 4 KiB the process wrote.
 type Result struct {
 	Stdout   []byte
 	Stderr   string
 	ExitCode int
+	Exited   bool
 }
 
 // Run executes t with stdinJSON on its stdin and captures the result.
@@ -163,6 +166,7 @@ func RunContext(ctx context.Context, t Target, stdinJSON []byte) (Result, error)
 	}
 	if ee, ok := errors.AsType[*exec.ExitError](runErr); ok {
 		res.ExitCode = ee.ExitCode()
+		res.Exited = true
 		return res, fmt.Errorf("ipc: %s exited %d", t, res.ExitCode)
 	}
 	res.ExitCode = -1

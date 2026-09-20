@@ -94,3 +94,59 @@ work start demo-ctx-1 --base main --slug order --prefix {slug} --yes
 stderr 'running context-suite/linker \(discover\)(.|\n)*running context-suite/linker2 \(discover\)'
 grep '"github.pull_request": "https://example.test/pr/212-from-linker2"' $WS/in-progress/demo-ctx-1_order/work-state.json
 provenance links github.pull_request context-suite/linker2 discover
+
+# S12: every failure class is exactly one warning; the Work is intact, the start
+# still succeeds and prints the three stable lines, and healthy siblings ran.
+env WORK_FIXTURE_MODE=linker-exit1,linker2-value,importer-empty,importer2-empty
+work start demo-ctx-1 --base main --slug fexit --prefix {slug} --yes
+stdout 'work: created '
+stdout 'work: path '
+stderr -count=1 'warning:'
+stderr 'warning: extension-failed: context-suite/linker \(discover\) for Work [0-9A-HJKMNP-TV-Z]{26}:'
+stderr 'context-suite/linker2: linked github.pull_request'
+exists $WS/in-progress/demo-ctx-1_fexit/worktree
+grep '"schema": 3' $WS/in-progress/demo-ctx-1_fexit/work-state.json
+grep 'from-linker2' $WS/in-progress/demo-ctx-1_fexit/work-state.json
+! grep 'from-linker"' $WS/in-progress/demo-ctx-1_fexit/work-state.json
+
+env WORK_FIXTURE_MODE=linker-garbage,linker2-none,importer-empty,importer2-empty
+work start demo-ctx-1 --base main --slug fgarbage --prefix {slug} --yes
+stderr -count=1 'warning:'
+stderr 'warning: extension-response-invalid: context-suite/linker \(discover\)'
+grep '"links": \{\}' $WS/in-progress/demo-ctx-1_fgarbage/work-state.json
+
+env WORK_FIXTURE_MODE=linker-value,importer-exit1,importer2-empty
+work start demo-ctx-1 --base main --slug iexit --prefix {slug} --yes
+stderr -count=1 'warning:'
+stderr 'warning: extension-failed: context-suite/importer \(import\)'
+! exists $WS/in-progress/demo-ctx-1_iexit/notes
+
+env WORK_FIXTURE_MODE=linker-value,importer-garbage,importer2-empty
+work start demo-ctx-1 --base main --slug igarbage --prefix {slug} --yes
+stderr -count=1 'warning:'
+stderr 'warning: extension-response-invalid: context-suite/importer \(import\)'
+
+# Without WORK_DEBUG neither the extension's own text nor a value reaches a warning.
+env WORK_FIXTURE_MODE=linker-exit1,linker2-none,importer-empty,importer2-empty
+work start demo-ctx-1 --base main --slug quietfail --prefix {slug} --yes
+! stderr 'simulated failure'
+! stderr 'exit status'
+
+# WORK_DEBUG adds the exit status and the stderr tail after the human line.
+env WORK_DEBUG=1
+work start demo-ctx-1 --base main --slug debugfail --prefix {slug} --yes
+stderr 'exit status: 1'
+stderr 'simulated failure'
+env WORK_DEBUG=
+
+# A linked package whose entrypoint vanished: a start failure warning, the
+# installation itself stays valid.
+work plugin install $SUITE --link
+rm $SUITE/linker
+env WORK_FIXTURE_MODE=linker2-none,importer-empty,importer2-empty
+work start demo-ctx-1 --base main --slug gone --prefix {slug} --yes
+stderr -count=1 'warning:'
+stderr 'warning: extension-start-failed: context-suite/linker \(discover\)'
+exists $WS/in-progress/demo-ctx-1_gone/worktree
+work plugin list
+stdout 'context-suite  local-linked'
