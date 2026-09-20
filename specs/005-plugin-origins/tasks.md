@@ -686,9 +686,9 @@ another except where noted.
 - [X] T079 [P] [US1] Reserved reference alias (FR-006): failing tests first —
       `--as work-reference` and a manifest named `work-reference` exit 32 with
       the seed's directory and registry entries unchanged. Then
-      `internal/plugininstall/install.go` treats an alias that already owns
-      registered components (with no `Package`) as a conflict via the existing
-      `aliasConflict`.
+      `internal/plugininstall` reserves the reference alias by name
+      (`ReferenceAlias`, also `bootstrap.Alias`) and rejects it via the
+      existing `aliasConflict`, whether or not bootstrap has run yet.
 - [X] T080 [P] [US1] Reinstall replaces exactly (FR-006a): failing tests first
       — reinstall dropping a component and a convention leaves neither in
       `work plugin list` or the catalog; a convention shared with another
@@ -705,12 +705,12 @@ another except where noted.
       `plugins/` is touched. Then `internal/plugin/manifest.go` validates
       `name` and `internal/plugininstall/install.go` validates `--as` against
       the one grammar, sharing a single validator.
-- [ ] T083 [P] [US3] Slug-less Work identity (FR-020a): failing test first —
+- [X] T083 [P] [US3] Slug-less Work identity (FR-020a): failing test first —
       two contribution Works in one repository on different branches render
       distinct, non-blank names. Then `internal/worklist/worklist.go` falls
       back to `Branch` when `Slug` is empty, in both `DisplayName` and the
       disambiguation key.
-- [ ] T084 Add the `contracts/*.md` contract-test rows (S5b, S6b, S6c and the
+- [X] T084 Add the `contracts/*.md` contract-test rows (S5b, S6b, S6c and the
       plugin-install rows) to the integration suites, then rerun T072/T073
       (full regression, quickstart) to confirm F1–F3 suites are unchanged
       (SC-010).
