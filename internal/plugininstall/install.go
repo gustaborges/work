@@ -38,7 +38,7 @@ type Result struct {
 // primitives internal/bootstrap now uses for the embedded seed, research
 // R1), and register one registry.Package plus one registry.Component per
 // manifest component and one registry.Convention per manifest convention
-// into reg. On any failure reg is left completely untouched and nothing is
+// into reg, replacing whatever the alias registered before. On any failure reg is left completely untouched and nothing is
 // written under pluginsDir (SC-005).
 func Install(pluginsDir string, reg *registry.Registry, source string, opts Options) (Result, error) {
 	local := isLocalSource(source)
@@ -74,8 +74,15 @@ func Install(pluginsDir string, reg *registry.Registry, source string, opts Opti
 		alias = manifest.Name
 	}
 
-	if existing, ok := reg.PackageByAlias(alias); ok && existingIdentity(existing) != identity {
-		return Result{}, aliasConflict(manifest.Name, alias, strings.TrimSpace(opts.Alias) != "", existing.Reference, source)
+	explicitAlias := strings.TrimSpace(opts.Alias) != ""
+	existing, installed := reg.PackageByAlias(alias)
+	switch {
+	case installed && existingIdentity(existing) != identity:
+		return Result{}, aliasConflict(manifest.Name, alias, explicitAlias, existing.Reference, source)
+	case !installed && reg.OwnsComponents(alias):
+		// Bootstrap registers the reference package's components without a
+		// Package record, so its alias is reserved rather than "free".
+		return Result{}, aliasConflict(manifest.Name, alias, explicitAlias, "the reference package", source)
 	}
 
 	for _, c := range manifest.Components {
@@ -104,6 +111,7 @@ func Install(pluginsDir string, reg *registry.Registry, source string, opts Opti
 		conventionNames = append(conventionNames, cv.Name)
 	}
 	pkg := registry.Package{Alias: alias, Origin: origin, Reference: reference, Conventions: conventionNames}
+	reg.RemoveAlias(alias)
 	reg.UpsertPackage(pkg)
 	for _, c := range manifest.Components {
 		entry := registry.Component{

@@ -133,3 +133,31 @@ func TestExistingComponentsAndConventionsUnaffectedByPackages(t *testing.T) {
 		t.Error("ByRole regressed")
 	}
 }
+
+func TestRemoveAliasRetractsComponentsPackageAndUnsharedConventions(t *testing.T) {
+	r := &Registry{}
+	r.UpsertComponent(Component{Alias: "p", Name: "a", Role: RoleStarter})
+	r.UpsertComponent(Component{Alias: "q", Name: "a", Role: RoleStarter})
+	r.UpsertConvention(Convention{Name: "own", Prefixes: []string{"{slug}"}})
+	r.UpsertConvention(Convention{Name: "shared", Prefixes: []string{"{slug}"}})
+	r.UpsertConvention(Convention{Name: "seed", Prefixes: []string{"{slug}"}})
+	r.UpsertPackage(Package{Alias: "p", Conventions: []string{"own", "shared"}})
+	r.UpsertPackage(Package{Alias: "q", Conventions: []string{"shared"}})
+
+	r.RemoveAlias("p")
+
+	if r.OwnsComponents("p") || !r.OwnsComponents("q") {
+		t.Errorf("components after RemoveAlias(p): %+v", r.Components)
+	}
+	if _, ok := r.PackageByAlias("p"); ok {
+		t.Errorf("package p survived")
+	}
+	if _, ok := r.ConventionByName("own"); ok {
+		t.Errorf("convention only p declared survived")
+	}
+	for _, keep := range []string{"shared", "seed"} {
+		if _, ok := r.ConventionByName(keep); !ok {
+			t.Errorf("convention %q was removed but p did not exclusively declare it", keep)
+		}
+	}
+}
