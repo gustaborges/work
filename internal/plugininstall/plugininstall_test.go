@@ -1,6 +1,7 @@
 package plugininstall
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -517,5 +518,103 @@ func TestInstallReinstallKeepsConventionAnotherPackageDeclares(t *testing.T) {
 	}
 	if _, ok := reg.ConventionByName("gitflow"); !ok {
 		t.Errorf("a convention another package still declares was removed from the catalog")
+	}
+}
+
+func TestComponentEntryRecordsActivationData(t *testing.T) {
+	src := fixtures.Prepare(t, "context-suite")
+	reg := &registry.Registry{}
+	if _, err := Install(t.TempDir(), reg, src, Options{}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	byName := map[string]registry.Component{}
+	for _, c := range reg.Components {
+		byName[c.Name] = c
+	}
+	linker := byName["linker"]
+	if linker.Key != "github.pull_request" || linker.Discover == nil || !linker.Discover.Automatic {
+		t.Errorf("linker key/discover = %q / %+v", linker.Key, linker.Discover)
+	}
+	if len(linker.Inputs) != 1 || linker.Inputs[0] != "work:worktree_path" {
+		t.Errorf("linker Inputs = %v, want discover.inputs copied", linker.Inputs)
+	}
+	importer := byName["importer"]
+	if len(importer.On) != 1 || importer.On[0].Event != "start:finalized" || importer.On[0].Starters[0] != "starter" {
+		t.Errorf("importer On = %+v", importer.On)
+	}
+	if importer.Manual == nil || importer.Manual.DisplayName != "Context Importer" {
+		t.Errorf("importer Manual = %+v", importer.Manual)
+	}
+	if len(importer.Inputs) != 2 {
+		t.Errorf("importer Inputs = %v", importer.Inputs)
+	}
+	if pkg, _ := reg.PackageByAlias("context-suite"); pkg.PluginName != "context-suite" {
+		t.Errorf("PluginName = %q", pkg.PluginName)
+	}
+}
+
+func TestInstallRuntimeMissingLeavesNothing(t *testing.T) {
+	src := fixtures.Prepare(t, "invalid-runtime")
+	plugins := t.TempDir()
+	reg := &registry.Registry{}
+
+	_, err := Install(plugins, reg, src, Options{})
+	wantToken(t, err, diag.PluginInstallFailed)
+	if !strings.Contains(err.Error(), "no-such-interpreter") || !strings.Contains(err.Error(), "PATH") {
+		t.Errorf("message = %q, want the runtime and PATH named", err)
+	}
+	if len(reg.Components) != 0 || len(reg.Packages) != 0 {
+		t.Errorf("registry touched: %+v", reg)
+	}
+	if entries, _ := os.ReadDir(plugins); len(entries) != 0 {
+		t.Errorf("plugins dir not empty: %v", entries)
+	}
+}
+
+func TestInstallRestrictionToUninstalledStarterStillInstalls(t *testing.T) {
+	src := fixtures.Prepare(t, "restricted-suite")
+	reg := &registry.Registry{}
+	if _, err := Install(t.TempDir(), reg, src, Options{}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+}
+
+func TestReinstallReplacesDeclarations(t *testing.T) {
+	src := fixtures.Prepare(t, "context-suite")
+	plugins := t.TempDir()
+	reg := &registry.Registry{}
+	if _, err := Install(plugins, reg, src, Options{}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	m, err := os.ReadFile(filepath.Join(src, "plugin.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(m, &doc); err != nil {
+		t.Fatal(err)
+	}
+	var kept []any
+	for _, c := range doc["components"].([]any) {
+		if c.(map[string]any)["name"] != "importer2" {
+			kept = append(kept, c)
+		}
+	}
+	doc["components"] = kept
+	out, _ := json.Marshal(doc)
+	if err := os.WriteFile(filepath.Join(src, "plugin.json"), out, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Install(plugins, reg, src, Options{}); err != nil {
+		t.Fatalf("reinstall: %v", err)
+	}
+	if reg.HasComponent("context-suite", "importer2") {
+		t.Errorf("dropped importer survived reinstall")
+	}
+	if !reg.HasComponent("context-suite", "importer") {
+		t.Errorf("kept importer missing after reinstall")
 	}
 }

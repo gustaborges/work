@@ -604,6 +604,7 @@ func buildPluginFixture(ts *testscript.TestScript, fixture string) string {
 	var m struct {
 		Components []struct {
 			Entrypoint string `json:"entrypoint"`
+			Runtime    string `json:"runtime"`
 		} `json:"components"`
 	}
 	if err := json.Unmarshal(manifest, &m); err != nil {
@@ -616,6 +617,21 @@ func buildPluginFixture(ts *testscript.TestScript, fixture string) string {
 	}
 	if err := os.WriteFile(filepath.Join(dir, "plugin.json"), manifest, 0o644); err != nil {
 		ts.Fatalf("write plugin.json for fixture %s: %v", fixture, err)
+	}
+
+	// A component with a runtime is a script: copy it verbatim, without an
+	// executable bit, so the runtime invocation path is what gets exercised.
+	for _, c := range m.Components {
+		if c.Runtime == "" || c.Entrypoint == "" {
+			continue
+		}
+		script, err := os.ReadFile(filepath.Join(pkgDir, c.Entrypoint))
+		if err != nil {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(dir, c.Entrypoint), script, 0o644); err != nil {
+			ts.Fatalf("copy fixture %s script %s: %v", fixture, c.Entrypoint, err)
+		}
 	}
 
 	// invalid-manifest has no main.go — it is never meant to build or run
