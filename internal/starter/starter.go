@@ -62,9 +62,9 @@ func Match(reg *registry.Registry, arg string) (registry.Component, Outcome, err
 		}
 		re, err := regexp.Compile(pattern)
 		if err != nil {
-			// A malformed pattern can only reach the registry through
-			// internal/plugin, which does not validate regex syntax; treat it
-			// as never matching rather than failing every `work start` call.
+			// internal/plugin rejects a non-compiling pattern at install, so
+			// only a hand-edited registry can hold one; treat it as never
+			// matching rather than failing every `work start` call.
 			continue
 		}
 		if re.MatchString(arg) {

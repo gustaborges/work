@@ -104,6 +104,21 @@ var roleRules = map[string]roleRule{
 	},
 }
 
+// aliasGrammar is a single path segment: an alias names a directory under
+// plugin storage, so it must not be able to leave it (separators, "." and
+// "..") or be mistaken for a leftover dot-prefixed staging directory.
+var aliasGrammar = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// ValidateAlias reports why alias cannot name an installed package. A ".old"
+// suffix is refused because that is the backup name of a package being
+// replaced, so alias "x.old" would collide with a replacement of "x".
+func ValidateAlias(alias string) error {
+	if !aliasGrammar.MatchString(alias) || strings.HasSuffix(alias, ".old") {
+		return fmt.Errorf("%q is not a valid plugin alias: use letters, digits, '.', '_' and '-', starting with a letter or digit, and not ending in \".old\"", alias)
+	}
+	return nil
+}
+
 var inputsGrammar = regexp.MustCompile(`^(work|meta|link):[^:]+(:optional)?$`)
 
 // Parse decodes data as plugin.json and fully validates it.
@@ -126,6 +141,9 @@ func Parse(data []byte) (*Manifest, error) {
 	var m Manifest
 	if err := json.Unmarshal(top["name"], &m.Name); err != nil || strings.TrimSpace(m.Name) == "" {
 		return nil, fmt.Errorf("plugin.json: %q must be a non-empty string", "name")
+	}
+	if err := ValidateAlias(m.Name); err != nil {
+		return nil, fmt.Errorf("plugin.json: name: %w", err)
 	}
 	if err := json.Unmarshal(top["version"], &m.Version); err != nil || strings.TrimSpace(m.Version) == "" {
 		return nil, fmt.Errorf("plugin.json: %q must be a non-empty string", "version")
@@ -215,6 +233,11 @@ func parseComponent(raw map[string]json.RawMessage) (Component, error) {
 			if !slices.Contains(acceptsVocab, a) {
 				return c, fmt.Errorf("repository-locator accepts %q is not one of %v", a, acceptsVocab)
 			}
+		}
+	}
+	if role == RoleStarter && c.Pattern != "" {
+		if _, err := regexp.Compile(c.Pattern); err != nil {
+			return c, fmt.Errorf("pattern %q is not a valid regular expression: %w", c.Pattern, err)
 		}
 	}
 	for _, in := range c.Inputs {

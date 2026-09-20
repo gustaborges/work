@@ -46,6 +46,12 @@ func Install(pluginsDir string, reg *registry.Registry, source string, opts Opti
 		return Result{}, diag.New(diag.Usage, "--link requires a local SOURCE (a remote SOURCE is always pinned by content)")
 	}
 
+	if a := strings.TrimSpace(opts.Alias); a != "" {
+		if err := plugin.ValidateAlias(a); err != nil {
+			return Result{}, diag.Wrap(diag.PluginInvalid, err, "--as is not a valid alias")
+		}
+	}
+
 	contentDir, origin, identity, reference, cleanup, err := obtainContent(source, local, opts.Link)
 	if cleanup != nil {
 		defer cleanup()
