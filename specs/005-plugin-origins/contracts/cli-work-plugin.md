@@ -54,9 +54,10 @@ interactive `work plugin` hub and `enable|disable|update|uninstall` are F7
    `.old`; otherwise `plugin-invalid`, exit 31, before `plugins/` is touched.
    If the registry already has a `Package` at that alias whose origin
    identity (absolute local path, or remote source URL ignoring the pinned
-   SHA) differs, or the alias already owns registered components without a
-   `Package` (the reference package's alias, `work-reference`, which
-   bootstrap registers without a `Package`), fail — nothing registered
+   SHA) differs, or the alias is the reference package's reserved alias
+   (`work-reference`; reserved by name because `work plugin install` may run
+   before bootstrap has installed the seed, and bootstrap registers it without
+   a `Package`), fail — nothing registered
    (`plugin-alias-conflict`, exit 32). The same origin under the same alias
    is a reinstall: idempotent, and it *replaces* what that alias registered
    (step 7). The user-facing message

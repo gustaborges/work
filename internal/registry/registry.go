@@ -139,13 +139,6 @@ func (r *Registry) UpsertConvention(c Convention) {
 	r.Conventions = append(r.Conventions, c)
 }
 
-// OwnsComponents reports whether any registered component carries alias,
-// with or without a Package record (the reference package is registered
-// without one).
-func (r *Registry) OwnsComponents(alias string) bool {
-	return slices.ContainsFunc(r.Components, func(c Component) bool { return c.Alias == alias })
-}
-
 // RemoveAlias retracts everything alias registered: its components, its
 // Package record, and each convention that Package declared unless another
 // Package still declares it. Called before a reinstall registers the new

@@ -50,3 +50,20 @@ stderr 'error: plugin-invalid:'
 
 work plugin list
 ! stdout 'invalid-manifest'
+
+# Invalid alias: --as must be a single safe path segment (FR-004b); rejected
+# before plugin storage is touched.
+preparepluginfixture specific-starter ALIASSRC
+! work plugin install $ALIASSRC --as ..
+stderr 'error: plugin-invalid:'
+! work plugin install $ALIASSRC --as a/b
+stderr 'error: plugin-invalid:'
+! work plugin install $ALIASSRC --as x.old
+stderr 'error: plugin-invalid:'
+
+# Reserved alias: the reference package's alias is a conflict like any other
+# installed plugin's (FR-006), though it has no Package record.
+! work plugin install $ALIASSRC --as work-reference
+stderr 'error: plugin-alias-conflict:'
+work plugin list
+! stdout 'work-reference'
