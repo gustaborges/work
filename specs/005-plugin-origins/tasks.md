@@ -683,13 +683,13 @@ another except where noted.
       `basebranch.Choice`, and `internal/create/create.go` (contribution
       branch) checks it out via `WorktreeAddExisting` and compensates by
       deleting the branch only when this run created it.
-- [ ] T079 [P] [US1] Reserved reference alias (FR-006): failing tests first —
+- [X] T079 [P] [US1] Reserved reference alias (FR-006): failing tests first —
       `--as work-reference` and a manifest named `work-reference` exit 32 with
       the seed's directory and registry entries unchanged. Then
       `internal/plugininstall/install.go` treats an alias that already owns
       registered components (with no `Package`) as a conflict via the existing
       `aliasConflict`.
-- [ ] T080 [P] [US1] Reinstall replaces exactly (FR-006a): failing tests first
+- [X] T080 [P] [US1] Reinstall replaces exactly (FR-006a): failing tests first
       — reinstall dropping a component and a convention leaves neither in
       `work plugin list` or the catalog; a convention shared with another
       package stays. Then a `registry.Registry` helper removes an alias's

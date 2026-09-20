@@ -404,3 +404,112 @@ func assertPluginStorageUntouched(t *testing.T, plugins string, reg *registry.Re
 		t.Errorf("nothing should be registered: %+v %+v", reg.Packages, reg.Components)
 	}
 }
+
+// seedRegistered mimics bootstrap's registration of the reference package: its
+// components and convention are in the registry, but no Package record is.
+func seedRegistered() *registry.Registry {
+	reg := &registry.Registry{}
+	reg.UpsertComponent(registry.Component{Alias: "work-reference", Name: "local-path-starter", Role: registry.RoleStarter, Entrypoint: "starter", StarterLayer: registry.LayerFallback})
+	reg.UpsertConvention(registry.Convention{Name: "freeform", Prefixes: []string{"{slug}"}})
+	return reg
+}
+
+func TestInstallReferencePackageAliasIsReserved(t *testing.T) {
+	valid := writeManifestDir(t, `{"name":"p","version":"1","conventions":[],"components":[]}`)
+	named := writeManifestDir(t, `{"name":"work-reference","version":"1","conventions":[],"components":[]}`)
+
+	for name, tc := range map[string]struct {
+		src  string
+		opts Options
+	}{
+		"--as":          {valid, Options{Alias: "work-reference"}},
+		"manifest name": {named, Options{}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			plugins := t.TempDir()
+			reg := seedRegistered()
+			before := registrySnapshot(reg)
+
+			_, err := Install(plugins, reg, tc.src, tc.opts)
+			wantToken(t, err, diag.PluginAliasConflict)
+			if after := registrySnapshot(reg); after != before {
+				t.Errorf("registry mutated by a rejected install:\nbefore: %s\nafter:  %s", before, after)
+			}
+			if entries, _ := os.ReadDir(plugins); len(entries) != 0 {
+				t.Errorf("plugin storage was touched: %v", entries)
+			}
+		})
+	}
+}
+
+func componentNames(reg *registry.Registry, alias string) []string {
+	var names []string
+	for _, c := range reg.Components {
+		if c.Alias == alias {
+			names = append(names, c.Name)
+		}
+	}
+	return names
+}
+
+func TestInstallReinstallReplacesWhatTheAliasRegistered(t *testing.T) {
+	src := t.TempDir()
+	write := func(manifest string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(src, "plugin.json"), []byte(manifest), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	plugins := t.TempDir()
+	reg := &registry.Registry{}
+
+	write(`{"name":"p","version":"1","components":[
+		{"name":"a","role":"starter","entrypoint":"a","pattern":"^a"},
+		{"name":"b","role":"starter","entrypoint":"b","pattern":"^b"}],
+		"conventions":[{"name":"gitflow","prefixes":["feature/{slug}"]}]}`)
+	if _, err := Install(plugins, reg, src, Options{}); err != nil {
+		t.Fatalf("first install: %v", err)
+	}
+
+	write(`{"name":"p","version":"2","components":[
+		{"name":"a","role":"starter","entrypoint":"a","pattern":"^a"}],
+		"conventions":[]}`)
+	if _, err := Install(plugins, reg, src, Options{}); err != nil {
+		t.Fatalf("reinstall: %v", err)
+	}
+
+	if got := componentNames(reg, "p"); len(got) != 1 || got[0] != "a" {
+		t.Errorf("components after reinstall = %v, want only [a]", got)
+	}
+	if _, ok := reg.ConventionByName("gitflow"); ok {
+		t.Errorf("convention dropped by the new manifest is still in the catalog")
+	}
+	if pkg, _ := reg.PackageByAlias("p"); len(pkg.Conventions) != 0 {
+		t.Errorf("package conventions = %v, want none", pkg.Conventions)
+	}
+}
+
+func TestInstallReinstallKeepsConventionAnotherPackageDeclares(t *testing.T) {
+	shared := `"conventions":[{"name":"gitflow","prefixes":["feature/{slug}"]}]`
+	other := writeManifestDir(t, `{"name":"other","version":"1","components":[],`+shared+`}`)
+	src := writeManifestDir(t, `{"name":"p","version":"1","components":[],`+shared+`}`)
+	plugins := t.TempDir()
+	reg := &registry.Registry{}
+	if _, err := Install(plugins, reg, other, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install(plugins, reg, src, Options{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(src, "plugin.json"),
+		[]byte(`{"name":"p","version":"2","components":[],"conventions":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install(plugins, reg, src, Options{}); err != nil {
+		t.Fatalf("reinstall: %v", err)
+	}
+	if _, ok := reg.ConventionByName("gitflow"); !ok {
+		t.Errorf("a convention another package still declares was removed from the catalog")
+	}
+}
