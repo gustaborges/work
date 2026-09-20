@@ -14,6 +14,12 @@ import (
 	"github.com/gustaborges/work/internal/registry"
 )
 
+// ReferenceAlias is the alias the embedded reference package installs under.
+// It is reserved: the seed is installed by bootstrap, which may not have run
+// yet when `work plugin install` does, so the registry cannot be what
+// protects it.
+const ReferenceAlias = "work-reference"
+
 // Options configures Install.
 type Options struct {
 	// Link installs a local SOURCE by reference (a directory symlink) instead
@@ -77,12 +83,10 @@ func Install(pluginsDir string, reg *registry.Registry, source string, opts Opti
 	explicitAlias := strings.TrimSpace(opts.Alias) != ""
 	existing, installed := reg.PackageByAlias(alias)
 	switch {
+	case alias == ReferenceAlias:
+		return Result{}, aliasConflict(manifest.Name, alias, explicitAlias, "the reference package", source)
 	case installed && existingIdentity(existing) != identity:
 		return Result{}, aliasConflict(manifest.Name, alias, explicitAlias, existing.Reference, source)
-	case !installed && reg.OwnsComponents(alias):
-		// Bootstrap registers the reference package's components without a
-		// Package record, so its alias is reserved rather than "free".
-		return Result{}, aliasConflict(manifest.Name, alias, explicitAlias, "the reference package", source)
 	}
 
 	for _, c := range manifest.Components {

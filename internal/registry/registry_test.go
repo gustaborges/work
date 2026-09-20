@@ -146,7 +146,7 @@ func TestRemoveAliasRetractsComponentsPackageAndUnsharedConventions(t *testing.T
 
 	r.RemoveAlias("p")
 
-	if r.OwnsComponents("p") || !r.OwnsComponents("q") {
+	if r.HasComponent("p", "a") || !r.HasComponent("q", "a") {
 		t.Errorf("components after RemoveAlias(p): %+v", r.Components)
 	}
 	if _, ok := r.PackageByAlias("p"); ok {

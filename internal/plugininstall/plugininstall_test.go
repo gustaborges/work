@@ -415,6 +415,7 @@ func seedRegistered() *registry.Registry {
 }
 
 func TestInstallReferencePackageAliasIsReserved(t *testing.T) {
+	// Reserved whether or not bootstrap has registered the seed yet.
 	valid := writeManifestDir(t, `{"name":"p","version":"1","conventions":[],"components":[]}`)
 	named := writeManifestDir(t, `{"name":"work-reference","version":"1","conventions":[],"components":[]}`)
 
@@ -425,20 +426,25 @@ func TestInstallReferencePackageAliasIsReserved(t *testing.T) {
 		"--as":          {valid, Options{Alias: "work-reference"}},
 		"manifest name": {named, Options{}},
 	} {
-		t.Run(name, func(t *testing.T) {
-			plugins := t.TempDir()
-			reg := seedRegistered()
-			before := registrySnapshot(reg)
+		for _, seeded := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s/seeded=%v", name, seeded), func(t *testing.T) {
+				plugins := t.TempDir()
+				reg := &registry.Registry{}
+				if seeded {
+					reg = seedRegistered()
+				}
+				before := registrySnapshot(reg)
 
-			_, err := Install(plugins, reg, tc.src, tc.opts)
-			wantToken(t, err, diag.PluginAliasConflict)
-			if after := registrySnapshot(reg); after != before {
-				t.Errorf("registry mutated by a rejected install:\nbefore: %s\nafter:  %s", before, after)
-			}
-			if entries, _ := os.ReadDir(plugins); len(entries) != 0 {
-				t.Errorf("plugin storage was touched: %v", entries)
-			}
-		})
+				_, err := Install(plugins, reg, tc.src, tc.opts)
+				wantToken(t, err, diag.PluginAliasConflict)
+				if after := registrySnapshot(reg); after != before {
+					t.Errorf("registry mutated by a rejected install:\nbefore: %s\nafter:  %s", before, after)
+				}
+				if entries, _ := os.ReadDir(plugins); len(entries) != 0 {
+					t.Errorf("plugin storage was touched: %v", entries)
+				}
+			})
+		}
 	}
 }
 

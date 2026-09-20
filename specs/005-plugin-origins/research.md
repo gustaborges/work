@@ -127,10 +127,10 @@ idempotent, not a conflict; there is no auto-suffix.
 **Amendment (triage of PR #39)**: the alias is also a directory name under
 `plugins/`, so it is constrained to `^[A-Za-z0-9][A-Za-z0-9._-]*$` and may not
 end in `.old` (the swap backup suffix); anything else is `plugin-invalid`
-(FR-004b). The reference package's alias (`work-reference`) is reserved: the
-seed is registered by bootstrap as components only, with no `Package`, so the
-collision check also treats an alias that already owns registered components
-as taken (FR-006). A same-origin reinstall replaces the alias's components
+(FR-004b). The reference package's alias (`work-reference`) is reserved by
+name (FR-006): the seed is registered by bootstrap as components only, with no
+`Package`, and `work plugin install` deliberately works before bootstrap has
+ever run, so no registry state could be relied on to protect it. A same-origin reinstall replaces the alias's components
 and previously declared conventions rather than merging into them (FR-006a).
 
 **Alternatives considered**: Key collision purely on `Alias` with no origin

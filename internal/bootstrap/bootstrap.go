@@ -27,7 +27,7 @@ import (
 )
 
 // Alias is the local package alias the seed is installed under.
-const Alias = "work-reference"
+const Alias = plugininstall.ReferenceAlias
 
 // LocatorPolicyEntry is the seed Locator's identifier in
 // repository_resolution.locators.
