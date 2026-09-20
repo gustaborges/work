@@ -1,0 +1,44 @@
+# F5 — Importers run through exclusive staging (quickstart S9-S11).
+
+preparepluginfixture context-suite SUITE
+work plugin install $SUITE
+gitrepo src/demo-ctx-1
+work-set-roots $WORK/dothome/config/work.json $WORK/src
+env WS=$WORK/ws
+env WORK_FIXTURE_LOG=$WORK/launches.log
+env TMPDIR=$WORK/tmp
+mkdir $WORK/tmp
+
+# S9: an Importer's output lands in the Work directory beside worktree/, never in it.
+env WORK_FIXTURE_MODE=linker-value,importer-ok,importer2-empty
+work start demo-ctx-1 --workspace $WS --base main --slug imported --prefix {slug} --yes
+stderr 'work: running context-suite/importer \(import\)'
+stderr 'work: context-suite/importer: imported 2 item\(s\)'
+! stdout 'item\(s\)'
+! stdout 'running'
+grep 'imported context' $WS/in-progress/demo-ctx-1_imported/notes/context.md
+! exists $WS/in-progress/demo-ctx-1_imported/worktree/notes
+
+# The Importer was given the link the Linker discovered, and an output directory.
+grep '"role":"importer".*"github.pull_request":"https://example.test/pr/212-from-linker"' $WORK/launches.log
+grep '"role":"importer".*"output_dir":"[^"]*import-' $WORK/launches.log
+
+# No stage is left behind.
+[!windows] exec sh -c 'ls "$TMPDIR/work" | grep -c import- || true'
+[!windows] stdout '^0$'
+
+# An Importer with no output succeeds silently.
+env WORK_FIXTURE_MODE=linker-value,importer-empty,importer2-empty
+work start demo-ctx-1 --base main --slug quiet --prefix {slug} --yes
+! stderr 'item\(s\)'
+! stderr 'warning:'
+! exists $WS/in-progress/demo-ctx-1_quiet/notes
+
+# Archiving keeps the imported artifact with the snapshot.
+today TODAY
+workid $WS/in-progress/demo-ctx-1_imported/work-state.json ID_IMPORTED
+work archive $ID_IMPORTED --yes
+stdout '^work: archived 1 of 1$'
+! exists $WS/in-progress/demo-ctx-1_imported
+exists $WS/archived/${TODAY}-demo-ctx-1_imported/work-state.json
+grep 'imported context' $WS/archived/${TODAY}-demo-ctx-1_imported/notes/context.md

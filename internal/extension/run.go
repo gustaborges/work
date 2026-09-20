@@ -104,6 +104,3 @@ func (r *runner) linkerPhase(ctx context.Context) bool {
 	}
 	return true
 }
-
-// importerPhase is filled in with the Importer runner.
-func (r *runner) importerPhase(ctx context.Context) {}

@@ -29,8 +29,8 @@ func TestLinkerValueIsStoredWithProvenance(t *testing.T) {
 		t.Errorf("provenance = %+v", p)
 	}
 	// linker2 stays silent by default, so it only produces a Running.
-	if !slices.Equal(h.rec.kinds(), []EventKind{Running, Linked, Running}) {
-		t.Errorf("events = %v", h.rec.kinds())
+	if got := kindsFor(h, OpDiscover); !slices.Equal(got, []EventKind{Running, Linked, Running}) {
+		t.Errorf("discover events = %v", got)
 	}
 	linked := h.rec.events[1]
 	if linked.Key != "github.pull_request" || linked.Operation != OpDiscover {
@@ -164,7 +164,7 @@ func TestRunOrderAndResultAreIdenticalAcrossRepeats(t *testing.T) {
 
 		var order []string
 		for _, e := range h.rec.events {
-			if e.Kind == Running {
+			if e.Kind == Running && e.Operation == OpDiscover {
 				order = append(order, e.Component)
 			}
 		}

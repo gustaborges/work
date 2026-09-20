@@ -28,6 +28,17 @@ func (r *recorder) kinds() []EventKind {
 	return out
 }
 
+// kindsFor returns the event kinds of one operation, in order.
+func kindsFor(h *harness, operation string) []EventKind {
+	var out []EventKind
+	for _, e := range h.rec.events {
+		if e.Operation == operation {
+			out = append(out, e.Kind)
+		}
+	}
+	return out
+}
+
 type fakeIndex struct {
 	entries []projection.Provenance
 	err     error

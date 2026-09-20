@@ -91,3 +91,48 @@ func TestLinkerReceivesExactlyOneInputsDocument(t *testing.T) {
 		t.Errorf("launch log = %s, want %s", got, want)
 	}
 }
+
+// TestImporterProtocolContract: an Importer's stdout is empty or one JSON
+// object whose content is ignored; anything else is an invalid response, and
+// everything it produces travels through the files under output_dir.
+func TestImporterProtocolContract(t *testing.T) {
+	cases := []struct {
+		mode        string
+		wantInvalid bool
+		wantExitErr bool
+		wantFile    string
+	}{
+		{mode: "importer-ok", wantFile: "notes/context.md"},
+		{mode: "importer-empty"},
+		{mode: "importer-garbage", wantInvalid: true},
+		{mode: "importer-exit1", wantExitErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.mode, func(t *testing.T) {
+			target := extensionTarget(t, "importer", tc.mode)
+			out := t.TempDir()
+			res, err := ipc.InvokeImporter(context.Background(), target,
+				ipc.ImporterInput{Inputs: map[string]any{"github.pull_request": "https://x"}, OutputDir: out})
+
+			switch {
+			case tc.wantInvalid:
+				if !errors.Is(err, ipc.ErrInvalidResponse) {
+					t.Fatalf("err = %v, want an invalid response", err)
+				}
+			case tc.wantExitErr:
+				if err == nil || res.ExitCode != 1 {
+					t.Fatalf("err = %v, exit = %d, want exit 1", err, res.ExitCode)
+				}
+			default:
+				if err != nil {
+					t.Fatalf("InvokeImporter: %v", err)
+				}
+			}
+			if tc.wantFile != "" {
+				if _, err := os.Stat(filepath.Join(out, filepath.FromSlash(tc.wantFile))); err != nil {
+					t.Errorf("expected output file: %v", err)
+				}
+			}
+		})
+	}
+}
