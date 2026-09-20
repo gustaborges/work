@@ -19,10 +19,17 @@ stdout '(?m)^Setup:$'
 stdout '(?m)^  shell-init '
 stdout '(?m)^  completion '
 
-# F3: Administration lists exactly `repository`, appearing once.
+# F3: Administration lists `repository`, appearing once.
 stdout '(?m)^Administration:$'
 stdout '(?m)^  repository '
 stdout -count=1 'repository  '
+
+# F4: `plugin` and `convention` each appear exactly once, also under
+# Administration.
+stdout '(?m)^  plugin '
+stdout -count=1 '(?m)^  plugin '
+stdout '(?m)^  convention '
+stdout -count=1 '(?m)^  convention '
 
 # Inside a Work is still empty and not printed (SC-005: zero empty groups).
 ! stdout 'Inside a Work'

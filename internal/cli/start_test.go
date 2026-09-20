@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,7 +11,12 @@ import (
 	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/gittest"
+	"github.com/gustaborges/work/internal/gitx"
+	"github.com/gustaborges/work/internal/repoconv"
+	"github.com/gustaborges/work/internal/repoidentity"
+	"github.com/gustaborges/work/internal/workhome"
 	"github.com/gustaborges/work/seed"
+	fixtures "github.com/gustaborges/work/tests/fixtures/plugins"
 )
 
 // seedRepoAt creates a git repository at exactly dir (unlike gittest.Repo,
@@ -232,6 +238,118 @@ func TestStartPathStillBypassesLocator(t *testing.T) {
 	}
 	if !strings.Contains(out, "work: created") {
 		t.Errorf("stdout missing success line: %s", out)
+	}
+}
+
+// TestStartConventionSingleEnabledMemoizedSilently (T063): with only the
+// reference package installed ("freeform" the catalog's sole entry), a
+// fresh repository's first fork/new-mode use is memoized without a step
+// (research R15) — the non-interactive suite already proves no step is
+// shown (there is no convention flag to show one via); this asserts the
+// silent side effect.
+func TestStartConventionSingleEnabledMemoizedSilently(t *testing.T) {
+	needSeed(t)
+	home := t.TempDir()
+	repo := gittest.Repo(t)
+	ws := filepath.Join(t.TempDir(), "ws")
+
+	_, errb, code := runWorkHome(t, home, "start", repo,
+		"--workspace", ws, "--base", "main", "--slug", "s", "--prefix", "{slug}", "--yes")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\nstderr: %s", code, errb)
+	}
+
+	id, err := repoidentity.Identify(gitx.Open(repo))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := repoconv.Load(workhome.At(home).BranchConventionsFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := store.Get(id); !ok || got != "freeform" {
+		t.Errorf("memoized convention = (%q, %v), want (freeform, true)", got, ok)
+	}
+}
+
+// TestStartConventionMultipleEnabledUnmemoizedNonInteractiveFails (T063):
+// once a plugin declares a second convention, a fresh repository's first
+// non-interactive use has no flag to pick among them (F4 adds none) — it
+// fails with an actionable usage error rather than silently defaulting, and
+// creates nothing (mirrors the start_modes gap).
+func TestStartConventionMultipleEnabledUnmemoizedNonInteractiveFails(t *testing.T) {
+	needSeed(t)
+	home := t.TempDir()
+	src := fixtures.Prepare(t, "specific-starter")
+	if _, errb, code := runWorkHome(t, home, "plugin", "install", src); code != 0 {
+		t.Fatalf("plugin install: exit = %d\nstderr: %s", code, errb)
+	}
+
+	repo := gittest.Repo(t)
+	ws := filepath.Join(t.TempDir(), "ws")
+	_, errb, code := runWorkHome(t, home, "start", repo,
+		"--workspace", ws, "--base", "main", "--slug", "s", "--prefix", "{slug}", "--yes")
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2\nstderr: %s", code, errb)
+	}
+	if _, err := os.Stat(ws); err == nil {
+		t.Errorf("workspace root was created despite the unresolved convention choice")
+	}
+}
+
+// TestStartConventionMemoizedIsReusedNonInteractively (T063): once a
+// repository's identity has a memoized convention (as `work convention set`
+// or an earlier interactive choice would leave it), a later non-interactive
+// `work start` against it reuses that choice with no step and no gap error,
+// even though more than one convention is enabled.
+func TestStartConventionMemoizedIsReusedNonInteractively(t *testing.T) {
+	needSeed(t)
+	home := t.TempDir()
+	src := fixtures.Prepare(t, "specific-starter")
+	if _, errb, code := runWorkHome(t, home, "plugin", "install", src); code != 0 {
+		t.Fatalf("plugin install: exit = %d\nstderr: %s", code, errb)
+	}
+
+	repo := gittest.Repo(t)
+	id, err := repoidentity.Identify(gitx.Open(repo))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wh := workhome.At(home)
+	store, err := repoconv.Load(wh.BranchConventionsFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.Set(id, "gitflow")
+	if err := repoconv.Save(wh.BranchConventionsFile(), store); err != nil {
+		t.Fatal(err)
+	}
+
+	ws := filepath.Join(t.TempDir(), "ws")
+	_, errb, code := runWorkHome(t, home, "start", repo,
+		"--workspace", ws, "--base", "main", "--slug", "s", "--prefix", "feature/{slug}", "--yes")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\nstderr: %s", code, errb)
+	}
+
+	matches, err := filepath.Glob(filepath.Join(ws, "in-progress", "*", "work-state.json"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("glob work-state.json: %v matches=%v", err, matches)
+	}
+	data, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st struct {
+		Work struct {
+			BranchConvention string `json:"branch_convention"`
+		} `json:"work"`
+	}
+	if err := json.Unmarshal(data, &st); err != nil {
+		t.Fatal(err)
+	}
+	if st.Work.BranchConvention != "gitflow" {
+		t.Errorf("branch_convention = %q, want the memoized %q", st.Work.BranchConvention, "gitflow")
 	}
 }
 

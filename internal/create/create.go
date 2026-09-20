@@ -38,6 +38,11 @@ type Params struct {
 	BaseBranchShort string // short name stored in work.base_branch
 	Convention      string // "freeform" in F1
 	Starter         string // "local-path-starter" in F1
+	// StartMode selects the materialization path (F4): "new"/"fork" (or empty,
+	// F1's implicit default) create a new branch; "contribution" checks out an
+	// already-existing one without creating it, and its rollback never deletes
+	// that branch (research R12).
+	StartMode string
 	// Now, when zero, defaults to time.Now().UTC().
 	Now time.Time
 	// ID, when empty, is generated.
@@ -146,17 +151,45 @@ func Run(ctx context.Context, p Params) (Result, error) {
 		return r, err
 	}
 
-	// Step 3: create the branch and its worktree in one git call.
+	// Step 3: create the branch and its worktree in one git call — except in
+	// contribution mode, which checks out an already-existing branch instead
+	// (it was never created by this Work, so rollback must never delete it,
+	// research R12).
 	if failPoint("worktree") {
 		return fail(diag.MaterializationFailed, nil, "injected failure at step: worktree")
 	}
-	if err := repo.WorktreeAdd(worktreePath, p.Branch, p.BaseRefname); err != nil {
-		return fail(diag.MaterializationFailed, err, "cannot create the git worktree")
+	if p.StartMode == work.StartModeContribution {
+		// A branch that already exists locally is never this run's to delete.
+		// One that exists only as a remote-tracking ref gets a local tracking
+		// branch created here, which rollback must therefore remove again.
+		existedLocally, err := repo.ShowRefVerify("refs/heads/" + p.Branch)
+		if err != nil {
+			return fail(diag.MaterializationFailed, err, "cannot inspect the branch to check out")
+		}
+		if existedLocally {
+			err = repo.WorktreeAddExisting(worktreePath, p.Branch)
+		} else {
+			err = repo.WorktreeAddTracking(worktreePath, p.Branch, p.BaseRefname)
+		}
+		if err != nil {
+			return fail(diag.MaterializationFailed, err, "cannot create the git worktree")
+		}
+		stack = append(stack, compensator{"worktree", func() error {
+			rmErr := repo.WorktreeRemove(worktreePath)
+			if existedLocally {
+				return rmErr
+			}
+			return errors.Join(rmErr, repo.BranchDelete(p.Branch))
+		}})
+	} else {
+		if err := repo.WorktreeAdd(worktreePath, p.Branch, p.BaseRefname); err != nil {
+			return fail(diag.MaterializationFailed, err, "cannot create the git worktree")
+		}
+		stack = append(stack, compensator{"worktree", func() error {
+			_ = repo.WorktreeRemove(worktreePath)
+			return repo.BranchDelete(p.Branch)
+		}})
 	}
-	stack = append(stack, compensator{"worktree", func() error {
-		_ = repo.WorktreeRemove(worktreePath)
-		return repo.BranchDelete(p.Branch)
-	}})
 
 	baseObject, _ := repo.Run("rev-parse", "--short", p.BaseRefname)
 
@@ -210,15 +243,25 @@ func Run(ctx context.Context, p Params) (Result, error) {
 // set of inputs so the two can never drift (FR-018). Every governed work.*
 // field originates here and nowhere else.
 func build(p Params, dirPath, worktreePath, snapshotPath string) (*work.State, projection.Work) {
+	startMode := p.StartMode
+	if startMode == "" {
+		startMode = work.StartModeNew
+	}
 	ts := p.Now.Format(time.RFC3339)
+	// Contribution mode records what was checked out, by its local name,
+	// rather than the remote-tracking ref it may have been resolved from.
+	baseBranch := p.BaseBranchShort
+	if startMode == work.StartModeContribution {
+		baseBranch = p.Branch
+	}
 	ws := work.WorkSection{
 		ID:               p.ID,
 		Slug:             p.Slug,
 		Status:           work.StatusInProgress,
-		StartMode:        work.StartModeNew,
+		StartMode:        startMode,
 		Starter:          p.Starter,
 		Branch:           p.Branch,
-		BaseBranch:       p.BaseBranchShort,
+		BaseBranch:       baseBranch,
 		BranchConvention: p.Convention,
 		CreatedAt:        ts,
 		LastAccessedAt:   ts,

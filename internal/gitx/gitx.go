@@ -303,6 +303,15 @@ func (r Repo) WorktreeAddExisting(dir, branch string) error {
 	return err
 }
 
+// WorktreeAddTracking creates a local branch that tracks remoteRef and checks
+// it out at dir in one step. Naming the remote-tracking ref explicitly, rather
+// than letting git guess it from the branch name, keeps the result
+// deterministic when more than one remote carries a branch of that name.
+func (r Repo) WorktreeAddTracking(dir, branch, remoteRef string) error {
+	_, err := r.run("worktree", "add", "--track", "-b", branch, dir, remoteRef)
+	return err
+}
+
 // WorktreeRemove force-removes a linked worktree.
 func (r Repo) WorktreeRemove(dir string) error {
 	_, err := r.run("worktree", "remove", "--force", dir)
@@ -377,4 +386,88 @@ func (r Repo) CurrentBranch() (string, error) {
 func (r Repo) MergeBase(a, b string) (string, error) {
 	out, err := r.run("merge-base", a, b)
 	return strings.TrimSpace(out), err
+}
+
+// Remotes lists the configured remote names (`git remote`).
+func (r Repo) Remotes() ([]string, error) {
+	out, err := r.run("remote")
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	sc := bufio.NewScanner(strings.NewReader(out))
+	for sc.Scan() {
+		if line := strings.TrimSpace(sc.Text()); line != "" {
+			names = append(names, line)
+		}
+	}
+	return names, sc.Err()
+}
+
+// RemoteURL returns the fetch URL configured for the named remote. ok is
+// false when the remote does not exist (a clean non-zero exit), distinguished
+// from an operational failure (err != nil).
+func (r Repo) RemoteURL(name string) (url string, ok bool, err error) {
+	out, err := r.run("remote", "get-url", name)
+	if err != nil {
+		if isCleanNonZero(err) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	return strings.TrimSpace(out), true, nil
+}
+
+// RootCommits returns every root commit (a commit with no parents) reachable
+// from HEAD (`git rev-list --max-parents=0 HEAD`). A repository with a linear
+// history has exactly one; a merge of unrelated histories may have more.
+func (r Repo) RootCommits() ([]string, error) {
+	out, err := r.run("rev-list", "--max-parents=0", "HEAD")
+	if err != nil {
+		return nil, err
+	}
+	var hashes []string
+	sc := bufio.NewScanner(strings.NewReader(out))
+	for sc.Scan() {
+		if line := strings.TrimSpace(sc.Text()); line != "" {
+			hashes = append(hashes, line)
+		}
+	}
+	return hashes, sc.Err()
+}
+
+// IsShallow reports whether the repository is a shallow clone.
+func (r Repo) IsShallow() (bool, error) {
+	out, err := r.run("rev-parse", "--is-shallow-repository")
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) == "true", nil
+}
+
+// DiscoverRepoRoot resolves the repository root containing cwd
+// (`git -C cwd rev-parse --show-toplevel`). It is distinct from SourceRepoOf,
+// which resolves a Work's worktree to its source repository — this resolves
+// "the repository associated with a directory" for callers like
+// `work convention` that run from any clone.
+func DiscoverRepoRoot(cwd string) (string, error) {
+	out, err := run("-C", cwd, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// Clone runs a shallow clone of source into dest and returns the cloned
+// HEAD's full object name — the pinned reference a remote plugin install
+// records (research R3).
+func Clone(source, dest string) (headSHA string, err error) {
+	if _, err := run("clone", "--depth", "1", source, dest); err != nil {
+		return "", err
+	}
+	out, err := run("-C", dest, "rev-parse", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
 }

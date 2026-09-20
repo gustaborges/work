@@ -131,3 +131,34 @@ func TestParseInvalid(t *testing.T) {
 		}
 	}
 }
+
+func TestParseRejectsStarterPatternThatDoesNotCompile(t *testing.T) {
+	in := `{"name":"p","version":"1","conventions":[],"components":[
+		{"name":"s","role":"starter","entrypoint":"s","pattern":"(unclosed"}]}`
+	_, err := Parse([]byte(in))
+	if err == nil || !strings.Contains(err.Error(), "pattern") {
+		t.Fatalf("err = %v, want a pattern error", err)
+	}
+}
+
+func TestParseRejectsNameThatIsNotAValidAlias(t *testing.T) {
+	for _, name := range []string{"..", ".", "a/b", `a\b`, ".hidden", "x.old", "with space", "-lead"} {
+		in := `{"name":"` + strings.ReplaceAll(name, `\`, `\\`) + `","version":"1","conventions":[],"components":[]}`
+		if _, err := Parse([]byte(in)); err == nil {
+			t.Errorf("name %q accepted, want an alias error", name)
+		}
+	}
+}
+
+func TestValidateAlias(t *testing.T) {
+	for _, ok := range []string{"a", "work-reference", "github_plugin", "p1.2", "A-b.c", "x.olds"} {
+		if err := ValidateAlias(ok); err != nil {
+			t.Errorf("ValidateAlias(%q) = %v, want nil", ok, err)
+		}
+	}
+	for _, bad := range []string{"", " ", "..", ".", "a/b", "a b", ".x", "_x", "x.old", "é"} {
+		if err := ValidateAlias(bad); err == nil {
+			t.Errorf("ValidateAlias(%q) = nil, want an error", bad)
+		}
+	}
+}

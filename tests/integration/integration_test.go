@@ -138,6 +138,45 @@ func TestScripts(t *testing.T) {
 			// invalid,boom} and installs it as a registered repository-locator
 			// component — a runnable fake Locator for exercising the five
 			// resolution outcomes (26-29) without a real plugin install.
+			// preparepluginfixture <fixture> <envvar> builds one of
+			// tests/fixtures/plugins/{specific-starter,colliding-starter,
+			// fallback-starter-a,fallback-starter-b} into a fresh directory
+			// (plugin.json plus its compiled entrypoint binaries) and binds
+			// the directory path to the named script environment variable,
+			// ready to hand to `work plugin install $VAR [--link]`.
+			// invalid-manifest has no main.go and is never built — reference
+			// its checked-in path (tests/fixtures/plugins/invalid-manifest)
+			// directly in a script instead.
+			"preparepluginfixture": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 2 {
+					ts.Fatalf("usage: preparepluginfixture <fixture> <envvar>")
+				}
+				dir := buildPluginFixture(ts, args[0])
+				ts.Setenv(args[1], dir)
+			},
+			// preparepluginremote <fixture> <envvar> builds the fixture like
+			// preparepluginfixture, then wraps it in a fresh git repository
+			// (one commit) and binds a "file://" URL to it to the named
+			// variable — a source `work plugin install` classifies as remote
+			// (it contains "://") and can clone with no network.
+			"preparepluginremote": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 2 {
+					ts.Fatalf("usage: preparepluginremote <fixture> <envvar>")
+				}
+				dir := buildPluginFixture(ts, args[0])
+				for _, c := range [][]string{
+					{"init", "-q", "-b", "main"},
+					{"add", "-A"},
+					{"commit", "-q", "-m", "init"},
+				} {
+					cmd := exec.Command("git", append([]string{"-C", dir}, c...)...)
+					cmd.Env = environ(ts)
+					if out, err := cmd.CombinedOutput(); err != nil {
+						ts.Fatalf("git %s: %v\n%s", strings.Join(c, " "), err, out)
+					}
+				}
+				ts.Setenv(args[1], "file://"+filepath.ToSlash(dir))
+			},
 			"installlocatorfixture": func(ts *testscript.TestScript, neg bool, args []string) {
 				if len(args) < 4 {
 					ts.Fatalf("usage: installlocatorfixture <alias> <name> <fixture> <accepts...>")
@@ -546,6 +585,61 @@ func openProjection(ts *testscript.TestScript) *projection.DB {
 		ts.Fatalf("open projection: %v", err)
 	}
 	return db
+}
+
+// buildPluginFixture builds tests/fixtures/plugins/<fixture> into a fresh
+// directory (plugin.json plus one compiled entrypoint binary per manifest
+// component, named exactly as its "entrypoint" field) and returns the
+// directory path — a scaled-down, ts-based copy of
+// tests/fixtures/plugins.Prepare's logic, which needs a *testing.T that a
+// testscript.TestScript does not carry.
+func buildPluginFixture(ts *testscript.TestScript, fixture string) string {
+	_, thisFile, _, _ := runtime.Caller(0)
+	pkgDir := filepath.Join(filepath.Dir(thisFile), "..", "fixtures", "plugins", fixture)
+
+	manifest, err := os.ReadFile(filepath.Join(pkgDir, "plugin.json"))
+	if err != nil {
+		ts.Fatalf("read plugin.json for fixture %s: %v", fixture, err)
+	}
+	var m struct {
+		Components []struct {
+			Entrypoint string `json:"entrypoint"`
+		} `json:"components"`
+	}
+	if err := json.Unmarshal(manifest, &m); err != nil {
+		ts.Fatalf("parse plugin.json for fixture %s: %v", fixture, err)
+	}
+
+	dir, err := os.MkdirTemp("", "pluginfixture-*")
+	if err != nil {
+		ts.Fatalf("%v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "plugin.json"), manifest, 0o644); err != nil {
+		ts.Fatalf("write plugin.json for fixture %s: %v", fixture, err)
+	}
+
+	// invalid-manifest has no main.go — it is never meant to build or run
+	// (its install always fails manifest validation first); skip building so
+	// a script can still stage its plugin.json alone.
+	if _, err := os.Stat(filepath.Join(pkgDir, "main.go")); err != nil {
+		return dir
+	}
+
+	built := map[string]bool{}
+	for _, c := range m.Components {
+		if c.Entrypoint == "" || built[c.Entrypoint] {
+			continue
+		}
+		built[c.Entrypoint] = true
+		bin := filepath.Join(dir, c.Entrypoint)
+		if runtime.GOOS == "windows" {
+			bin += ".exe"
+		}
+		if out, err := exec.Command("go", "build", "-o", bin, pkgDir).CombinedOutput(); err != nil {
+			ts.Fatalf("build fixture %s entrypoint %s: %v\n%s", fixture, c.Entrypoint, err, out)
+		}
+	}
+	return dir
 }
 
 func environ(ts *testscript.TestScript) []string {

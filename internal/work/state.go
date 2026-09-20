@@ -6,8 +6,17 @@
 // Schema 2 (F2) is an additive superset of schema 1: work.status gains
 // "archived", work.archived_at is new (present iff the Work is archived), and
 // work.last_accessed_at is now mutable (bumped on resume, set to the archival
-// time on archive). Read accepts schema 1 or 2; Write always emits schema 2, so
-// a schema-1 file is upgraded in place the first time it is rewritten.
+// time on archive).
+//
+// Schema 3 (F4) is an additive superset of schema 2: work.start_mode widens
+// from {"new"} to {"new","contribution","fork"}, and work.slug and
+// work.branch_convention both become required unless start_mode ==
+// "contribution" — in which case both MUST be absent, since contribution mode
+// never runs the slug or convention step (FR-020). This mirrors the
+// archived_at-iff-archived conditional schema 2 already established.
+//
+// Read accepts schema 1, 2, or 3; Write always emits schema 3, so an older
+// file is upgraded in place the first time it is rewritten.
 package work
 
 import (
@@ -21,7 +30,7 @@ import (
 )
 
 // Schema is the schema version Write always emits.
-const Schema = 2
+const Schema = 3
 
 // schemaMin is the oldest schema version Read accepts.
 const schemaMin = 1
@@ -30,7 +39,16 @@ const schemaMin = 1
 const (
 	StatusInProgress = "in-progress"
 	StatusArchived   = "archived"
-	StartModeNew     = "new"
+)
+
+// Start mode values (F4). StartModeNew is unchanged from F1/F2 ("start_modes"
+// absent from the Starter response). StartModeFork and StartModeContribution
+// arrive with F4 — both require start_modes to have been present on the
+// Starter response.
+const (
+	StartModeNew          = "new"
+	StartModeFork         = "fork"
+	StartModeContribution = "contribution"
 )
 
 // State is a whole work-state.json document.
@@ -43,15 +61,17 @@ type State struct {
 
 // WorkSection is the core-governed "work" object. Plugins never write here.
 type WorkSection struct {
-	ID               string `json:"id"`
-	Slug             string `json:"slug"`
-	Status           string `json:"status"`
-	ArchivedAt       string `json:"archived_at,omitempty"`
-	StartMode        string `json:"start_mode"`
-	Starter          string `json:"starter"`
-	Branch           string `json:"branch"`
-	BaseBranch       string `json:"base_branch"`
-	BranchConvention string `json:"branch_convention"`
+	ID         string `json:"id"`
+	Slug       string `json:"slug,omitempty"`
+	Status     string `json:"status"`
+	ArchivedAt string `json:"archived_at,omitempty"`
+	StartMode  string `json:"start_mode"`
+	Starter    string `json:"starter"`
+	Branch     string `json:"branch"`
+	BaseBranch string `json:"base_branch"`
+	// BranchConvention is required in "new"/"fork" mode; MUST be absent in
+	// "contribution" mode (the convention step never runs, FR-020).
+	BranchConvention string `json:"branch_convention,omitempty"`
 	CreatedAt        string `json:"created_at"`
 	LastAccessedAt   string `json:"last_accessed_at"`
 }
@@ -67,7 +87,7 @@ func Read(path string) (*State, error) {
 }
 
 // Decode parses work-state.json bytes without touching the filesystem. It
-// accepts schema 1 or 2 and rejects a structurally impossible document (an
+// accepts schema 1, 2, or 3 and rejects a structurally impossible document (an
 // unsupported schema version, or a schema-1 document that is archived or
 // carries archived_at).
 func Decode(data []byte) (*State, error) {
@@ -94,7 +114,7 @@ func Decode(data []byte) (*State, error) {
 	return &s, nil
 }
 
-// Write validates s, forces schema 2, and writes it to path atomically.
+// Write validates s, forces schema 3, and writes it to path atomically.
 func Write(path string, s *State) error {
 	if s.Meta == nil {
 		s.Meta = map[string]any{}
@@ -133,25 +153,28 @@ func (s *State) Archive(now time.Time) {
 	s.Work.LastAccessedAt = ts
 }
 
-// Validate enforces the schema constraints. It accepts schema 1 or 2; the
-// schema-2 rules (archived_at present iff status == "archived") also hold for a
-// schema-1 document, which is always in-progress with no archived_at.
+// Validate enforces the schema constraints. It accepts schema 1, 2, or 3; the
+// schema-2 rules (archived_at present iff status == "archived") also hold for
+// a schema-1 document, which is always in-progress with no archived_at. The
+// schema-3 rule (slug and branch_convention present iff start_mode !=
+// "contribution") applies uniformly to every accepted schema, since a
+// schema-1/2 document's slug/branch_convention are always non-empty in
+// practice (those schemas required them unconditionally) and so already
+// satisfy the "new"/"fork" branch of the rule.
 func (s *State) Validate() error {
 	if s.Schema < schemaMin || s.Schema > Schema {
 		return fmt.Errorf("work-state: schema = %d, want %d..%d", s.Schema, schemaMin, Schema)
 	}
 	w := s.Work
 	required := map[string]string{
-		"id":                w.ID,
-		"slug":              w.Slug,
-		"status":            w.Status,
-		"start_mode":        w.StartMode,
-		"starter":           w.Starter,
-		"branch":            w.Branch,
-		"base_branch":       w.BaseBranch,
-		"branch_convention": w.BranchConvention,
-		"created_at":        w.CreatedAt,
-		"last_accessed_at":  w.LastAccessedAt,
+		"id":               w.ID,
+		"status":           w.Status,
+		"start_mode":       w.StartMode,
+		"starter":          w.Starter,
+		"branch":           w.Branch,
+		"base_branch":      w.BaseBranch,
+		"created_at":       w.CreatedAt,
+		"last_accessed_at": w.LastAccessedAt,
 	}
 	for name, val := range required {
 		if val == "" {
@@ -171,8 +194,17 @@ func (s *State) Validate() error {
 	} else if w.ArchivedAt != "" {
 		return fmt.Errorf("work-state: work.archived_at must be absent unless status is %q", StatusArchived)
 	}
-	if w.StartMode != StartModeNew {
-		return fmt.Errorf("work-state: work.start_mode = %q, want %q", w.StartMode, StartModeNew)
+	switch w.StartMode {
+	case StartModeNew, StartModeFork:
+		if w.Slug == "" || w.BranchConvention == "" {
+			return fmt.Errorf("work-state: work.slug and work.branch_convention are required when start_mode is %q", w.StartMode)
+		}
+	case StartModeContribution:
+		if w.Slug != "" || w.BranchConvention != "" {
+			return fmt.Errorf("work-state: work.slug and work.branch_convention must be absent when start_mode is %q", StartModeContribution)
+		}
+	default:
+		return fmt.Errorf("work-state: work.start_mode = %q, want %q, %q, or %q", w.StartMode, StartModeNew, StartModeContribution, StartModeFork)
 	}
 	stamps := map[string]string{"created_at": w.CreatedAt, "last_accessed_at": w.LastAccessedAt}
 	if w.ArchivedAt != "" {

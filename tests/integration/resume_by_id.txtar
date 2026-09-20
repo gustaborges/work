@@ -21,8 +21,8 @@ stdout '^work: resumed [0-9A-HJKMNP-TV-Z]{26}$'
 stdout 'work: path .*ws.in-progress.src_alpha.worktree'
 ! stdout 'Resume a Work'
 
-# The snapshot is schema 2 and alpha is now the most recently accessed.
-grep '"schema": 2' $WS/in-progress/src_alpha/work-state.json
+# The snapshot is schema 3 and alpha is now the most recently accessed.
+grep '"schema": 3' $WS/in-progress/src_alpha/work-state.json
 activeorder alpha charlie bravo
 
 # Snapshot and projection agree on the new time (verify compares them).

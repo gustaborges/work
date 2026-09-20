@@ -93,3 +93,19 @@ func TestResolve(t *testing.T) {
 		}
 	})
 }
+
+func TestChoiceLocalName(t *testing.T) {
+	for _, tc := range []struct {
+		choice Choice
+		want   string
+	}{
+		{Choice{Refname: "refs/heads/main", Short: "main", Scope: ScopeLocal}, "main"},
+		{Choice{Refname: "refs/heads/feature/x", Short: "feature/x", Scope: ScopeLocal}, "feature/x"},
+		{Choice{Refname: "refs/remotes/origin/main", Short: "origin/main", Scope: ScopeRemoteTracking}, "main"},
+		{Choice{Refname: "refs/remotes/upstream/feature/x", Short: "upstream/feature/x", Scope: ScopeRemoteTracking}, "feature/x"},
+	} {
+		if got := tc.choice.LocalName(); got != tc.want {
+			t.Errorf("LocalName(%s) = %q, want %q", tc.choice.Refname, got, tc.want)
+		}
+	}
+}

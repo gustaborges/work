@@ -1,0 +1,15 @@
+{
+  "name": "specific-starter",
+  "version": "1.0.0",
+  "components": [
+    {
+      "name": "specific-starter",
+      "role": "starter",
+      "entrypoint": "starter",
+      "pattern": "^demo-pr-1$"
+    }
+  ],
+  "conventions": [
+    { "name": "gitflow", "prefixes": ["feature/{slug}", "bugfix/{slug}"] }
+  ]
+}

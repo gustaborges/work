@@ -85,6 +85,7 @@ func TestRenderDiagnosticInteractiveHumanFallsBackToMsg(t *testing.T) {
 }
 
 func TestRenderDiagnosticInteractiveNonDiag(t *testing.T) {
+	t.Setenv("WORK_DEBUG", "")
 	var b bytes.Buffer
 	code := renderDiagnostic(&b, strings.NewReader(""), true, errors.New("kaboom"))
 	want := "✘ something went wrong\n  → run with WORK_DEBUG=1 for details\n"
@@ -102,6 +103,7 @@ func TestRenderDiagnosticInteractiveNonDiag(t *testing.T) {
 func TestRenderDiagnosticWorkDebugAppendsCauseChain(t *testing.T) {
 	err := diag.Wrap(diag.BootstrapFailed, errors.New("permission denied"), "cannot open the lookup index")
 
+	t.Setenv("WORK_DEBUG", "")
 	var quiet bytes.Buffer
 	renderDiagnostic(&quiet, strings.NewReader(""), true, err)
 	if strings.Contains(quiet.String(), "permission denied") {
@@ -118,5 +120,23 @@ func TestRenderDiagnosticWorkDebugAppendsCauseChain(t *testing.T) {
 	// The human line still comes first and is unchanged.
 	if !strings.HasPrefix(loud.String(), "✘ cannot open the lookup index\n") {
 		t.Errorf("WORK_DEBUG changed the human line: %q", loud.String())
+	}
+}
+
+func TestRenderDiagnosticWorkDebugShowsSingleNonDiagError(t *testing.T) {
+	t.Setenv("WORK_DEBUG", "1")
+	var b bytes.Buffer
+	renderDiagnostic(&b, strings.NewReader(""), true, errors.New("kaboom"))
+	if !strings.Contains(b.String(), "kaboom") {
+		t.Errorf("WORK_DEBUG hid an unwrapped non-diag error: %q", b.String())
+	}
+}
+
+func TestRenderDiagnosticWorkDebugDoesNotDuplicateBareDiagError(t *testing.T) {
+	t.Setenv("WORK_DEBUG", "1")
+	var b bytes.Buffer
+	renderDiagnostic(&b, strings.NewReader(""), true, diag.New(diag.TargetNotFound, "no Work has that id"))
+	if b.String() != "✘ no Work has that id\n" {
+		t.Errorf("bare diag error changed under WORK_DEBUG: %q", b.String())
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 
 	"github.com/gustaborges/work/internal/atomicfile"
 )
@@ -47,10 +48,27 @@ type Convention struct {
 	Prefixes []string `json:"prefixes"`
 }
 
+// Package is one installed plugin package's record (F4). Identity is Alias.
+// Every Component registered from this package carries the same Alias —
+// Package is a new parent record, not a new identity scheme. Conventions
+// names the convention names this package's manifest declared, for `work
+// plugin list`: registry.Convention itself carries no Alias (its identity
+// stays a bare Name, unchanged — two packages declaring the same convention
+// name are independent catalog data, never disambiguated the way component
+// names are), so Package is where a package's own declared convention names
+// are recorded.
+type Package struct {
+	Alias       string   `json:"alias"`
+	Origin      string   `json:"origin"`                // one of the Origin* constants
+	Reference   string   `json:"reference"`             // absolute source path (local kinds), or "<source>@<sha>" (remote)
+	Conventions []string `json:"conventions,omitempty"` // convention names this package's manifest declared
+}
+
 // Registry is the whole registry.json document.
 type Registry struct {
 	Components  []Component  `json:"components"`
 	Conventions []Convention `json:"conventions"`
+	Packages    []Package    `json:"packages,omitempty"`
 }
 
 // Roles / layers used by queries.
@@ -58,6 +76,13 @@ const (
 	RoleStarter           = "starter"
 	RoleRepositoryLocator = "repository-locator"
 	LayerFallback         = "fallback"
+)
+
+// Package origin kinds (F4, ADR-0002).
+const (
+	OriginLocalLinked  = "local-linked"
+	OriginLocalPinned  = "local-pinned"
+	OriginRemotePinned = "remote-pinned"
 )
 
 // Load reads registry.json. A missing file yields an empty Registry.
@@ -112,6 +137,59 @@ func (r *Registry) UpsertConvention(c Convention) {
 		}
 	}
 	r.Conventions = append(r.Conventions, c)
+}
+
+// RemoveAlias retracts everything alias registered: its components, its
+// Package record, and each convention that Package declared unless another
+// Package still declares it. Called before a reinstall registers the new
+// manifest, so nothing the previous version declared outlives it.
+func (r *Registry) RemoveAlias(alias string) {
+	r.Components = slices.DeleteFunc(r.Components, func(c Component) bool { return c.Alias == alias })
+
+	var declared []string
+	r.Packages = slices.DeleteFunc(r.Packages, func(p Package) bool {
+		if p.Alias != alias {
+			return false
+		}
+		declared = p.Conventions
+		return true
+	})
+	for _, name := range declared {
+		stillDeclared := slices.ContainsFunc(r.Packages, func(p Package) bool {
+			return slices.Contains(p.Conventions, name)
+		})
+		if !stillDeclared {
+			r.Conventions = slices.DeleteFunc(r.Conventions, func(c Convention) bool { return c.Name == name })
+		}
+	}
+}
+
+// UpsertPackage inserts or replaces the entry keyed by Alias.
+func (r *Registry) UpsertPackage(p Package) {
+	for i := range r.Packages {
+		if r.Packages[i].Alias == p.Alias {
+			r.Packages[i] = p
+			return
+		}
+	}
+	r.Packages = append(r.Packages, p)
+}
+
+// PackageByAlias returns the package registered under alias.
+func (r *Registry) PackageByAlias(alias string) (Package, bool) {
+	for _, p := range r.Packages {
+		if p.Alias == alias {
+			return p, true
+		}
+	}
+	return Package{}, false
+}
+
+// ListPackages returns a copy of the registered packages, sorted by alias.
+func (r *Registry) ListPackages() []Package {
+	out := slices.Clone(r.Packages)
+	slices.SortFunc(out, func(a, b Package) int { return strings.Compare(a.Alias, b.Alias) })
+	return out
 }
 
 // ByRole returns every component with the given role.

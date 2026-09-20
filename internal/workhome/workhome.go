@@ -53,6 +53,12 @@ func (h Home) StateDir() string { return filepath.Join(h.root, "state") }
 // RegistryFile is the path to the generated component registry.
 func (h Home) RegistryFile() string { return filepath.Join(h.StateDir(), "registry.json") }
 
+// BranchConventionsFile is the path to the generated, per-repository-identity
+// branch convention memory (internal/repoconv, ADR-0011).
+func (h Home) BranchConventionsFile() string {
+	return filepath.Join(h.StateDir(), "branch_conventions.json")
+}
+
 // DBFile is the path to the SQLite projection database.
 func (h Home) DBFile() string { return filepath.Join(h.StateDir(), "work.db") }
 

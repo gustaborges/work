@@ -53,7 +53,10 @@ func renderDiagnostic(ui io.Writer, in io.Reader, interactive bool, err error) i
 	}
 
 	if os.Getenv("WORK_DEBUG") != "" {
-		if chain := causeChain(err); chain != "" {
+		// A non-diag error's message is hidden from the human line, so a
+		// single-entry chain is still new information; a *diag.Error's message
+		// is already printed above and would only be duplicated.
+		if chain := causeChain(err, d == nil); chain != "" {
 			fmt.Fprintf(ui, "\n%s\n", chain)
 		}
 	}
@@ -61,13 +64,14 @@ func renderDiagnostic(ui io.Writer, in io.Reader, interactive bool, err error) i
 }
 
 // causeChain renders the wrapped error chain, innermost cause last, for the
-// WORK_DEBUG affordance only. It is never part of normal output.
-func causeChain(err error) string {
+// WORK_DEBUG affordance only. It is never part of normal output. Chains of a
+// single entry are dropped unless keepSingle is set.
+func causeChain(err error, keepSingle bool) string {
 	var lines []string
 	for e := err; e != nil; e = errors.Unwrap(e) {
 		lines = append(lines, "  "+e.Error())
 	}
-	if len(lines) < 2 {
+	if len(lines) < 2 && !keepSingle {
 		return ""
 	}
 	return strings.Join(lines, "\n")

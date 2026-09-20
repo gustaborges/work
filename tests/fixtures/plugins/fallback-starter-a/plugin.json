@@ -1,0 +1,8 @@
+{
+  "name": "fallback-starter-a",
+  "version": "1.0.0",
+  "components": [
+    { "name": "fallback-starter-a", "role": "starter", "entrypoint": "starter" }
+  ],
+  "conventions": []
+}
