@@ -673,7 +673,7 @@ independently functional. F1–F3 suites green. Merge forward.
 Each task is test-first and lands as its own commit. Independent of one
 another except where noted.
 
-- [ ] T078 [US3] Contribution mode on a remote-only branch (FR-020, FR-033):
+- [X] T078 [US3] Contribution mode on a remote-only branch (FR-020, FR-033):
       failing tests first — fresh clone with the branch only under `origin/`
       yields an attached HEAD on a local tracking branch and a snapshot whose
       `branch` and `base_branch` are the local name; cancel/failure after the

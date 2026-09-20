@@ -93,6 +93,21 @@ func Resolve(choices []Choice, flagValue string) (Choice, error) {
 	}
 }
 
+// LocalName is the name of the local branch this choice denotes: the branch
+// itself for a local choice, and the remote-tracking branch's own name with the
+// remote stripped ("origin/feature/x" -> "feature/x") otherwise. Remote names
+// are assumed to contain no "/", as git itself recommends.
+func (c Choice) LocalName() string {
+	if c.Scope != ScopeRemoteTracking {
+		return strings.TrimPrefix(c.Refname, "refs/heads/")
+	}
+	rest := strings.TrimPrefix(c.Refname, "refs/remotes/")
+	if _, name, ok := strings.Cut(rest, "/"); ok {
+		return name
+	}
+	return rest
+}
+
 // Format renders a choice for a confirm summary.
 func (c Choice) Format() string {
 	return fmt.Sprintf("%s @ %s", c.Short, c.ObjectShort)

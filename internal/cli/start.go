@@ -413,7 +413,9 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	// resolves to "contribution" (research R12, FR-020): branch is exactly the
 	// branch the Starter resolved — base_branch doubles as the checkout
 	// target, ADD §7's single field serving both purposes — slug stays empty,
-	// and no prefix/convention step ever renders. It always resolves from
+	// and no prefix/convention step ever renders. branch is the local name of
+	// the resolved choice, so a remote-only branch is checked out as a local
+	// tracking branch. It always resolves from
 	// starterBaseBranch, never from --base: the checked-out branch in this
 	// mode comes from the Starter, not the user, even if --base was also
 	// given (contracts/starter-protocol.md).
@@ -430,7 +432,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			return err
 		}
 		base, baseResolved = b, true
-		slug, branch = "", base.Short
+		slug, branch = "", base.LocalName()
 		return nil
 	}
 

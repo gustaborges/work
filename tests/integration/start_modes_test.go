@@ -171,6 +171,47 @@ func TestStartModeContributionCancelledLeavesNoTraceAndBranchIntact(t *testing.T
 	}
 }
 
+// TestStartModeContributionRemoteOnlyBranchChecksOutTrackingBranch (S5b): a
+// fresh clone knows the Starter's branch only as origin/<name>; contribution
+// mode must check out a local tracking branch (never a detached HEAD) and
+// persist the local name.
+func TestStartModeContributionRemoteOnlyBranchChecksOutTrackingBranch(t *testing.T) {
+	needSeed(t)
+	bin := buildWorkBin(t)
+	env, homeDir, workHome := ptyEnv(t)
+	installPluginFixture(t, bin, env, "specific-starter")
+
+	upstream := filepath.Join(homeDir, "upstream")
+	makeRepo(t, upstream)
+	gitIn(t, upstream, "branch", "feature/source-branch")
+	root := filepath.Join(homeDir, "src")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	repo := filepath.Join(root, "demo-pr-1")
+	gitIn(t, homeDir, "clone", "-q", upstream, repo)
+	writeRepositoryRoots(t, workHome, root)
+	ws := filepath.Join(homeDir, "ws")
+
+	c := newConsole(t, bin, env, "start", "demo-pr-1", "--workspace", ws, "--yes")
+	c.expect("Mode")
+	c.send("\r") // contribution is the first option
+	c.expect("work: created ")
+	if code := c.wait(); code != 0 {
+		t.Fatalf("contribution mode exited %d, want 0\n%s", code, c.screen())
+	}
+
+	dir := filepath.Join(ws, "in-progress", "demo-pr-1_feature-source-branch")
+	st := readSnapshot(t, filepath.Join(dir, "work-state.json"))
+	if st.Work.Branch != "feature/source-branch" || st.Work.BaseBranch != "feature/source-branch" {
+		t.Errorf("branch/base_branch = %q/%q, want the local name for both", st.Work.Branch, st.Work.BaseBranch)
+	}
+	wt := filepath.Join(dir, "worktree")
+	if head := gitIn(t, wt, "rev-parse", "--abbrev-ref", "HEAD"); head != "feature/source-branch" {
+		t.Errorf("worktree HEAD = %q, want feature/source-branch (not a detached HEAD)", head)
+	}
+}
+
 // globOneInProgress finds the single Work directory under ws/in-progress
 // matching pattern, and fails the test unless there is exactly one.
 func globOneInProgress(t *testing.T, ws, pattern string) string {

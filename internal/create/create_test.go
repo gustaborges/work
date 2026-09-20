@@ -284,6 +284,68 @@ func TestRunContributionModeRollbackNeverDeletesBranch(t *testing.T) {
 	}
 }
 
+// remoteOnlyContributionParams returns Params for a contribution-mode run
+// whose branch exists in the source repository only as a remote-tracking
+// branch — what a fresh clone looks like for a branch it never checked out.
+func remoteOnlyContributionParams(t *testing.T) Params {
+	t.Helper()
+	p := params(t)
+	upstream := gittest.Repo(t)
+	gittest.Git(t, upstream, "branch", "pr-branch")
+	clone := filepath.Join(t.TempDir(), "clone")
+	gittest.Git(t, t.TempDir(), "clone", "-q", upstream, clone)
+	p.SourceRepo = clone
+	p.RepoName = filepath.Base(clone)
+	p.Branch = "pr-branch"
+	p.BaseRefname = "refs/remotes/origin/pr-branch"
+	p.BaseBranchShort = "origin/pr-branch"
+	p.Slug = ""
+	p.Convention = ""
+	p.StartMode = work.StartModeContribution
+	return p
+}
+
+func TestRunContributionModeRemoteOnlyBranchChecksOutTrackingBranch(t *testing.T) {
+	p := remoteOnlyContributionParams(t)
+	res, err := Run(context.Background(), p)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	head, _ := gitx.Open(res.WorktreePath).CurrentBranch()
+	if head != "pr-branch" {
+		t.Errorf("worktree HEAD = %q, want the local branch pr-branch (not a detached HEAD)", head)
+	}
+	if remote := gittest.Git(t, p.SourceRepo, "config", "branch.pr-branch.remote"); remote != "origin" {
+		t.Errorf("branch.pr-branch.remote = %q, want origin", remote)
+	}
+
+	snap, err := work.Read(res.SnapshotPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.Work.Branch != "pr-branch" || snap.Work.BaseBranch != "pr-branch" {
+		t.Errorf("branch/base_branch = %q/%q, want the local name pr-branch for both",
+			snap.Work.Branch, snap.Work.BaseBranch)
+	}
+}
+
+func TestRunContributionModeRollbackRemovesTrackingBranchItCreated(t *testing.T) {
+	p := remoteOnlyContributionParams(t)
+	t.Setenv("WORK_FAIL_AT", "snapshot")
+	if _, err := Run(context.Background(), p); diag.ExitCode(err) != 17 {
+		t.Fatalf("exit = %d, want 17 (%v)", diag.ExitCode(err), err)
+	}
+
+	src := gitx.Open(p.SourceRepo)
+	if ok, _ := src.ShowRefVerify("refs/heads/pr-branch"); ok {
+		t.Error("rollback left the local tracking branch this run created")
+	}
+	if ok, _ := src.ShowRefVerify("refs/remotes/origin/pr-branch"); !ok {
+		t.Error("rollback must never touch the remote-tracking branch")
+	}
+}
+
 func TestRunForkAndNewModesUnchangedFromF1(t *testing.T) {
 	for _, mode := range []string{"", work.StartModeNew, work.StartModeFork} {
 		t.Run("mode="+mode, func(t *testing.T) {
