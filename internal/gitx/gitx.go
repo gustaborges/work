@@ -303,6 +303,15 @@ func (r Repo) WorktreeAddExisting(dir, branch string) error {
 	return err
 }
 
+// WorktreeAddTracking creates a local branch that tracks remoteRef and checks
+// it out at dir in one step. Naming the remote-tracking ref explicitly, rather
+// than letting git guess it from the branch name, keeps the result
+// deterministic when more than one remote carries a branch of that name.
+func (r Repo) WorktreeAddTracking(dir, branch, remoteRef string) error {
+	_, err := r.run("worktree", "add", "--track", "-b", branch, dir, remoteRef)
+	return err
+}
+
 // WorktreeRemove force-removes a linked worktree.
 func (r Repo) WorktreeRemove(dir string) error {
 	_, err := r.run("worktree", "remove", "--force", dir)

@@ -159,11 +159,27 @@ func Run(ctx context.Context, p Params) (Result, error) {
 		return fail(diag.MaterializationFailed, nil, "injected failure at step: worktree")
 	}
 	if p.StartMode == work.StartModeContribution {
-		if err := repo.WorktreeAddExisting(worktreePath, p.Branch); err != nil {
+		// A branch that already exists locally is never this run's to delete.
+		// One that exists only as a remote-tracking ref gets a local tracking
+		// branch created here, which rollback must therefore remove again.
+		existedLocally, err := repo.ShowRefVerify("refs/heads/" + p.Branch)
+		if err != nil {
+			return fail(diag.MaterializationFailed, err, "cannot inspect the branch to check out")
+		}
+		if existedLocally {
+			err = repo.WorktreeAddExisting(worktreePath, p.Branch)
+		} else {
+			err = repo.WorktreeAddTracking(worktreePath, p.Branch, p.BaseRefname)
+		}
+		if err != nil {
 			return fail(diag.MaterializationFailed, err, "cannot create the git worktree")
 		}
 		stack = append(stack, compensator{"worktree", func() error {
-			return repo.WorktreeRemove(worktreePath)
+			rmErr := repo.WorktreeRemove(worktreePath)
+			if existedLocally {
+				return rmErr
+			}
+			return errors.Join(rmErr, repo.BranchDelete(p.Branch))
 		}})
 	} else {
 		if err := repo.WorktreeAdd(worktreePath, p.Branch, p.BaseRefname); err != nil {
@@ -232,6 +248,12 @@ func build(p Params, dirPath, worktreePath, snapshotPath string) (*work.State, p
 		startMode = work.StartModeNew
 	}
 	ts := p.Now.Format(time.RFC3339)
+	// Contribution mode records what was checked out, by its local name,
+	// rather than the remote-tracking ref it may have been resolved from.
+	baseBranch := p.BaseBranchShort
+	if startMode == work.StartModeContribution {
+		baseBranch = p.Branch
+	}
 	ws := work.WorkSection{
 		ID:               p.ID,
 		Slug:             p.Slug,
@@ -239,7 +261,7 @@ func build(p Params, dirPath, worktreePath, snapshotPath string) (*work.State, p
 		StartMode:        startMode,
 		Starter:          p.Starter,
 		Branch:           p.Branch,
-		BaseBranch:       p.BaseBranchShort,
+		BaseBranch:       baseBranch,
 		BranchConvention: p.Convention,
 		CreatedAt:        ts,
 		LastAccessedAt:   ts,
