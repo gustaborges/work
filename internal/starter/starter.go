@@ -95,7 +95,7 @@ func Match(reg *registry.Registry, arg string) (registry.Component, Outcome, err
 // Reference is the subset of a Starter response the core acts on (ADR-0016).
 // The four repository fields are independent and optional; a reference with
 // none of them set is not rejected here — internal/locator classifies that
-// case as no-eligible-locator (FR-005, research R8). Meta and Links carry the
+// case as no-eligible-locator. Meta and Links carry the
 // context the Starter publishes for the Work; they are checked by
 // ValidateResponse before anything is materialized. Nothing else a Starter
 // emits is reachable through this type.
@@ -120,7 +120,8 @@ func Invoke(pluginsDir string, c registry.Component, arg string) (Reference, err
 			"the Starter could not resolve the given source")
 	}
 	// Only the typed fields are consumed; any extra key the subprocess
-	// emitted is deliberately ignored (FR-018 trust boundary).
+	// emitted is deliberately ignored: nothing a Starter says can influence
+	// core-governed Work state.
 	return Reference{
 		Path:         resp.Repository.Path,
 		GitFetchURLs: resp.Repository.GitFetchURLs,

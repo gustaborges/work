@@ -5,7 +5,7 @@
     {
       "name": "linker-other-starter",
       "role": "linker",
-      "key": "restricted.other_starter",
+      "key": "plugin.restricted-suite.other_starter",
       "entrypoint": "linker-other-starter",
       "discover": {
         "automatic": true,
@@ -16,7 +16,7 @@
     {
       "name": "linker-not-automatic",
       "role": "linker",
-      "key": "restricted.not_automatic",
+      "key": "plugin.restricted-suite.not_automatic",
       "entrypoint": "linker-not-automatic",
       "discover": {
         "automatic": false,
@@ -27,7 +27,7 @@
     {
       "name": "linker-unsubscribed",
       "role": "linker",
-      "key": "restricted.unsubscribed",
+      "key": "plugin.restricted-suite.unsubscribed",
       "entrypoint": "linker-unsubscribed",
       "discover": {
         "automatic": true,
@@ -39,7 +39,7 @@
       "role": "importer",
       "entrypoint": "importer-missing-link",
       "on": [ { "event": "start:finalized" } ],
-      "inputs": ["link:restricted.absent"]
+      "inputs": ["link:plugin.restricted-suite.absent"]
     },
     {
       "name": "importer-manual-only",

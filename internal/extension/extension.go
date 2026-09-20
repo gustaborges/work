@@ -121,7 +121,11 @@ type Failure struct {
 	Err      error
 }
 
+// Error returns the underlying error's text; the stderr tail is carried
+// separately in Stderr and never mixed into it.
 func (f *Failure) Error() string { return f.Err.Error() }
+
+// Unwrap returns the underlying error.
 func (f *Failure) Unwrap() error { return f.Err }
 
 // Run executes the automatic phases for a freshly created Work: eligible

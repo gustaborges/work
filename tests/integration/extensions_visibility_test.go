@@ -23,7 +23,7 @@ func inOrder(t *testing.T, s string, needles ...string) {
 	}
 }
 
-// TestInteractiveStartShowsWhatRuns (quickstart S14): after the confirmation
+// TestInteractiveStartShowsWhatRuns: after the confirmation
 // receipt and the three stable lines, the automatic phases show one progress
 // line per event in execution order, and a failing component adds a ⚠ warning
 // with a → hint. Everything is on the UI channel and the start still succeeds.

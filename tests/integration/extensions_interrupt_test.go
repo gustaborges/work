@@ -45,7 +45,7 @@ func contextSuiteWorkspace(t *testing.T, bin string, env []string, homeDir, work
 	return filepath.Join(homeDir, "ws")
 }
 
-// TestInterruptDuringAutomaticPhasesKeepsTheWork (quickstart S13): the first
+// TestInterruptDuringAutomaticPhasesKeepsTheWork: the first
 // SIGINT sent to work while a Linker runs kills that Linker, skips everything
 // after it, reports one interruption, and still ends the start successfully
 // with the Work intact and the shell repositioned into it.

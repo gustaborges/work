@@ -36,6 +36,7 @@ type Refusal struct {
 	Reason RefusalReason
 }
 
+// Error names the refused relative path and why; it never includes content.
 func (r *Refusal) Error() string {
 	var what string
 	switch r.Reason {

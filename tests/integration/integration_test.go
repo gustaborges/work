@@ -4,6 +4,7 @@ package integration
 
 import (
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/rogpeppe/go-internal/testscript"
+	_ "modernc.org/sqlite"
 
 	"github.com/gustaborges/work/internal/cli"
 	"github.com/gustaborges/work/internal/config"
@@ -469,6 +471,20 @@ func TestScripts(t *testing.T) {
 				}
 				if err := os.WriteFile(ts.MkAbs(args[0]), []byte(b.String()), 0o644); err != nil {
 					ts.Fatalf("dborder: %v", err)
+				}
+			},
+			// dbdowngrade rewrites the index as an F4 build left it: no provenance
+			// table and PRAGMA user_version 2, with every Work row kept.
+			"dbdowngrade": func(ts *testscript.TestScript, neg bool, args []string) {
+				raw, err := sql.Open("sqlite", filepath.Join(ts.Getenv("WORK_HOME"), "state", "work.db"))
+				if err != nil {
+					ts.Fatalf("dbdowngrade: %v", err)
+				}
+				defer raw.Close()
+				for _, stmt := range []string{`DROP TABLE work_provenance`, `PRAGMA user_version = 2`} {
+					if _, err := raw.Exec(stmt); err != nil {
+						ts.Fatalf("dbdowngrade: %s: %v", stmt, err)
+					}
 				}
 			},
 			// dbuserversion <n> asserts the projection's PRAGMA user_version.

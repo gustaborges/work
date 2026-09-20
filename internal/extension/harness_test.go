@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/gustaborges/work/internal/plugininstall"
@@ -19,14 +20,6 @@ import (
 type recorder struct{ events []Event }
 
 func (r *recorder) OnEvent(e Event) { r.events = append(r.events, e) }
-
-func (r *recorder) kinds() []EventKind {
-	var out []EventKind
-	for _, e := range r.events {
-		out = append(out, e.Kind)
-	}
-	return out
-}
 
 // kindsFor returns the event kinds of one operation, in order.
 func kindsFor(h *harness, operation string) []EventKind {
@@ -52,6 +45,55 @@ func (f *fakeIndex) RecordProvenance(e ...projection.Provenance) error {
 	return nil
 }
 
+var (
+	suiteOnce  sync.Once
+	suiteCache string
+)
+
+// contextSuiteDir returns a private copy of the built context-suite package.
+// Compiling its five binaries dominates the cost of these tests, so it happens
+// once per test process; TestMain removes the cache.
+func contextSuiteDir(t *testing.T) string {
+	t.Helper()
+	suiteOnce.Do(func() {
+		built := fixtures.Prepare(t, "context-suite")
+		dir, err := os.MkdirTemp("", "extension-suite-*")
+		if err != nil {
+			t.Fatal(err)
+		}
+		suiteCache = dir
+		copyFlat(t, built, dir)
+	})
+	dst := t.TempDir()
+	copyFlat(t, suiteCache, dst)
+	return dst
+}
+
+func copyFlat(t *testing.T, from, to string) {
+	t.Helper()
+	entries, err := os.ReadDir(from)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		data, err := os.ReadFile(filepath.Join(from, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(to, e.Name()), data, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if suiteCache != "" {
+		_ = os.RemoveAll(suiteCache)
+	}
+	os.Exit(code)
+}
+
 // harness is a Work home with context-suite installed and one committed Work
 // whose snapshot lives in a real directory.
 type harness struct {
@@ -71,7 +113,7 @@ func newHarness(t *testing.T, mode string) *harness {
 		t.Fatal(err)
 	}
 	reg := &registry.Registry{}
-	if _, err := plugininstall.Install(home.PluginsDir(), reg, fixtures.Prepare(t, "context-suite"), plugininstall.Options{}); err != nil {
+	if _, err := plugininstall.Install(home.PluginsDir(), reg, contextSuiteDir(t), plugininstall.Options{}); err != nil {
 		t.Fatalf("install context-suite: %v", err)
 	}
 	starter, ok := findComponent(reg, "starter")
