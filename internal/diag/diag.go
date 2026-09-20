@@ -50,6 +50,16 @@ var (
 	RepositoryCandidateInvalid = Category{Token: "repository-candidate-invalid", Code: 28}
 	LocatorFailed              = Category{Token: "locator-failed", Code: 29}
 	RepositoryAmbiguous        = Category{Token: "repository-ambiguous", Code: 30}
+
+	// F4 (plugin origins) categories.
+	PluginInvalid          = Category{Token: "plugin-invalid", Code: 31}
+	PluginAliasConflict    = Category{Token: "plugin-alias-conflict", Code: 32}
+	PluginFallbackConflict = Category{Token: "plugin-fallback-conflict", Code: 33}
+	PluginInstallFailed    = Category{Token: "plugin-install-failed", Code: 34}
+	StarterNotMatched      = Category{Token: "starter-not-matched", Code: 35}
+	StarterAmbiguous       = Category{Token: "starter-ambiguous", Code: 36}
+	StarterResponseInvalid = Category{Token: "starter-response-invalid", Code: 37}
+	ConventionUnknown      = Category{Token: "convention-unknown", Code: 38}
 )
 
 // All lists every category including OK, ordered by exit code. Tests assert the
@@ -60,6 +70,8 @@ var All = []Category{
 	Cancelled, TargetNotFound, TargetArchived, DirtyWorktree, ArchiveFailed,
 	SnapshotUnreadable, NoRepositoryFound, NoEligibleLocator, RepositoryCandidateInvalid,
 	LocatorFailed, RepositoryAmbiguous,
+	PluginInvalid, PluginAliasConflict, PluginFallbackConflict, PluginInstallFailed,
+	StarterNotMatched, StarterAmbiguous, StarterResponseInvalid, ConventionUnknown,
 }
 
 // Error is a failure tagged with a Category. Msg is shown to the user; Err, when

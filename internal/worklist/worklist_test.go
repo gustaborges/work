@@ -134,3 +134,18 @@ func must(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
+
+func TestSlugLessWorkIsNamedByItsBranch(t *testing.T) {
+	rows := Rows([]projection.Work{
+		work("01AAAAAA00000000000000000A", "", "feature/x", "in-progress", "2026-06-01T00:00:00Z"),
+		work("01BBBBBB00000000000000000B", "", "feature/y", "in-progress", "2026-06-01T00:00:00Z"),
+		work("01CCCCCC00000000000000000C", "named", "named", "in-progress", "2026-06-01T00:00:00Z"),
+	}, time.Date(2026, 6, 2, 0, 0, 0, 0, time.UTC))
+
+	want := []string{"demo  feature/x", "demo  feature/y", "demo  named"}
+	for i, r := range rows {
+		if r.DisplayName != want[i] {
+			t.Errorf("DisplayName[%d] = %q, want %q", i, r.DisplayName, want[i])
+		}
+	}
+}

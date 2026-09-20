@@ -1,0 +1,67 @@
+# T070 — F4's 8 new diagnostic categories (31-38), each a distinct, actionable,
+# no-partial-state exit, swept in one script-readable scenario
+# (research R18, data-model.md §11).
+#
+# 35 (starter-not-matched) is not reachable through the real `work start` CLI:
+# bootstrap.EnsureSeed always installs the reference package's fallback
+# Starter on first run, so a fallback is unconditionally present once any
+# `work` command has run in a given WORK_HOME (quickstart S12 itself directs
+# a raw-registry-fixture test for this case). It is covered at the contract
+# level by tests/contract/starter_match_test.go.
+# 37 (starter-response-invalid) requires a Starter subprocess that returns a
+# structurally invalid response — not something any shipped fixture does
+# (they are all well-behaved) — so it is covered at the contract level by
+# tests/contract/starter_match_test.go's TestValidateResponseContract instead
+# of a CLI script here.
+
+# 31 — plugin-invalid: a manifest violating role-based field validation is
+# rejected with nothing registered.
+! work plugin install ../fixtures/plugins/invalid-manifest
+stderr 'error: plugin-invalid:'
+work plugin list
+! stdout 'invalid-manifest'
+
+# 32 — plugin-alias-conflict: a different origin under the same alias fails,
+# registering nothing; the original entry is unaffected.
+preparepluginfixture specific-starter SRC1
+work plugin install $SRC1
+preparepluginfixture colliding-starter SRC2
+! work plugin install $SRC2 --as specific-starter
+stderr 'error: plugin-alias-conflict:'
+work plugin list --json
+stdout '"alias": *"specific-starter"'
+! stdout 'colliding-starter'
+
+# 33 — plugin-fallback-conflict: a second enabled fallback Starter is
+# rejected.
+preparepluginfixture fallback-starter-a FBA
+work plugin install $FBA
+preparepluginfixture fallback-starter-b FBB
+! work plugin install $FBB
+stderr 'error: plugin-fallback-conflict:'
+
+# 34 — plugin-install-failed: a remote-shaped SOURCE that cannot actually be
+# cloned (no such host/path) fails distinctly from every manifest/alias/
+# fallback rule above.
+! work plugin install does-not-exist-as-a-remote-source
+stderr 'error: plugin-install-failed:'
+
+# 36 — starter-ambiguous: two installed Starters whose patterns both match one
+# argument fail non-interactively, opening no selector, creating no Work.
+# specific-starter (SRC1) is already installed above; colliding-starter needs
+# its own default alias here (its earlier copy, SRC2, never registered — the
+# alias conflict above rejected it).
+preparepluginfixture colliding-starter SRC3
+work plugin install $SRC3
+gitrepo src
+env WS=$WORK/ws
+! work start demo-pr-1 --workspace $WS --base main --slug x --prefix {slug} --yes
+stderr 'error: starter-ambiguous:'
+! exists $WS
+
+# 38 — convention-unknown: `work convention set` rejects a name that is not
+# currently enabled, persisting nothing.
+cd $WORK/src
+! work convention set nope
+stderr 'error: convention-unknown:'
+! exists $WORK/dothome/state/branch_conventions.json

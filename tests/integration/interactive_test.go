@@ -79,6 +79,24 @@ func newConsoleSize(t *testing.T, ws pty.Winsize, bin string, env []string, args
 	t.Helper()
 	cmd := exec.Command(bin, args...)
 	cmd.Env = env
+	return startConsole(t, ws, cmd)
+}
+
+// newConsoleIn is newConsole with the child process's working directory set
+// to dir — for commands like `work convention` that resolve state relative
+// to the current directory rather than an explicit argument.
+func newConsoleIn(t *testing.T, dir, bin string, env []string, args ...string) *console {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
+	cmd.Env = env
+	cmd.Dir = dir
+	return startConsole(t, pty.Winsize{Rows: 40, Cols: 120}, cmd)
+}
+
+// startConsole launches cmd over a pty at the given size and begins the
+// background reader every console variant shares.
+func startConsole(t *testing.T, ws pty.Winsize, cmd *exec.Cmd) *console {
+	t.Helper()
 	// A concrete window size is required: bubbletea renders nothing into a 0x0
 	// terminal, which is what an unsized pty reports on Linux.
 	f, err := pty.StartWithSize(cmd, &ws)

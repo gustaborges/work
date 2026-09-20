@@ -20,7 +20,8 @@ type WorkRow struct {
 	DirPath        string    // Work directory (in-progress or archived area)
 	WorktreePath   string    // worktree path; "" for an archived Work
 	SnapshotPath   string    // work-state.json path
-	// DisplayName is "<repo>  <slug>", with "  (<id[:6]>)" appended only when
+	// DisplayName is "<repo>  <slug>" ("<repo>  <branch>" for a slug-less
+	// Work), with "  (<id[:6]>)" appended only when
 	// another row collides on (repo, slug, branch).
 	DisplayName string
 	// RelativeTime is a coarse "3 hours ago"-style phrase for LastAccessedAt.
@@ -73,7 +74,12 @@ func Rows(works []projection.Work, now time.Time) []WorkRow {
 	out := make([]WorkRow, 0, len(works))
 	for _, w := range works {
 		last, _ := time.Parse(time.RFC3339, w.LastAccessedAt)
-		name := w.RepoName + "  " + w.Slug
+		// A contribution-mode Work has no slug; its branch is what identifies it.
+		label := w.Slug
+		if label == "" {
+			label = w.Branch
+		}
+		name := w.RepoName + "  " + label
 		if counts[key{w.RepoName, w.Slug, w.Branch}] > 1 && len(w.ID) >= 6 {
 			name += "  (" + w.ID[:6] + ")"
 		}
