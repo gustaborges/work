@@ -1,0 +1,95 @@
+# F5 — Importers run through exclusive staging (quickstart S9-S11).
+
+preparepluginfixture context-suite SUITE
+work plugin install $SUITE
+gitrepo src/demo-ctx-1
+work-set-roots $WORK/dothome/config/work.json $WORK/src
+env WS=$WORK/ws
+env WORK_FIXTURE_LOG=$WORK/launches.log
+env TMPDIR=$WORK/tmp
+mkdir $WORK/tmp
+
+# S9: an Importer's output lands in the Work directory beside worktree/, never in it.
+env WORK_FIXTURE_MODE=linker-value,importer-ok,importer2-empty
+work start demo-ctx-1 --workspace $WS --base main --slug imported --prefix {slug} --yes
+stderr 'work: running context-suite/importer \(import\)'
+stderr 'work: context-suite/importer: imported 2 item\(s\)'
+! stdout 'item\(s\)'
+! stdout 'running'
+grep 'imported context' $WS/in-progress/demo-ctx-1_imported/notes/context.md
+! exists $WS/in-progress/demo-ctx-1_imported/worktree/notes
+
+# The Importer was given the link the Linker discovered, and an output directory.
+grep '"role":"importer".*"github.pull_request":"https://example.test/pr/212-from-linker"' $WORK/launches.log
+grep '"role":"importer".*"output_dir":"[^"]*import-' $WORK/launches.log
+
+# No stage is left behind.
+[!windows] exec sh -c 'ls "$TMPDIR/work" | grep -c import- || true'
+[!windows] stdout '^0$'
+
+# An Importer with no output succeeds silently.
+env WORK_FIXTURE_MODE=linker-value,importer-empty,importer2-empty
+work start demo-ctx-1 --base main --slug quiet --prefix {slug} --yes
+! stderr 'item\(s\)'
+! stderr 'warning:'
+! exists $WS/in-progress/demo-ctx-1_quiet/notes
+
+# Archiving keeps the imported artifact with the snapshot.
+today TODAY
+workid $WS/in-progress/demo-ctx-1_imported/work-state.json ID_IMPORTED
+work archive $ID_IMPORTED --yes
+stdout '^work: archived 1 of 1$'
+! exists $WS/in-progress/demo-ctx-1_imported
+exists $WS/archived/${TODAY}-demo-ctx-1_imported/work-state.json
+grep 'imported context' $WS/archived/${TODAY}-demo-ctx-1_imported/notes/context.md
+
+# S10: two Importers reaching the same path — the first is incorporated, the
+# second contributes nothing and one warning names it and the relative path.
+env WORK_FIXTURE_MODE=linker-value,importer-ok,importer2-collide
+work start demo-ctx-1 --base main --slug collide --prefix {slug} --yes
+stderr 'warning: extension-output-refused: context-suite/importer2 \(import\) for Work [0-9A-HJKMNP-TV-Z]{26}: it would overwrite "notes/context.md"; none of its files were added'
+grep 'imported context' $WS/in-progress/demo-ctx-1_collide/notes/context.md
+! grep 'from importer2' $WS/in-progress/demo-ctx-1_collide/notes/context.md
+! stderr 'context-suite/importer2: imported'
+
+# A refusal is all or nothing: the clean part of a mixed output is not added.
+env WORK_FIXTURE_MODE=linker-value,importer-mixed,importer2-empty
+work start demo-ctx-1 --base main --slug mixed --prefix {slug} --yes
+stderr 'warning: extension-output-refused: context-suite/importer \(import\)'
+stderr 'work-state.json'
+! exists $WS/in-progress/demo-ctx-1_mixed/notes
+grep '"schema": 3' $WS/in-progress/demo-ctx-1_mixed/work-state.json
+
+# Output aimed at the worktree or the snapshot is refused without a trace.
+env WORK_FIXTURE_MODE=linker-value,importer-into-worktree,importer2-empty
+work start demo-ctx-1 --base main --slug intowt --prefix {slug} --yes
+stderr 'warning: extension-output-refused: context-suite/importer \(import\)'
+! exists $WS/in-progress/demo-ctx-1_intowt/worktree/injected.md
+! exists $WS/in-progress/demo-ctx-1_intowt/worktree/worktree
+
+env WORK_FIXTURE_MODE=linker-value,importer-over-state,importer2-empty
+work start demo-ctx-1 --base main --slug overstate --prefix {slug} --yes
+stderr 'warning: extension-output-refused: context-suite/importer \(import\)'
+grep '"schema": 3' $WS/in-progress/demo-ctx-1_overstate/work-state.json
+! grep '^\{\}$' $WS/in-progress/demo-ctx-1_overstate/work-state.json
+
+# Symlinks in the output are refused (Unix; creating one may need privileges elsewhere).
+[!windows] env WORK_FIXTURE_MODE=linker-value,importer-symlink,importer2-empty
+[!windows] work start demo-ctx-1 --base main --slug symlink --prefix {slug} --yes
+[!windows] stderr 'warning: extension-output-refused: context-suite/importer \(import\)'
+[!windows] stderr 'notes/link.md'
+[!windows] ! exists $WS/in-progress/demo-ctx-1_symlink/notes
+
+# Every refusal still exits 0 and prints the three stable lines.
+stdout 'work: created '
+
+# S11: a failure part-way through incorporation is fully undone.
+env WORK_FIXTURE_MODE=linker-value,importer-ok,importer2-empty
+env WORK_FAIL_AT=incorporate:1
+work start demo-ctx-1 --base main --slug rolledback --prefix {slug} --yes
+stderr 'warning: extension-persist-failed: context-suite/importer \(import\) for Work [0-9A-HJKMNP-TV-Z]{26}:'
+! exists $WS/in-progress/demo-ctx-1_rolledback/notes
+exists $WS/in-progress/demo-ctx-1_rolledback/worktree
+env WORK_FAIL_AT=
+[!windows] exec sh -c 'ls "$TMPDIR/work" | grep -c import- || true'
+[!windows] stdout '^0$'

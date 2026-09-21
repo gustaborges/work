@@ -30,7 +30,7 @@ snapsums after-sums
 dborder after-order
 cmp before-sums after-sums
 cmp before-order after-order
-dbuserversion 2
+dbuserversion 3
 
 # resume / archive behave exactly as before: same active set, same order.
 activeorder charlie alpha

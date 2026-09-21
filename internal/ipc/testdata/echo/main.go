@@ -6,12 +6,16 @@
 //	ECHO_MODE=fail                  — write "boom" to stderr, exit 3
 //	ECHO_MODE=garbage               — write "not json" to stdout, exit 0
 //	ECHO_MODE=silent                — write nothing, exit 0
+//	ECHO_MODE=hang                  — block until killed
+//	ECHO_MODE=noisy                 — write ~64 KiB then "END" to stderr, exit 0
 package main
 
 import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
+	"time"
 )
 
 func main() {
@@ -26,6 +30,10 @@ func main() {
 		fmt.Fprint(os.Stdout, os.Getenv("ECHO_STDOUT"))
 	case "silent":
 		// nothing
+	case "hang":
+		time.Sleep(time.Hour)
+	case "noisy":
+		fmt.Fprint(os.Stderr, strings.Repeat("x", 64<<10)+"END")
 	default:
 		os.Stdout.Write(data)
 	}

@@ -1,0 +1,11 @@
+{
+  "name": "invalid-manual",
+  "version": "1.0.0",
+  "components": [
+    { "name": "no-display-name", "role": "importer", "entrypoint": "importer",
+      "manual": { "description": "missing display_name" } },
+    { "name": "boolean-manual", "role": "importer", "entrypoint": "importer",
+      "manual": true }
+  ],
+  "conventions": []
+}

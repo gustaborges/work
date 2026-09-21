@@ -2,6 +2,7 @@ package projection
 
 import (
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -60,10 +61,10 @@ func TestMigrateIdempotent(t *testing.T) {
 	}
 }
 
-func TestFreshDatabaseOpensAtV2(t *testing.T) {
+func TestFreshDatabaseOpensAtCurrentVersion(t *testing.T) {
 	db := openTest(t)
-	if v := userVersion(t, db); v != 2 {
-		t.Fatalf("fresh db user_version = %d, want 2", v)
+	if v := userVersion(t, db); v != 3 {
+		t.Fatalf("fresh db user_version = %d, want 3", v)
 	}
 	// archived_at and the status index exist.
 	if err := db.Upsert(archivedWork("z")); err != nil {
@@ -75,7 +76,7 @@ func TestFreshDatabaseOpensAtV2(t *testing.T) {
 	}
 }
 
-func TestMigrateV1toV2InPlace(t *testing.T) {
+func TestMigrateV1InPlace(t *testing.T) {
 	db, err := Open(filepath.Join(t.TempDir(), "work.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -100,10 +101,10 @@ func TestMigrateV1toV2InPlace(t *testing.T) {
 	}
 
 	if err := db.Migrate(); err != nil {
-		t.Fatalf("Migrate v1->v2: %v", err)
+		t.Fatalf("Migrate v1: %v", err)
 	}
-	if v := userVersion(t, db); v != 2 {
-		t.Fatalf("after migrate user_version = %d, want 2", v)
+	if v := userVersion(t, db); v != SchemaVersion {
+		t.Fatalf("after migrate user_version = %d, want %d", v, SchemaVersion)
 	}
 	// Idempotent.
 	if err := db.Migrate(); err != nil {
@@ -284,5 +285,159 @@ func TestMarkArchived(t *testing.T) {
 	}
 	if act, _ := db.ListActive(); len(act) != 0 {
 		t.Errorf("archived Work still listed active: %+v", act)
+	}
+}
+
+func prov(work, section, key, component, op, at string) Provenance {
+	return Provenance{WorkID: work, Section: section, Key: key, SourceComponent: component, SourceOperation: op, RecordedAt: at}
+}
+
+func TestMigrateV2toV3AddsProvenanceInPlace(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "work.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	for i := 0; i < 2; i++ {
+		if _, err := db.sql.Exec(migrations[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.sql.Exec("PRAGMA user_version = 2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Upsert(sampleWork("keep")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.Migrate(); err != nil {
+		t.Fatalf("Migrate v2->v3: %v", err)
+	}
+	if v := userVersion(t, db); v != 3 {
+		t.Fatalf("user_version = %d, want 3", v)
+	}
+	if _, ok, _ := db.Get("keep"); !ok {
+		t.Error("existing row lost by the migration")
+	}
+	if err := db.RecordProvenance(prov("keep", "links", "a.b", "p/s", "start", "t")); err != nil {
+		t.Errorf("provenance table unusable after migration: %v", err)
+	}
+}
+
+func TestProvenanceSectionIsConstrained(t *testing.T) {
+	db := openTest(t)
+	if err := db.Upsert(sampleWork("w")); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.RecordProvenance(prov("w", "work", "slug", "p/s", "start", "t")); err == nil {
+		t.Error("section \"work\" accepted")
+	}
+}
+
+func TestRecordProvenanceLastSourceWins(t *testing.T) {
+	db := openTest(t)
+	if err := db.Upsert(sampleWork("w")); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.RecordProvenance(prov("w", "links", "github.pull_request", "p/starter", "start", "2026-01-01T00:00:00Z")); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.RecordProvenance(prov("w", "links", "github.pull_request", "p/linker2", "discover", "2026-01-01T00:00:05Z")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.Provenance("w")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Provenance{prov("w", "links", "github.pull_request", "p/linker2", "discover", "2026-01-01T00:00:05Z")}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Provenance = %+v, want %+v", got, want)
+	}
+}
+
+func TestProvenanceOrderedBySectionThenKey(t *testing.T) {
+	db := openTest(t)
+	if err := db.Upsert(sampleWork("w")); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.RecordProvenance(
+		prov("w", "meta", "z.k", "c", "start", "t"),
+		prov("w", "links", "b.k", "c", "start", "t"),
+		prov("w", "links", "a.k", "c", "start", "t"),
+		prov("w", "meta", "a.k", "c", "start", "t"),
+	); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := db.Provenance("w")
+	var order []string
+	for _, p := range got {
+		order = append(order, p.Section+"/"+p.Key)
+	}
+	if want := []string{"links/a.k", "links/b.k", "meta/a.k", "meta/z.k"}; !reflect.DeepEqual(order, want) {
+		t.Errorf("order = %v, want %v", order, want)
+	}
+}
+
+func TestUpsertWithProvenanceIsOneTransaction(t *testing.T) {
+	db := openTest(t)
+	good := []Provenance{prov("tx", "links", "a.k", "p/s", "start", "t")}
+	if err := db.UpsertWithProvenance(sampleWork("tx"), good); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := db.Provenance("tx"); len(got) != 1 {
+		t.Errorf("provenance rows = %d, want 1", len(got))
+	}
+
+	bad := []Provenance{
+		prov("tx2", "links", "a.k", "p/s", "start", "t"),
+		prov("tx2", "nonsense", "b.k", "p/s", "start", "t"), // violates the section CHECK
+	}
+	if err := db.UpsertWithProvenance(sampleWork("tx2"), bad); err == nil {
+		t.Fatal("failing provenance insert reported success")
+	}
+	if _, ok, _ := db.Get("tx2"); ok {
+		t.Error("works row survived a failed provenance insert")
+	}
+	if got, _ := db.Provenance("tx2"); len(got) != 0 {
+		t.Errorf("provenance rows survived: %+v", got)
+	}
+}
+
+func TestDeleteCascadesProvenanceButUpsertDoesNot(t *testing.T) {
+	db := openTest(t)
+	if err := db.UpsertWithProvenance(sampleWork("w"), []Provenance{prov("w", "meta", "a.k", "p/s", "start", "t")}); err != nil {
+		t.Fatal(err)
+	}
+
+	changed := sampleWork("w")
+	changed.LastAccessedAt = "2027-01-01T00:00:00Z"
+	if err := db.Upsert(changed); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := db.Provenance("w"); len(got) != 1 {
+		t.Fatalf("Upsert cascaded away provenance: %+v", got)
+	}
+
+	if err := db.Delete("w"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := db.Provenance("w"); len(got) != 0 {
+		t.Errorf("Delete left provenance behind: %+v", got)
+	}
+}
+
+func TestResetDropsProvenanceBeforeWorks(t *testing.T) {
+	db := openTest(t)
+	if err := db.UpsertWithProvenance(sampleWork("w"), []Provenance{prov("w", "meta", "a.k", "p/s", "start", "t")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Reset(); err != nil {
+		t.Fatalf("Reset: %v", err)
+	}
+	if v := userVersion(t, db); v != SchemaVersion {
+		t.Errorf("user_version after reset = %d", v)
+	}
+	if got, _ := db.Provenance("w"); len(got) != 0 {
+		t.Errorf("provenance survived Reset: %+v", got)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gustaborges/work/internal/diag"
+	"github.com/gustaborges/work/internal/extension"
 	"github.com/gustaborges/work/internal/present/diagrender"
 	"github.com/gustaborges/work/internal/present/theme"
 )
@@ -75,4 +76,83 @@ func causeChain(err error, keepSingle bool) string {
 		return ""
 	}
 	return strings.Join(lines, "\n")
+}
+
+// renderWarning writes one extension warning to the UI channel. It never
+// touches stdout and never changes an exit code.
+//
+//   - non-interactive: the frozen "warning: <token>: <alias>/<name> (<op>) for
+//     Work <id>: <summary>" line.
+//   - interactive: "⚠ <alias>/<name>: <summary>" and, when there is one,
+//     "  → <hint>".
+//
+// When WORK_DEBUG is non-empty the component's exit status and the tail of its
+// stderr follow the human line. Neither the human line nor the debug detail
+// ever carries a link or metadata value or artifact content; stderr is the
+// extension's own text and is shown only because the user asked for it.
+func renderWarning(ui io.Writer, in io.Reader, interactive bool, w diag.Warning) {
+	if interactive {
+		th := theme.New(theme.Detect(ui, in), true)
+		fmt.Fprint(ui, diagrender.Warn(th, w.Component+": "+w.Summary, w.Hint))
+	} else {
+		fmt.Fprintln(ui, diag.FormatWarning(w))
+	}
+	if os.Getenv("WORK_DEBUG") == "" || w.Cause == nil {
+		return
+	}
+	var f *extension.Failure
+	if errors.As(w.Cause, &f) {
+		if f.ExitCode > 0 {
+			fmt.Fprintf(ui, "  exit status: %d\n", f.ExitCode)
+		}
+		fmt.Fprintf(ui, "  cause: %v\n", f.Err)
+		if tail := strings.TrimSpace(f.Stderr); tail != "" {
+			fmt.Fprintln(ui, "  stderr:")
+			for _, line := range strings.Split(tail, "\n") {
+				fmt.Fprintf(ui, "    %s\n", line)
+			}
+		}
+		return
+	}
+	fmt.Fprintf(ui, "  cause: %v\n", w.Cause)
+}
+
+// progressObserver renders the automatic extension phases on the UI channel:
+// one line when a component starts, one when it has a result to report, and a
+// warning when it fails. The text is the same interactive or not; only the
+// muted colour differs, and only when the terminal supports it.
+type progressObserver struct {
+	ui          io.Writer
+	in          io.Reader
+	interactive bool
+	th          theme.Theme
+}
+
+func newProgressObserver(ui io.Writer, in io.Reader, interactive bool) *progressObserver {
+	p := &progressObserver{ui: ui, in: in, interactive: interactive}
+	if interactive {
+		p.th = theme.New(theme.Detect(ui, in), true)
+	}
+	return p
+}
+
+// OnEvent implements extension.Observer.
+func (p *progressObserver) OnEvent(e extension.Event) {
+	switch e.Kind {
+	case extension.Running:
+		p.line(fmt.Sprintf("work: running %s (%s)", e.Component, e.Operation))
+	case extension.Linked:
+		p.line(fmt.Sprintf("work: %s: linked %s", e.Component, e.Key))
+	case extension.Imported:
+		p.line(fmt.Sprintf("work: %s: imported %d item(s)", e.Component, e.Count))
+	case extension.Warned:
+		renderWarning(p.ui, p.in, p.interactive, *e.Warning)
+	}
+}
+
+func (p *progressObserver) line(s string) {
+	if p.interactive {
+		s = p.th.Muted.Render(s)
+	}
+	fmt.Fprintln(p.ui, s)
 }

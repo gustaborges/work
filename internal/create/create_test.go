@@ -2,6 +2,7 @@ package create
 
 import (
 	"context"
+	"database/sql"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 	"github.com/gustaborges/work/internal/work"
 	"github.com/gustaborges/work/internal/work/verify"
 	"github.com/gustaborges/work/internal/workhome"
+	_ "modernc.org/sqlite"
 )
 
 func params(t *testing.T) Params {
@@ -388,7 +390,7 @@ func TestRunForkAndNewModesUnchangedFromF1(t *testing.T) {
 func TestBuildKeepsSnapshotAndRowInSync(t *testing.T) {
 	p := params(t)
 	p.ID = "01AAAAAAAAAAAAAAAAAAAAAAAA"
-	state, row := build(p, "/d", "/d/worktree", "/d/work-state.json")
+	state, row, _ := build(p, "/d", "/d/worktree", "/d/work-state.json")
 
 	if state.Work.ID != row.ID || state.Work.Slug != row.Slug ||
 		state.Work.Status != row.Status || state.Work.StartMode != row.StartMode ||
@@ -405,5 +407,119 @@ func TestBuildKeepsSnapshotAndRowInSync(t *testing.T) {
 	}
 	if state.Work.CreatedAt != state.Work.LastAccessedAt {
 		t.Errorf("timestamps differ at creation")
+	}
+}
+
+func TestRunPublishesStarterContextIntoFirstSnapshot(t *testing.T) {
+	for _, mode := range []string{"", work.StartModeFork} {
+		t.Run("mode="+mode, func(t *testing.T) {
+			p := params(t)
+			p.StartMode = mode
+			p.ID = "01J9TESTPROVENANCE000000000"
+			p.Meta = map[string]any{"github.pull_request.number": float64(212)}
+			p.Links = map[string]string{"github.pull_request": "https://example.test/pr/212"}
+			p.StarterComponent = "acme/starter"
+
+			res, err := Run(context.Background(), p)
+			if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			snap, err := work.Read(res.SnapshotPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if snap.Links["github.pull_request"] != "https://example.test/pr/212" {
+				t.Errorf("links = %v", snap.Links)
+			}
+			if snap.Meta["github.pull_request.number"] != float64(212) {
+				t.Errorf("meta = %v", snap.Meta)
+			}
+
+			db, err := projection.Open(p.Home.DBFile())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			rows, err := db.Provenance(res.WorkID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rows) != 2 {
+				t.Fatalf("provenance rows = %+v, want 2", rows)
+			}
+			for _, r := range rows {
+				if r.SourceComponent != "acme/starter" || r.SourceOperation != "start" ||
+					r.RecordedAt != "2026-02-03T04:05:06Z" {
+					t.Errorf("row = %+v", r)
+				}
+			}
+			if rows[0].Section != "links" || rows[1].Section != "meta" {
+				t.Errorf("sections = %s, %s", rows[0].Section, rows[1].Section)
+			}
+		})
+	}
+}
+
+func TestRunWithoutStarterContextWritesNoProvenance(t *testing.T) {
+	p := params(t)
+	res, err := Run(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap, err := work.Read(res.SnapshotPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Meta) != 0 || len(snap.Links) != 0 {
+		t.Errorf("meta/links = %v / %v, want empty", snap.Meta, snap.Links)
+	}
+	db, err := projection.Open(p.Home.DBFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if rows, _ := db.Provenance(res.WorkID); len(rows) != 0 {
+		t.Errorf("provenance = %+v, want none", rows)
+	}
+}
+
+func TestRunUnwindsWhenProvenanceInsertFails(t *testing.T) {
+	p := params(t)
+	p.Links = map[string]string{"github.pull_request": "https://x"}
+	p.StarterComponent = "acme/starter"
+
+	// Migrate is idempotent, so a trigger planted on the migrated database
+	// survives create's own Migrate and makes only the provenance insert fail.
+	db, err := projection.Open(p.Home.DBFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	raw, err := sql.Open("sqlite", p.Home.DBFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`CREATE TRIGGER refuse BEFORE INSERT ON work_provenance BEGIN SELECT RAISE(ABORT, 'refused'); END`); err != nil {
+		t.Fatal(err)
+	}
+	raw.Close()
+
+	_, err = Run(context.Background(), p)
+	if diag.Token(err) != diag.MaterializationFailed.Token {
+		t.Fatalf("err = %v, want materialization-failed", err)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(p.WorkspaceRoot, "in-progress")); len(entries) != 0 {
+		t.Errorf("leftovers after unwind: %v", entries)
+	}
+	db, err = projection.Open(p.Home.DBFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if rows, _ := db.List(); len(rows) != 0 {
+		t.Errorf("works rows = %+v, want none", rows)
 	}
 }

@@ -1,0 +1,46 @@
+{
+  "name": "context-suite",
+  "version": "1.0.0",
+  "components": [
+    { "name": "starter", "role": "starter", "entrypoint": "starter", "pattern": "^demo-ctx-[0-9]+$" },
+    {
+      "name": "linker",
+      "role": "linker",
+      "key": "github.pull_request",
+      "entrypoint": "linker",
+      "discover": {
+        "automatic": true,
+        "on": [ { "event": "start:finalized", "starters": ["starter"] } ],
+        "inputs": ["work:worktree_path"]
+      }
+    },
+    {
+      "name": "linker2",
+      "role": "linker",
+      "key": "github.pull_request",
+      "entrypoint": "linker2",
+      "discover": {
+        "automatic": true,
+        "on": [ { "event": "start:finalized", "starters": ["starter"] } ],
+        "inputs": ["work:worktree_path"]
+      }
+    },
+    {
+      "name": "importer",
+      "role": "importer",
+      "entrypoint": "importer",
+      "on": [ { "event": "start:finalized", "starters": ["starter"] } ],
+      "manual": { "display_name": "Context Importer" },
+      "inputs": ["link:github.pull_request", "work:start_mode:optional"]
+    },
+    {
+      "name": "importer2",
+      "role": "importer",
+      "entrypoint": "importer2",
+      "on": [ { "event": "start:finalized", "starters": ["starter"] } ],
+      "manual": { "display_name": "Second Context Importer" },
+      "inputs": ["link:github.pull_request", "work:start_mode:optional"]
+    }
+  ],
+  "conventions": []
+}

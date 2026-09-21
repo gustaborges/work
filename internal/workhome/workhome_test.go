@@ -1,6 +1,8 @@
 package workhome
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
@@ -83,5 +85,19 @@ func TestEnsureLayout(t *testing.T) {
 		if !info.IsDir() {
 			t.Errorf("%s is not a directory", dir)
 		}
+	}
+}
+
+// resume and archive used to derive this key privately; the extension pipeline
+// takes the same lock, so the derivation must stay sha256(id) in hex.
+func TestWorkLockPathKeepsTheHistoricalKey(t *testing.T) {
+	h := At(filepath.Join(t.TempDir(), "dotwork"))
+	sum := sha256.Sum256([]byte("01WORKID"))
+	want := filepath.Join(h.LocksDir(), hex.EncodeToString(sum[:])+".lock")
+	if got := h.WorkLockPath("01WORKID"); got != want {
+		t.Errorf("WorkLockPath = %q, want %q", got, want)
+	}
+	if h.WorkLockPath("a") == h.WorkLockPath("b") {
+		t.Error("distinct Works share a lock")
 	}
 }
