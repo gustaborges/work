@@ -158,7 +158,8 @@ env WORK_DEBUG=
 # A linked package whose entrypoint vanished: a start failure warning, the
 # installation itself stays valid.
 work plugin install $SUITE --link
-rm $SUITE/linker
+[!windows] rm $SUITE/linker
+[windows] rm $SUITE/linker.exe
 env WORK_FIXTURE_MODE=linker2-none,importer-empty,importer2-empty
 work start demo-ctx-1 --base main --slug gone --prefix {slug} --yes
 stderr -count=1 'warning:'

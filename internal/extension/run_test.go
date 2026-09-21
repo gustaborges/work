@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -54,6 +55,9 @@ func TestFailureClassesMapToStableWarnings(t *testing.T) {
 func TestStartFailureWhenTheEntrypointIsMissing(t *testing.T) {
 	h := newHarness(t, "linker2-none")
 	entry := filepath.Join(h.ctx.Home.PluginsDir(), "context-suite", "source", "linker")
+	if runtime.GOOS == "windows" {
+		entry += ".exe"
+	}
 	if err := os.Remove(entry); err != nil {
 		t.Fatal(err)
 	}
