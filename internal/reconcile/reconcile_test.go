@@ -128,8 +128,8 @@ func TestRebuildClassifiesAndOrders(t *testing.T) {
 	assertSnapshotsUntouched(t, ws, before)
 
 	db := openDBAt(t, dbPath)
-	if v, _ := db.UserVersion(); v != 2 {
-		t.Errorf("user_version = %d, want 2", v)
+	if v, _ := db.UserVersion(); v != projection.SchemaVersion {
+		t.Errorf("user_version = %d, want %d", v, projection.SchemaVersion)
 	}
 	all, _ := db.List()
 	gotOrder := []string{all[0].Slug, all[1].Slug, all[2].Slug}
@@ -331,17 +331,17 @@ func TestOpenRebuildsWhenAbsentAndReconcilesWhenHealthy(t *testing.T) {
 	writeSnap(t, ws, "in-progress", "demo_alpha", "01ALPHA0000000000000000000", "alpha", "alpha", "in-progress", "2026-06-01T00:00:00Z")
 	dbPath := filepath.Join(t.TempDir(), "work.db")
 
-	// Absent -> rebuilt at v2.
+	// Absent -> rebuilt at the current version.
 	db, _, err := Open(ws, dbPath)
 	if err != nil {
 		t.Fatalf("Open (absent): %v", err)
 	}
-	if v, _ := db.UserVersion(); v != 2 {
-		t.Errorf("user_version after rebuild = %d, want 2", v)
+	if v, _ := db.UserVersion(); v != projection.SchemaVersion {
+		t.Errorf("user_version after rebuild = %d, want %d", v, projection.SchemaVersion)
 	}
 	db.Close()
 
-	// Healthy v2 -> reconcile only (row preserved, no drop of the real Work).
+	// Healthy current version -> reconcile only (row preserved, no drop of the real Work).
 	db2, rep, err := Open(ws, dbPath)
 	if err != nil {
 		t.Fatalf("Open (healthy): %v", err)
@@ -352,5 +352,55 @@ func TestOpenRebuildsWhenAbsentAndReconcilesWhenHealthy(t *testing.T) {
 	}
 	if _, ok, _ := db2.Get("01ALPHA0000000000000000000"); !ok {
 		t.Errorf("row lost on healthy Open")
+	}
+}
+
+func TestRebuildRestoresWorksButNotProvenance(t *testing.T) {
+	ws := t.TempDir()
+	const id = "01ALPHA0000000000000000000"
+	writeSnap(t, ws, "in-progress", "demo_alpha", id, "alpha", "alpha", "in-progress", "2026-06-01T00:00:00Z")
+	dbPath := filepath.Join(t.TempDir(), "work.db")
+
+	if _, err := Rebuild(ws, dbPath); err != nil {
+		t.Fatal(err)
+	}
+	db := openDBAt(t, dbPath)
+	if err := db.RecordProvenance(projection.Provenance{WorkID: id, Section: "links", Key: "a.b",
+		SourceComponent: "p/l", SourceOperation: "discover", RecordedAt: "2026-06-01T00:00:01Z"}); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	if _, err := Rebuild(ws, dbPath); err != nil {
+		t.Fatal(err)
+	}
+	db = openDBAt(t, dbPath)
+	if _, ok, _ := db.Get(id); !ok {
+		t.Fatal("Work not restored by the rebuild")
+	}
+	if got, _ := db.Provenance(id); len(got) != 0 {
+		t.Errorf("rebuild invented provenance: %+v", got)
+	}
+}
+
+func TestReconcileKeepsProvenanceOfExistingWorks(t *testing.T) {
+	ws := t.TempDir()
+	const id = "01ALPHA0000000000000000000"
+	writeSnap(t, ws, "in-progress", "demo_alpha", id, "alpha", "alpha", "in-progress", "2026-06-01T00:00:00Z")
+	dbPath := filepath.Join(t.TempDir(), "work.db")
+	if _, err := Rebuild(ws, dbPath); err != nil {
+		t.Fatal(err)
+	}
+	db := openDBAt(t, dbPath)
+	if err := db.RecordProvenance(projection.Provenance{WorkID: id, Section: "meta", Key: "a.b",
+		SourceComponent: "p/s", SourceOperation: "start", RecordedAt: "t"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Reconcile(db, ws); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := db.Provenance(id); len(got) != 1 {
+		t.Errorf("Reconcile's upsert cascaded provenance away: %+v", got)
 	}
 }

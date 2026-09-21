@@ -4,6 +4,7 @@ package integration
 
 import (
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/rogpeppe/go-internal/testscript"
+	_ "modernc.org/sqlite"
 
 	"github.com/gustaborges/work/internal/cli"
 	"github.com/gustaborges/work/internal/config"
@@ -62,6 +64,31 @@ func TestScripts(t *testing.T) {
 			return nil
 		},
 		Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
+			// provenance <section> <key> <component> <operation> asserts that the
+			// index holds that provenance row for some Work; negated, that it
+			// holds none. provenancecount <n> asserts the total number of rows.
+			"provenance": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 4 {
+					ts.Fatalf("usage: provenance <section> <key> <component> <operation>")
+				}
+				found := false
+				for _, r := range allProvenance(ts) {
+					if r.Section == args[0] && r.Key == args[1] && r.SourceComponent == args[2] && r.SourceOperation == args[3] {
+						found = true
+					}
+				}
+				if found == neg {
+					ts.Fatalf("provenance %v: found=%v, negated=%v", args, found, neg)
+				}
+			},
+			"provenancecount": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 1 {
+					ts.Fatalf("usage: provenancecount <n>")
+				}
+				if got := fmt.Sprint(len(allProvenance(ts))); got != args[0] {
+					ts.Fatalf("provenance rows = %s, want %s", got, args[0])
+				}
+			},
 			// verifycoherent asserts internal/work/verify.Check passes for
 			// every row in the projection database.
 			"verifycoherent": func(ts *testscript.TestScript, neg bool, args []string) {
@@ -446,6 +473,20 @@ func TestScripts(t *testing.T) {
 					ts.Fatalf("dborder: %v", err)
 				}
 			},
+			// dbdowngrade rewrites the index as an F4 build left it: no provenance
+			// table and PRAGMA user_version 2, with every Work row kept.
+			"dbdowngrade": func(ts *testscript.TestScript, neg bool, args []string) {
+				raw, err := sql.Open("sqlite", filepath.Join(ts.Getenv("WORK_HOME"), "state", "work.db"))
+				if err != nil {
+					ts.Fatalf("dbdowngrade: %v", err)
+				}
+				defer raw.Close()
+				for _, stmt := range []string{`DROP TABLE work_provenance`, `PRAGMA user_version = 2`} {
+					if _, err := raw.Exec(stmt); err != nil {
+						ts.Fatalf("dbdowngrade: %s: %v", stmt, err)
+					}
+				}
+			},
 			// dbuserversion <n> asserts the projection's PRAGMA user_version.
 			"dbuserversion": func(ts *testscript.TestScript, neg bool, args []string) {
 				if len(args) != 1 {
@@ -604,6 +645,7 @@ func buildPluginFixture(ts *testscript.TestScript, fixture string) string {
 	var m struct {
 		Components []struct {
 			Entrypoint string `json:"entrypoint"`
+			Runtime    string `json:"runtime"`
 		} `json:"components"`
 	}
 	if err := json.Unmarshal(manifest, &m); err != nil {
@@ -616,6 +658,21 @@ func buildPluginFixture(ts *testscript.TestScript, fixture string) string {
 	}
 	if err := os.WriteFile(filepath.Join(dir, "plugin.json"), manifest, 0o644); err != nil {
 		ts.Fatalf("write plugin.json for fixture %s: %v", fixture, err)
+	}
+
+	// A component with a runtime is a script: copy it verbatim, without an
+	// executable bit, so the runtime invocation path is what gets exercised.
+	for _, c := range m.Components {
+		if c.Runtime == "" || c.Entrypoint == "" {
+			continue
+		}
+		script, err := os.ReadFile(filepath.Join(pkgDir, c.Entrypoint))
+		if err != nil {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(dir, c.Entrypoint), script, 0o644); err != nil {
+			ts.Fatalf("copy fixture %s script %s: %v", fixture, c.Entrypoint, err)
+		}
 	}
 
 	// invalid-manifest has no main.go — it is never meant to build or run
@@ -681,4 +738,26 @@ func checkAll(dbPath string) error {
 		}
 	}
 	return nil
+}
+
+// allProvenance reads every provenance row of every Work in the script's index.
+func allProvenance(ts *testscript.TestScript) []projection.Provenance {
+	db, err := projection.Open(filepath.Join(ts.Getenv("WORK_HOME"), "state", "work.db"))
+	if err != nil {
+		ts.Fatalf("open index: %v", err)
+	}
+	defer db.Close()
+	works, err := db.List()
+	if err != nil {
+		ts.Fatalf("list works: %v", err)
+	}
+	var out []projection.Provenance
+	for _, w := range works {
+		rows, err := db.Provenance(w.ID)
+		if err != nil {
+			ts.Fatalf("provenance for %s: %v", w.ID, err)
+		}
+		out = append(out, rows...)
+	}
+	return out
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -17,9 +19,11 @@ import (
 	"github.com/gustaborges/work/internal/convention"
 	"github.com/gustaborges/work/internal/create"
 	"github.com/gustaborges/work/internal/diag"
+	"github.com/gustaborges/work/internal/extension"
 	"github.com/gustaborges/work/internal/gitx"
 	"github.com/gustaborges/work/internal/locator"
 	"github.com/gustaborges/work/internal/present"
+	"github.com/gustaborges/work/internal/projection"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/repoconfig"
 	"github.com/gustaborges/work/internal/repoconv"
@@ -189,6 +193,10 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		// resolveBase/resolveContribution and the interactive Mode step below.
 		starterBaseBranch string
 		starterStartModes []string
+		// starterMeta and starterLinks are the validated context the chosen
+		// Starter published; they seed the Work's first snapshot.
+		starterMeta  map[string]any
+		starterLinks map[string]string
 		// startMode is the resolved work.start_mode: left empty (create.Run
 		// defaults it to "new") when the Starter offered no start_modes, or
 		// set to the Mode step's answer otherwise (FR-021/FR-022).
@@ -276,11 +284,13 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			}
 			return present.Fatal(err)
 		}
-		if verr := starter.ValidateResponse(ref); verr != nil {
+		if verr := starter.ValidateResponse(ref, reg.PluginNameOf(comp.Alias)); verr != nil {
 			return present.Fatal(verr)
 		}
 		starterBaseBranch = ref.BaseBranch
 		starterStartModes = ref.StartModes
+		starterMeta = ref.Meta
+		starterLinks = ref.Links
 
 		if ref.Path != "" {
 			normalized, verr := reporef.ValidatePath(ref.Path)
@@ -838,6 +848,10 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		Convention:      conventionValue,
 		Starter:         starterLogicalName(reg, chosenStarter),
 		StartMode:       startMode,
+
+		Meta:             starterMeta,
+		Links:            starterLinks,
+		StarterComponent: chosenStarter.QualifiedName(),
 	})
 	if err != nil {
 		return err
@@ -852,6 +866,10 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	fmt.Fprintf(out, "work: branch %s  (from %s @ %s)\n", branch, base.Short, baseObj)
 	fmt.Fprintf(out, "work: path %s\n", res.WorktreePath)
 
+	// The Work is committed and reported: whatever the installed extensions
+	// do from here is a warning at most, never a failure of this command.
+	runAutomaticExtensions(ctx, home, reg, chosenStarter, res, errOut, cmd.InOrStdin(), interactive)
+
 	if shellintegration.Active() {
 		if err := shellintegration.WriteTargetPath(res.WorktreePath); err != nil {
 			return err
@@ -860,6 +878,38 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		shellintegration.ReportNoIntegration(errOut, res.WorktreePath, shellintegration.DetectShell())
 	}
 	return nil
+}
+
+// runAutomaticExtensions runs the Linkers and Importers eligible for the Work
+// that was just created, rendering their progress and warnings on the UI
+// channel. It returns nothing on purpose: the outcome never changes the exit
+// code, and when nothing is eligible it prints nothing and starts no process.
+func runAutomaticExtensions(ctx context.Context, home workhome.Home, reg *registry.Registry,
+	starterComp registry.Component, res create.Result, ui io.Writer, in io.Reader, interactive bool) {
+	state, err := work.Read(res.SnapshotPath)
+	if err != nil {
+		return
+	}
+	subject := extension.Subject{State: state, WorktreePath: res.WorktreePath, Starter: starterComp}
+	if !extension.Applicable(reg, extension.StartFinalized, subject) {
+		return
+	}
+
+	var index extension.Indexer
+	if db, err := projection.Open(home.DBFile()); err == nil {
+		defer db.Close()
+		index = db
+	}
+	report := extension.Run(ctx, extension.Context{
+		Home: home, Registry: reg, State: state, Starter: starterComp,
+		WorktreePath: res.WorktreePath, WorkDir: res.DirPath, SnapshotPath: res.SnapshotPath,
+		Index: index, Observer: newProgressObserver(ui, in, interactive),
+	})
+	if os.Getenv("WORK_DEBUG") != "" {
+		for _, d := range report.Diagnostics {
+			fmt.Fprintf(ui, "  debug: %s\n", d)
+		}
+	}
 }
 
 // runFirstRunSetup asks for the workspace root and/or a repository search

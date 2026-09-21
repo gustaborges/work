@@ -20,7 +20,7 @@ stderr '^error: usage: '
 
 # Every other Work indexed; bravo did not abort the rebuild.
 dbcount 2
-dbuserversion 2
+dbuserversion 3
 activeorder charlie alpha
 
 -- notjson --

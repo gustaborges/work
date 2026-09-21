@@ -236,6 +236,8 @@ type snapshotStateFull struct {
 		BaseBranch       string `json:"base_branch"`
 		BranchConvention string `json:"branch_convention"`
 	} `json:"work"`
+	Meta  map[string]any    `json:"meta"`
+	Links map[string]string `json:"links"`
 }
 
 func readSnapshot(t *testing.T, path string) snapshotStateFull {

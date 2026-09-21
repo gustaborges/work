@@ -62,3 +62,23 @@ func TestAsciiFallback(t *testing.T) {
 		t.Errorf("ascii Human = %q, want %q", got, want)
 	}
 }
+
+func TestWarn(t *testing.T) {
+	got := Warn(offTheme(), "gh/linker could not run", "Run with WORK_DEBUG=1 for details.")
+	want := "⚠ gh/linker could not run\n  → Run with WORK_DEBUG=1 for details.\n"
+	if got != want {
+		t.Errorf("Warn = %q, want %q", got, want)
+	}
+	if got := Warn(offTheme(), "just a summary", ""); got != "⚠ just a summary\n" {
+		t.Errorf("Warn without hint = %q", got)
+	}
+}
+
+func TestWarnAsciiFallbackAndColour(t *testing.T) {
+	if got := Warn(asciiTheme(), "careful", "retry"); got != "! careful\n  -> retry\n" {
+		t.Errorf("ASCII Warn = %q", got)
+	}
+	if got := Warn(onTheme(), "careful", ""); !strings.Contains(got, "\x1b[38;2;217;165;33m⚠\x1b[m careful\n") {
+		t.Errorf("⚠ not styled with the Warning token: %q", got)
+	}
+}

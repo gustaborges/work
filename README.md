@@ -159,6 +159,41 @@ above the `work:` result lines.
 
 `--json` is rejected on `work start` — it is a mutation.
 
+## Automatic context on start (plugins)
+
+A plugin can declare **Linkers** (discover a link for the Work) and **Importers**
+(bring artifacts into it) that run automatically once `work start` has created the
+Work. With only the reference package installed nothing extra happens or is printed.
+
+After the three result lines above, each eligible component reports on stderr, in a
+fixed order (`<alias>/<name>` ascending, Linkers first):
+
+```
+work: running acme/pr-linker (discover)
+work: acme/pr-linker: linked github.pull_request
+work: running acme/notes-importer (import)
+work: acme/notes-importer: imported 2 item(s)
+```
+
+- A Starter's `meta` and `links` are validated before anything is created and land in
+  the Work's first snapshot; a key that breaks the conventions fails the start with
+  `starter-response-invalid` (exit 37).
+- An Importer writes into a private stage; Work adds its files beside `worktree/` only if
+  none of them would overwrite anything, touch `worktree/` or `work-state.json`, or be a
+  symlink. Otherwise none of them are added.
+- **An extension can never fail the start.** Any problem is one warning on stderr
+  (`warning: <token>: <alias>/<name> (<operation>) for Work <id>: <summary>`), the Work stays
+  usable and the exit code stays 0. Tokens: `extension-start-failed`, `extension-failed`,
+  `extension-response-invalid`, `extension-output-refused`, `extension-persist-failed`,
+  `extension-interrupted`. Set `WORK_DEBUG=1` to add the exit status and the extension's
+  stderr tail. Ctrl-C during this phase stops the running extension, skips the rest and
+  still leaves you in the new Work.
+
+Plugin authors: the manifest shapes are in
+`specs/006-automatic-start-context/contracts/plugin-manifest-extensions.md`, the wire
+protocol in `.../extension-protocol.md`, and the published key grammar (Semantic
+Conventions v1) in `.../semantic-conventions.md`.
+
 ## Walkthrough — `work resume`
 
 Return to an existing in-progress Work. The list is ordered by last access, most
@@ -258,7 +293,8 @@ Creation is atomic up to the moment the projection row is committed. Any failure
 cancellation before that point — an invalid path, a bad slug, a branch collision, a
 crash mid-materialization, Ctrl-C at the prompt — unwinds every step and leaves **no
 orphan branch, worktree, directory, snapshot, or row**. Bootstrap and config always
-survive a failed creation.
+survive a failed creation. Once the Work is committed, a failing Linker or Importer is
+only a warning; it never rolls the Work back.
 
 ## Exit codes
 

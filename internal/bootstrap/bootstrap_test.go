@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/gustaborges/work/internal/config"
+	"github.com/gustaborges/work/internal/plugin"
+	"github.com/gustaborges/work/internal/plugininstall"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/workhome"
 	"github.com/gustaborges/work/seed"
@@ -153,5 +156,32 @@ func TestEnsureSeedDoesNotDuplicatePolicyEntry(t *testing.T) {
 	got, _ := config.Load(h.ConfigFile())
 	if len(got.RepositoryResolution.Locators) != 1 {
 		t.Errorf("policy entries = %v, want exactly one", got.RepositoryResolution.Locators)
+	}
+}
+
+func TestRegisterComponentsUsesSharedEntryBuilder(t *testing.T) {
+	h := testHome(t)
+	if err := EnsureSeed(h); err != nil {
+		t.Fatalf("EnsureSeed: %v", err)
+	}
+	reg, err := registry.Load(h.RegistryFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := plugin.Parse(seed.ManifestJSON())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range manifest.Components {
+		want := plugininstall.ComponentEntry(Alias, c)
+		var got registry.Component
+		for _, r := range reg.Components {
+			if r.Alias == Alias && r.Name == c.Name {
+				got = r
+			}
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("component %s: registry has %+v, ComponentEntry builds %+v", c.Name, got, want)
+		}
 	}
 }
