@@ -1,0 +1,13 @@
+{
+  "name": "invalid-input",
+  "version": "1.0.0",
+  "components": [
+    { "name": "malformed", "role": "importer", "entrypoint": "importer",
+      "on": [ { "event": "start:finalized" } ],
+      "inputs": ["link-github.pull_request"] },
+    { "name": "unknown-fact", "role": "importer", "entrypoint": "importer",
+      "on": [ { "event": "start:finalized" } ],
+      "inputs": ["work:head_sha"] }
+  ],
+  "conventions": []
+}

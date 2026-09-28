@@ -2,8 +2,6 @@ package archive
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -163,7 +161,7 @@ func archiveOne(ctx context.Context, p Params, row projection.Work, last bool) O
 	}
 
 	// Step 1: lock the Work.
-	release, err := lockfile.AcquireContext(ctx, p.Home.LockPath(lockKey(row.ID)), lockTimeout)
+	release, err := lockfile.AcquireContext(ctx, p.Home.WorkLockPath(row.ID), lockTimeout)
 	if err != nil {
 		o.State = StateLeftActive
 		if errors.Is(err, lockfile.ErrTimeout) {
@@ -334,12 +332,6 @@ func archiveOne(ctx context.Context, p Params, row projection.Work, last bool) O
 	stack = nil
 	o.State = StateArchived
 	return o
-}
-
-// lockKey is the advisory-lock name for a Work id: sha256(id) hex.
-func lockKey(id string) string {
-	sum := sha256.Sum256([]byte(id))
-	return hex.EncodeToString(sum[:])
 }
 
 func dirExists(path string) bool {

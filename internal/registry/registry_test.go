@@ -1,6 +1,12 @@
 package registry
 
 import (
+	"os"
+	"reflect"
+	"runtime"
+
+	"github.com/gustaborges/work/internal/ipc"
+	"github.com/gustaborges/work/internal/plugin"
 	"path/filepath"
 	"testing"
 )
@@ -158,6 +164,123 @@ func TestRemoveAliasRetractsComponentsPackageAndUnsharedConventions(t *testing.T
 	for _, keep := range []string{"shared", "seed"} {
 		if _, ok := r.ConventionByName(keep); !ok {
 			t.Errorf("convention %q was removed but p did not exclusively declare it", keep)
+		}
+	}
+}
+
+func TestActivationFieldsRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "registry.json")
+	in := &Registry{
+		Components: []Component{
+			{
+				Alias: "p", Name: "lnk", Role: "linker", Entrypoint: "l.py", Runtime: "python3", Key: "github.pull_request",
+				Discover: &plugin.Discover{
+					Automatic: true,
+					On:        []plugin.Subscription{{Event: plugin.EventStartFinalized, Starters: []string{"s"}}},
+					Inputs:    []string{"work:worktree_path"},
+				},
+				Manual: &plugin.Manual{DisplayName: "L", Description: "d"},
+				Inputs: []string{"work:worktree_path"},
+			},
+			{
+				Alias: "p", Name: "imp", Role: "importer", Entrypoint: "i.py",
+				On:     []plugin.Subscription{{Event: plugin.EventStartFinalized}},
+				Inputs: []string{"link:github.pull_request", "work:start_mode:optional"},
+			},
+		},
+		Packages: []Package{{Alias: "p", Origin: OriginLocalLinked, Reference: "/x", PluginName: "plugin-p"}},
+	}
+	if err := Save(path, in); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(in, out) {
+		t.Errorf("round trip changed the registry:\n in: %+v\nout: %+v", in, out)
+	}
+}
+
+func TestLegacyEntryLoadsInert(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "registry.json")
+	legacy := `{"components":[{"alias":"p","name":"i","role":"importer","entrypoint":"i"}],"conventions":[],"packages":[{"alias":"p","origin":"local-linked","reference":"/x"}]}`
+	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := r.Components[0]
+	if c.On != nil || c.Manual != nil || c.Inputs != nil || c.Discover != nil || c.Key != "" {
+		t.Errorf("legacy entry gained activation data: %+v", c)
+	}
+	if got := r.PluginNameOf("p"); got != "p" {
+		t.Errorf("PluginNameOf = %q, want the alias fallback", got)
+	}
+}
+
+func TestTargetAndEntrypointPath(t *testing.T) {
+	dir := filepath.Join("plugins")
+	native := Component{Alias: "a", Name: "n", Entrypoint: "starter"}
+	script := Component{Alias: "a", Name: "n", Entrypoint: "starter.py", Runtime: "python3"}
+
+	wantNative := filepath.Join(dir, "a", "source", "starter")
+	if runtime.GOOS == "windows" {
+		wantNative += ".exe"
+	}
+	if got := native.EntrypointPath(dir); got != wantNative {
+		t.Errorf("native EntrypointPath = %q, want %q", got, wantNative)
+	}
+	if got := native.Target(dir); got != (ipc.Target{Path: wantNative}) {
+		t.Errorf("native Target = %+v", got)
+	}
+
+	wantScript := filepath.Join(dir, "a", "source", "starter.py") // never ".exe": a script is not executable
+	if got := script.EntrypointPath(dir); got != wantScript {
+		t.Errorf("script EntrypointPath = %q, want %q", got, wantScript)
+	}
+	if got := script.Target(dir); got != (ipc.Target{Runtime: "python3", Path: wantScript}) {
+		t.Errorf("script Target = %+v", got)
+	}
+}
+
+func TestQualifiedNameAndPluginNameOf(t *testing.T) {
+	if got := (Component{Alias: "gh", Name: "linker"}).QualifiedName(); got != "gh/linker" {
+		t.Errorf("QualifiedName = %q", got)
+	}
+	r := &Registry{Packages: []Package{
+		{Alias: "gh", PluginName: "github-plugin"},
+		{Alias: "old"},
+	}}
+	if got := r.PluginNameOf("gh"); got != "github-plugin" {
+		t.Errorf("PluginNameOf(gh) = %q", got)
+	}
+	if got := r.PluginNameOf("old"); got != "old" {
+		t.Errorf("PluginNameOf(old) = %q, want alias fallback", got)
+	}
+	if got := r.PluginNameOf("missing"); got != "missing" {
+		t.Errorf("PluginNameOf(missing) = %q, want alias fallback", got)
+	}
+}
+
+func TestExtensionsReturnsOnlyImportersAndLinkers(t *testing.T) {
+	r := &Registry{Components: []Component{
+		{Alias: "a", Name: "s", Role: RoleStarter},
+		{Alias: "a", Name: "l", Role: plugin.RoleLinker},
+		{Alias: "a", Name: "i", Role: plugin.RoleImporter},
+		{Alias: "a", Name: "loc", Role: RoleRepositoryLocator},
+	}}
+	if got := r.Extensions(plugin.RoleLinker); len(got) != 1 || got[0].Name != "l" {
+		t.Errorf("Extensions(linker) = %+v", got)
+	}
+	if got := r.Extensions(plugin.RoleImporter); len(got) != 1 || got[0].Name != "i" {
+		t.Errorf("Extensions(importer) = %+v", got)
+	}
+	for _, role := range []string{RoleStarter, RoleRepositoryLocator, ""} {
+		if got := r.Extensions(role); got != nil {
+			t.Errorf("Extensions(%q) = %+v, want nothing", role, got)
 		}
 	}
 }

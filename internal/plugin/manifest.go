@@ -1,6 +1,6 @@
-// Package plugin parses and validates plugin.json. F1 only runs this against
-// the embedded seed, but the validator implements the rule-sets for all four
-// component roles so later slices need no change.
+// Package plugin parses and validates plugin.json for all four component roles,
+// including the Importer and Linker activation declarations (events, Starter
+// restrictions, manual availability and inputs).
 package plugin
 
 import (
@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/gustaborges/work/internal/semconv"
 )
 
 // Manifest is a parsed, validated plugin.json.
@@ -21,20 +23,67 @@ type Manifest struct {
 
 // Component is one entry of components[].
 type Component struct {
-	Name        string   `json:"name"`
-	Role        string   `json:"role"`
-	Entrypoint  string   `json:"entrypoint"`
-	Runtime     string   `json:"runtime,omitempty"`
-	Pattern     string   `json:"pattern,omitempty"`
-	Accepts     []string `json:"accepts,omitempty"`
-	DisplayName string   `json:"display_name,omitempty"`
-	Description string   `json:"description,omitempty"`
-	On          []string `json:"on,omitempty"`
-	Manual      bool     `json:"manual,omitempty"`
-	Inputs      []string `json:"inputs,omitempty"`
-	Key         string   `json:"key,omitempty"`
-	Discover    []string `json:"discover,omitempty"`
+	Name        string         `json:"name"`
+	Role        string         `json:"role"`
+	Entrypoint  string         `json:"entrypoint"`
+	Runtime     string         `json:"runtime,omitempty"`
+	Pattern     string         `json:"pattern,omitempty"`
+	Accepts     []string       `json:"accepts,omitempty"`
+	DisplayName string         `json:"display_name,omitempty"`
+	Description string         `json:"description,omitempty"`
+	On          []Subscription `json:"on,omitempty"`
+	Manual      *Manual        `json:"manual,omitempty"`
+	Inputs      []string       `json:"inputs,omitempty"`
+	Key         string         `json:"key,omitempty"`
+	Discover    *Discover      `json:"discover,omitempty"`
 }
+
+// Subscription subscribes a component to a core event. Starters, when
+// present, restricts it to Works produced by the named Starters: each entry is
+// a bare component name (any installed Starter with that name) or
+// "<alias>/<name>" (exactly that component). A Starter that is not installed
+// is not an error.
+type Subscription struct {
+	Event    string   `json:"event"`
+	Starters []string `json:"starters,omitempty"`
+}
+
+// Manual makes a component available for manual invocation under
+// DisplayName. It is validated and recorded but only acted on by a later
+// slice.
+type Manual struct {
+	DisplayName string `json:"display_name"`
+	Description string `json:"description,omitempty"`
+}
+
+// Discover is a Linker's automatic-discovery declaration. Automatic without
+// On is accepted and never runs on its own.
+type Discover struct {
+	Automatic bool           `json:"automatic"`
+	On        []Subscription `json:"on,omitempty"`
+	Inputs    []string       `json:"inputs,omitempty"`
+}
+
+// Input is a parsed "<work|meta|link>:<key>[:optional]" declaration.
+type Input struct {
+	Source   string
+	Key      string
+	Optional bool
+}
+
+// Input sources.
+const (
+	SourceWork = "work"
+	SourceMeta = "meta"
+	SourceLink = "link"
+)
+
+// EventStartFinalized is published once per `work start`, after the Work is
+// fully created.
+const EventStartFinalized = "start:finalized"
+
+// CoreEvents are the events a component may subscribe to.
+var CoreEvents = []string{EventStartFinalized}
 
 // Convention is one entry of conventions[].
 type Convention struct {
@@ -119,7 +168,28 @@ func ValidateAlias(alias string) error {
 	return nil
 }
 
-var inputsGrammar = regexp.MustCompile(`^(work|meta|link):[^:]+(:optional)?$`)
+var inputsGrammar = regexp.MustCompile(`^(work|meta|link):([^:]+)(:optional)?$`)
+
+// ParseInput parses one inputs entry and checks the key against the source:
+// a work input must name an exposed fact, meta and link inputs must be valid
+// Semantic Conventions keys.
+func ParseInput(s string) (Input, error) {
+	m := inputsGrammar.FindStringSubmatch(s)
+	if m == nil {
+		return Input{}, fmt.Errorf("inputs entry %q does not match <work|meta|link>:<key>[:optional]", s)
+	}
+	in := Input{Source: m[1], Key: m[2], Optional: m[3] != ""}
+	if in.Source == SourceWork {
+		if !slices.Contains(semconv.Facts, in.Key) {
+			return Input{}, fmt.Errorf("inputs entry %q: %q is not an exposed work fact (%s)", s, in.Key, strings.Join(semconv.Facts, ", "))
+		}
+		return in, nil
+	}
+	if err := semconv.ValidKey(in.Key); err != nil {
+		return Input{}, fmt.Errorf("inputs entry %q: %w", s, err)
+	}
+	return in, nil
+}
 
 // Parse decodes data as plugin.json and fully validates it.
 func Parse(data []byte) (*Manifest, error) {
@@ -154,7 +224,7 @@ func Parse(data []byte) (*Manifest, error) {
 		return nil, fmt.Errorf("plugin.json: components must be an array")
 	}
 	for i, rc := range rawComponents {
-		c, err := parseComponent(rc)
+		c, err := parseComponent(rc, m.Name)
 		if err != nil {
 			return nil, fmt.Errorf("plugin.json: components[%d]: %w", i, err)
 		}
@@ -176,7 +246,7 @@ func Parse(data []byte) (*Manifest, error) {
 	return &m, nil
 }
 
-func parseComponent(raw map[string]json.RawMessage) (Component, error) {
+func parseComponent(raw map[string]json.RawMessage, pluginName string) (Component, error) {
 	var c Component
 
 	for k := range raw {
@@ -240,13 +310,87 @@ func parseComponent(raw map[string]json.RawMessage) (Component, error) {
 			return c, fmt.Errorf("pattern %q is not a valid regular expression: %w", c.Pattern, err)
 		}
 	}
-	for _, in := range c.Inputs {
-		if !inputsGrammar.MatchString(in) {
-			return c, fmt.Errorf("inputs entry %q does not match <work|meta|link>:<key>[:optional]", in)
-		}
+	if err := validateActivation(c, pluginName); err != nil {
+		return c, err
 	}
 
 	return c, nil
+}
+
+// validateActivation checks the Importer/Linker declarations: events,
+// Starter restrictions, manual display name, inputs and Linker key ownership.
+func validateActivation(c Component, pluginName string) error {
+	if c.Role == RoleLinker {
+		if err := semconv.ValidatePublished(pluginName, c.Key); err != nil {
+			return fmt.Errorf("linker key: %w", err)
+		}
+	}
+	if err := validateSubscriptions("on", c.On, c.On != nil); err != nil {
+		return err
+	}
+	if c.Manual != nil && strings.TrimSpace(c.Manual.DisplayName) == "" {
+		return fmt.Errorf("manual.display_name must be a non-empty string")
+	}
+	if err := validateInputs(c.Inputs); err != nil {
+		return err
+	}
+	if d := c.Discover; d != nil {
+		if err := validateSubscriptions("discover.on", d.On, d.On != nil); err != nil {
+			return err
+		}
+		if err := validateInputs(d.Inputs); err != nil {
+			return fmt.Errorf("discover: %w", err)
+		}
+	}
+	return nil
+}
+
+func validateSubscriptions(field string, subs []Subscription, present bool) error {
+	if present && len(subs) == 0 {
+		return fmt.Errorf("%s must be a non-empty array of subscriptions", field)
+	}
+	for i, sub := range subs {
+		if !slices.Contains(CoreEvents, sub.Event) {
+			return fmt.Errorf("%s[%d]: %q is not a core event (%s)", field, i, sub.Event, strings.Join(CoreEvents, ", "))
+		}
+		if sub.Starters != nil && len(sub.Starters) == 0 {
+			return fmt.Errorf("%s[%d]: starters must be non-empty when present", field, i)
+		}
+		for _, st := range sub.Starters {
+			if !validStarterRef(st) {
+				return fmt.Errorf("%s[%d]: starters entry %q must be <name> or <alias>/<name>", field, i, st)
+			}
+		}
+	}
+	return nil
+}
+
+func validStarterRef(s string) bool {
+	if strings.TrimSpace(s) == "" {
+		return false
+	}
+	alias, name, qualified := strings.Cut(s, "/")
+	if !qualified {
+		return true
+	}
+	return alias != "" && name != "" && !strings.Contains(name, "/")
+}
+
+// validateInputs parses every entry and rejects a key repeated in any
+// namespace: the delivered document is keyed by the bare key.
+func validateInputs(inputs []string) error {
+	seen := map[string]string{}
+	for _, raw := range inputs {
+		in, err := ParseInput(raw)
+		if err != nil {
+			return err
+		}
+		if prev, dup := seen[in.Key]; dup {
+			return fmt.Errorf("inputs entries %q and %q name the same key %q", prev, raw, in.Key)
+		}
+		seen[in.Key] = raw
+	}
+	return nil
 }
 
 func parseConvention(raw map[string]json.RawMessage) (Convention, error) {

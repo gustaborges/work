@@ -1,0 +1,19 @@
+# F5 — with only the reference package installed, start prints nothing about
+# extensions and starts no extension process (SC-008, FR-041).
+
+gitrepo src
+env WS=$WORK/ws
+env WORK_FIXTURE_LOG=$WORK/launches.log
+
+work start $WORK/src --workspace $WS --base main --slug plain --prefix {slug} --yes
+stdout 'work: created [0-9A-HJKMNP-TV-Z]{26}'
+stdout 'work: branch plain  \(from main @ '
+stdout 'work: path '
+! stderr 'running'
+! stderr 'linked'
+! stderr 'imported'
+! stderr 'warning:'
+! exists $WORK/launches.log
+grep '"links": \{\}' $WS/in-progress/src_plain/work-state.json
+grep '"meta": \{\}' $WS/in-progress/src_plain/work-state.json
+provenancecount 0

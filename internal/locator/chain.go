@@ -41,7 +41,7 @@ func traverse(ctx context.Context, d Deps, ref Reference) (traverseResult, error
 		anyEligible = true
 
 		input := ipc.LocatorInput{Repository: proj, RepositoryRoots: d.Roots}
-		resp, err := ipc.InvokeLocator(comp.EntrypointPath(d.PluginsDir), input)
+		resp, err := ipc.InvokeLocator(comp.Target(d.PluginsDir), input)
 		if err != nil {
 			return traverseResult{}, errLocatorFailed(policyRef, err)
 		}

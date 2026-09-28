@@ -1,0 +1,13 @@
+{
+  "name": "invalid-unknown-field",
+  "version": "1.0.0",
+  "components": [
+    { "name": "in-on", "role": "importer", "entrypoint": "importer",
+      "on": [ { "event": "start:finalized", "priority": 1 } ] },
+    { "name": "in-manual", "role": "importer", "entrypoint": "importer",
+      "manual": { "display_name": "X", "position": 3 } },
+    { "name": "in-discover", "role": "linker", "key": "github.pull_request", "entrypoint": "linker",
+      "discover": { "automatic": true, "order": 2 } }
+  ],
+  "conventions": []
+}

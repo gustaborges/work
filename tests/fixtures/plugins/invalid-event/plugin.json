@@ -1,0 +1,9 @@
+{
+  "name": "invalid-event",
+  "version": "1.0.0",
+  "components": [
+    { "name": "imp", "role": "importer", "entrypoint": "importer",
+      "on": [ { "event": "work:archived" } ] }
+  ],
+  "conventions": []
+}

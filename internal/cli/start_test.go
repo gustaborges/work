@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -9,11 +10,14 @@ import (
 	"testing"
 
 	"github.com/gustaborges/work/internal/config"
+	"github.com/gustaborges/work/internal/create"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/gittest"
 	"github.com/gustaborges/work/internal/gitx"
+	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/repoconv"
 	"github.com/gustaborges/work/internal/repoidentity"
+	"github.com/gustaborges/work/internal/work"
 	"github.com/gustaborges/work/internal/workhome"
 	"github.com/gustaborges/work/seed"
 	fixtures "github.com/gustaborges/work/tests/fixtures/plugins"
@@ -370,5 +374,34 @@ func TestShellInitBash(t *testing.T) {
 	}
 	if !strings.Contains(out, "WORK_CD_FILE") {
 		t.Errorf("snippet missing WORK_CD_FILE:\n%s", out)
+	}
+}
+
+func TestAutomaticExtensionsPrintNothingWhenNothingIsEligible(t *testing.T) {
+	dir := t.TempDir()
+	snapshot := filepath.Join(dir, "work-state.json")
+	st := &work.State{
+		Work: work.WorkSection{
+			ID: "01J9TESTWORK0000000000000A", Slug: "s", Status: work.StatusInProgress, StartMode: work.StartModeNew,
+			Starter: "local-path-starter", Branch: "s", BaseBranch: "main", BranchConvention: "freeform",
+			CreatedAt: "2026-02-03T04:05:06Z", LastAccessedAt: "2026-02-03T04:05:06Z",
+		},
+	}
+	if err := work.Write(snapshot, st); err != nil {
+		t.Fatal(err)
+	}
+	// Only Starters are registered: there is no Linker or Importer to run.
+	reg := &registry.Registry{Components: []registry.Component{
+		{Alias: "work-reference", Name: "local-path-starter", Role: registry.RoleStarter},
+	}}
+
+	for _, interactive := range []bool{false, true} {
+		var ui bytes.Buffer
+		runAutomaticExtensions(context.Background(), workhome.At(filepath.Join(dir, "home")), reg, reg.Components[0],
+			create.Result{SnapshotPath: snapshot, WorktreePath: filepath.Join(dir, "worktree"), DirPath: dir},
+			&ui, strings.NewReader(""), interactive)
+		if ui.Len() != 0 {
+			t.Errorf("interactive=%v: printed %q with nothing eligible", interactive, ui.String())
+		}
 	}
 }

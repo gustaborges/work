@@ -72,7 +72,7 @@ func TestConcurrentMutationsOnOneWorkFailClean(t *testing.T) {
 
 			// Stand in for the winning operation holding the Work's lock while it
 			// works, longer than the loser will wait.
-			release, err := lockfile.Acquire(home.LockPath(lockKey(id)))
+			release, err := lockfile.Acquire(home.WorkLockPath(id))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -130,7 +130,7 @@ func TestConcurrentOperationsOnDifferentWorksDoNotContend(t *testing.T) {
 	}
 
 	// Hold work A's lock for the whole test.
-	releaseA, err := lockfile.Acquire(home.LockPath(lockKey(idA)))
+	releaseA, err := lockfile.Acquire(home.WorkLockPath(idA))
 	if err != nil {
 		t.Fatal(err)
 	}

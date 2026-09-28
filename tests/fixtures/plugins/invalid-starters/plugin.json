@@ -1,0 +1,13 @@
+{
+  "name": "invalid-starters",
+  "version": "1.0.0",
+  "components": [
+    { "name": "empty-entry", "role": "importer", "entrypoint": "importer",
+      "on": [ { "event": "start:finalized", "starters": [""] } ] },
+    { "name": "empty-list", "role": "importer", "entrypoint": "importer",
+      "on": [ { "event": "start:finalized", "starters": [] } ] },
+    { "name": "malformed-ref", "role": "importer", "entrypoint": "importer",
+      "on": [ { "event": "start:finalized", "starters": ["a/b/c"] } ] }
+  ],
+  "conventions": []
+}
