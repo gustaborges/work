@@ -54,6 +54,15 @@ free-form stderr. The entrypoint is run per the manifest's `runtime` (see
 `plugin-manifest-extensions.md`). The working directory is inherited and not part of the
 contract. Work imposes no timeout.
 
+Stdout is limited to **1 MiB (1,048,576 bytes)** for every role, including Starters
+and Locators. This permits substantial metadata and repository lists while bounding
+capture memory. Work drains and discards bytes beyond the limit; an oversized
+response is rejected in full, even if its retained prefix is valid JSON. Linkers
+and Importers receive `extension-response-invalid` and none of their output is
+persisted. User interruption and non-zero exit keep their own failure classes.
+After a successful exit, inherited pipes are closed after a bounded wait; captured
+output still undergoes normal validation.
+
 ### Linker discovery
 
 ```jsonc
@@ -74,12 +83,13 @@ always `links[<the Linker's declared key>]`; nothing the response names can redi
 ```jsonc
 // stdin
 { "inputs": { "github.pull_request": "https://…", "start_mode": "contribution" },
-  "output_dir": "/tmp/work/import-8f3a…" }
+  "output_dir": "/tmp/work-import-8f3a…" }
 // stdout: empty, or one JSON object whose content is ignored
 ```
 
 The Importer writes only under `output_dir` (a new, empty, mode-0700 directory unique to this
-execution, outside the Work). It is given no other location to write to.
+execution, directly under the trusted system temporary directory and outside the Work).
+It is given no other location to write to.
 
 ## 5. Persisting a Linker value
 
@@ -122,7 +132,7 @@ with the next component (FR-035, FR-036).
 |---|---|
 | `extension-start-failed` | entrypoint missing/unreadable, runtime missing, exec error |
 | `extension-failed` | non-zero exit |
-| `extension-response-invalid` | stdout not the allowed single JSON, wrong shape/type, `value` invalid |
+| `extension-response-invalid` | stdout exceeds 1 MiB, not the allowed single JSON, wrong shape/type, `value` invalid |
 | `extension-output-refused` | plan refused (§6) |
 | `extension-persist-failed` | snapshot write/lock failed, or incorporation failed and was rolled back |
 | `extension-interrupted` | user interrupt during the automatic phases (§8) |

@@ -15,12 +15,18 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "hold-pipes" {
+		time.Sleep(4 * time.Second)
+		return
+	}
+
 	role := strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe")
 	if err := run(role, os.Stdin, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", role, err)
@@ -105,6 +111,17 @@ func runStarter(mode string, stdin []byte, stdout io.Writer) error {
 func runLinker(role, mode string, stdout io.Writer) error {
 	value := func(v any) error { return json.NewEncoder(stdout).Encode(map[string]any{"value": v}) }
 	switch mode {
+	case "value-inherited":
+		if err := value("https://example.test/inherited"); err != nil {
+			return err
+		}
+		return holdPipes()
+	case "overflow":
+		if err := value("https://example.test/overflow"); err != nil {
+			return err
+		}
+		_, err := io.WriteString(stdout, strings.Repeat(" ", 2<<20))
+		return err
 	case "value":
 		if role == "linker2" {
 			return value("https://example.test/pr/212-from-linker2")
@@ -152,6 +169,15 @@ func runImporter(role, mode string, stdin []byte, stdout io.Writer) error {
 	}
 
 	switch mode {
+	case "ok-inherited", "overflow":
+		if err := put("notes/context.md", "imported context\n"); err != nil {
+			return err
+		}
+		if mode == "overflow" {
+			_, err := io.WriteString(stdout, "{}"+strings.Repeat(" ", 2<<20))
+			return err
+		}
+		return holdPipes()
 	case "empty":
 		return nil
 	case "exit1":
@@ -191,4 +217,14 @@ func runImporter(role, mode string, stdin []byte, stdout io.Writer) error {
 		return put("notes/context.md", "imported context\n")
 	}
 	return fmt.Errorf("unknown mode %q", mode)
+}
+
+// Spawn a short-lived descendant retaining both handles past Work's WaitDelay.
+func holdPipes() error {
+	cmd := exec.Command(os.Args[0], "hold-pipes")
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return cmd.Process.Release()
 }

@@ -10,7 +10,6 @@ package staging
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 )
 
 // Stage is a new, empty directory an Importer may write into.
@@ -19,15 +18,11 @@ type Stage struct {
 	Dir string
 }
 
-// NewStage creates a fresh stage under <os temp dir>/work/. It is mode 0700,
-// unique to this call, and never inside a Work or the workspace, so nothing an
+// NewStage creates a fresh stage directly under the trusted system temp
+// directory. It is mode 0700, unique to this call, and never inside a Work or the workspace, so nothing an
 // Importer writes there can land in a Work before Work has checked it.
 func NewStage() (*Stage, error) {
-	parent := filepath.Join(os.TempDir(), "work")
-	if err := os.MkdirAll(parent, 0o700); err != nil {
-		return nil, fmt.Errorf("staging: creating %s: %w", parent, err)
-	}
-	dir, err := os.MkdirTemp(parent, "import-*")
+	dir, err := os.MkdirTemp(os.TempDir(), "work-import-*")
 	if err != nil {
 		return nil, fmt.Errorf("staging: creating a stage: %w", err)
 	}

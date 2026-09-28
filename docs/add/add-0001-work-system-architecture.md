@@ -321,7 +321,7 @@ The core creates a unique temporary directory for each execution and sends only 
     "github.pull_request": "https://github.com/example/project/pull/212",
     "start_mode": "contribution"
   },
-  "output_dir": "/tmp/work/import-01J..."
+  "output_dir": "/tmp/work-import-01J..."
 }
 ```
 

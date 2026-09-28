@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -72,8 +73,8 @@ func TestNewStageIsPrivateUniqueAndRemovable(t *testing.T) {
 	if a.Dir == b.Dir {
 		t.Fatalf("two stages share %s", a.Dir)
 	}
-	if want := filepath.Join(os.TempDir(), "work"); filepath.Dir(a.Dir) != want || !strings.HasPrefix(filepath.Base(a.Dir), "import-") {
-		t.Errorf("stage %s is not under %s/import-*", a.Dir, want)
+	if want := os.TempDir(); filepath.Dir(a.Dir) != want || !strings.HasPrefix(filepath.Base(a.Dir), "work-import-") {
+		t.Errorf("stage %s is not under %s/work-import-*", a.Dir, want)
 	}
 	info, err := os.Stat(a.Dir)
 	if err != nil || !info.IsDir() {
@@ -182,5 +183,39 @@ func TestIncorporateEmptyPlanCreatesNothing(t *testing.T) {
 	n, err := Plan{}.Incorporate()
 	if n != 0 || err != nil {
 		t.Errorf("n=%d err=%v", n, err)
+	}
+}
+
+func TestNewStageIgnoresPreexistingWorkParent(t *testing.T) {
+	for _, kind := range []string{"directory", "symlink"} {
+		t.Run(kind, func(t *testing.T) {
+			temp := t.TempDir()
+			// Go uses TMPDIR on Unix and TMP/TEMP on Windows.
+			t.Setenv("TMPDIR", temp)
+			t.Setenv("TMP", temp)
+			t.Setenv("TEMP", temp)
+			parent := filepath.Join(temp, "work")
+			if kind == "symlink" {
+				if runtime.GOOS == "windows" {
+					t.Skip("symlink privileges vary on Windows")
+				}
+				if err := os.Symlink(t.TempDir(), parent); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := os.Mkdir(parent, 0o777); err != nil {
+				t.Fatal(err)
+			}
+			s, err := NewStage()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Remove()
+			if filepath.Dir(s.Dir) != temp {
+				t.Fatalf("stage redirected to %s", s.Dir)
+			}
+			if entries, err := os.ReadDir(parent); err != nil || len(entries) != 0 {
+				t.Fatalf("old parent used: %v, %v", entries, err)
+			}
+		})
 	}
 }

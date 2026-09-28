@@ -162,7 +162,7 @@ ls "$WS"/archived/*-demo_i1/          # work-state.json  notes/context.md  — a
 ```
 
 **Expect**: the Importer's logged input carries the link the Linker just discovered (phase 2
-re-evaluates after phase 1); nothing was written inside `worktree/`; no `work/import-*` stage
+re-evaluates after phase 1); nothing was written inside `worktree/`; no `work-import-*` stage
 remains in `$TMPDIR`; `importer-empty` succeeds silently; the artifacts survive archiving.
 
 ## S10 — Collisions are refused entirely (US5; FR-029, FR-033, SC-004)

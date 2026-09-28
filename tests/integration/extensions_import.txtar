@@ -24,7 +24,7 @@ grep '"role":"importer".*"github.pull_request":"https://example.test/pr/212-from
 grep '"role":"importer".*"output_dir":"[^"]*import-' $WORK/launches.log
 
 # No stage is left behind.
-[!windows] exec sh -c 'ls "$TMPDIR/work" | grep -c import- || true'
+[!windows] exec sh -c 'ls "$TMPDIR" | grep -c "^work-import-" || true'
 [!windows] stdout '^0$'
 
 # An Importer with no output succeeds silently.
@@ -91,5 +91,15 @@ stderr 'warning: extension-persist-failed: context-suite/importer \(import\) for
 ! exists $WS/in-progress/demo-ctx-1_rolledback/notes
 exists $WS/in-progress/demo-ctx-1_rolledback/worktree
 env WORK_FAIL_AT=
-[!windows] exec sh -c 'ls "$TMPDIR/work" | grep -c import- || true'
+[!windows] exec sh -c 'ls "$TMPDIR" | grep -c "^work-import-" || true'
+[!windows] stdout '^0$'
+
+# An oversized response cannot incorporate even a valid artifact, and start succeeds.
+env WORK_FIXTURE_MODE=linker-value,importer-overflow,importer2-empty
+work start demo-ctx-1 --base main --slug overflow --prefix {slug} --yes
+stdout 'work: created '
+stderr 'warning: extension-response-invalid: context-suite/importer'
+! stdout 'warning:'
+! exists $WS/in-progress/demo-ctx-1_overflow/notes
+[!windows] exec sh -c 'ls "$TMPDIR" | grep -c "^work-import-" || true'
 [!windows] stdout '^0$'

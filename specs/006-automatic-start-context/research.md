@@ -248,7 +248,7 @@ in another terminal would lose its `last_accessed_at` update).
 
 **Decision** (`internal/staging`, presentation-free):
 
-1. **Stage**: `os.MkdirTemp(<os temp>/work, "import-")` (mode 0700), unique per execution,
+1. **Stage**: `os.MkdirTemp(os.TempDir(), "work-import-*")` (mode 0700), unique per execution,
    outside the Work. Removed with `os.RemoveAll` in a `defer` on every path. A killed
    process can leave one behind; it is never read by any later run (each run makes a fresh
    name) and lives in the OS temp area.
@@ -373,3 +373,17 @@ are refused (R12) so Windows' privilege-gated symlinks never matter for incorpor
 uses `os.TempDir()`; per-Work lock reuse keeps the existing Windows lock implementation.
 Same 3-OS CI matrix; the `runtime-sh` fixture is skipped on Windows, and an equivalent
 `runtime: "cmd"`-free assertion is not attempted (no portable interpreter in the runner).
+
+### PR review hardening
+
+Stages are exclusively created directly under `os.TempDir()` using `work-import-*`,
+avoiding any predictable shared `work` parent. This relies on a trusted system
+temporary directory (normally sticky-bit `/tmp` on Unix); an attacker-controlled
+`TMPDIR` is outside that assumption. Staging still validates the whole output
+before incorporation and removes partial imports on every outcome.
+
+All component stdout is limited to 1 MiB, sufficient for the small value/object
+responses in the fixtures and substantial Starter metadata or Locator lists.
+Excess bytes are drained and discarded, then the whole response is rejected.
+There is no execution timeout. A zero exit with inherited pipes outliving the
+bounded drain wait proceeds to response validation; cancellation takes precedence.

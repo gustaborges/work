@@ -3,6 +3,7 @@ package ipc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -267,5 +268,103 @@ func TestRunMissingEntrypointDidNotExit(t *testing.T) {
 	}
 	if res.Exited || res.ExitCode != -1 {
 		t.Errorf("Exited = %v, ExitCode = %d, want a start failure (false, -1)", res.Exited, res.ExitCode)
+	}
+}
+
+func TestStdoutResponseBoundaries(t *testing.T) {
+	echo := buildEcho(t)
+	for _, size := range []int{StdoutLimitBytes - 1, StdoutLimitBytes, StdoutLimitBytes + 1, 16 * StdoutLimitBytes} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			t.Setenv("ECHO_MODE", "sized")
+			t.Setenv("ECHO_BYTES", fmt.Sprint(size-len(`{"value":"ok"}`)))
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			got, res, err := InvokeLinker(ctx, Target{Path: echo}, LinkerInput{})
+			if len(res.Stdout) != min(size, StdoutLimitBytes) {
+				t.Fatalf("captured %d bytes", len(res.Stdout))
+			}
+			if size > StdoutLimitBytes {
+				if !errors.Is(err, ErrInvalidResponse) || got.Value != "" {
+					t.Fatalf("overflow: value=%q err=%v", got.Value, err)
+				}
+			} else if err != nil || got.Value != "ok" {
+				t.Fatalf("value=%q err=%v", got.Value, err)
+			}
+		})
+	}
+}
+
+func TestStdoutOverflowAcrossRoles(t *testing.T) {
+	echo := buildEcho(t)
+	t.Setenv("ECHO_MODE", "sized")
+	t.Setenv("ECHO_BYTES", fmt.Sprint(StdoutLimitBytes))
+	target := Target{Path: echo}
+	if _, err := InvokeStarter(target, StarterInput{}); !errors.Is(err, ErrInvalidResponse) {
+		t.Errorf("starter: %v", err)
+	}
+	if _, err := InvokeLocator(target, LocatorInput{}); !errors.Is(err, ErrInvalidResponse) {
+		t.Errorf("locator: %v", err)
+	}
+	if _, err := InvokeImporter(context.Background(), target, ImporterInput{}); !errors.Is(err, ErrInvalidResponse) {
+		t.Errorf("importer: %v", err)
+	}
+	t.Setenv("ECHO_MODE", "sized-fail")
+	res, err := Run(target, nil)
+	if err == nil || errors.Is(err, ErrInvalidResponse) || !res.Exited || res.ExitCode != 3 {
+		t.Fatalf("nonzero overflow: res=%+v err=%v", res.ExitCode, err)
+	}
+}
+
+func TestContinuousStdoutCanBeCancelled(t *testing.T) {
+	echo := buildEcho(t)
+	t.Setenv("ECHO_MODE", "continuous")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	time.AfterFunc(200*time.Millisecond, cancel)
+	res, err := RunContext(ctx, Target{Path: echo}, nil)
+	if !errors.Is(err, context.Canceled) || len(res.Stdout) != StdoutLimitBytes {
+		t.Fatalf("captured=%d err=%v", len(res.Stdout), err)
+	}
+}
+
+func TestInheritedPipesStillValidateSuccessfulOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("descendant holds the fixture executable open during cleanup")
+	}
+	echo := buildEcho(t)
+	t.Setenv("ECHO_MODE", "inherited")
+	for _, output := range []string{`{"value":"ok"}`, `{"value":`} {
+		t.Setenv("ECHO_STDOUT", output)
+		got, res, err := InvokeLinker(context.Background(), Target{Path: echo}, LinkerInput{})
+		if res.ExitCode != 0 || string(res.Stdout) != output {
+			t.Fatalf("result: %+v", res)
+		}
+		if output == `{"value":"ok"}` {
+			if err != nil || got.Value != "ok" {
+				t.Fatalf("value=%q err=%v", got.Value, err)
+			}
+		} else if !errors.Is(err, ErrInvalidResponse) {
+			t.Fatalf("invalid output: %v", err)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	time.AfterFunc(200*time.Millisecond, cancel)
+	if _, err := RunContext(ctx, Target{Path: echo}, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("inherited pipes cancellation: %v", err)
+	}
+}
+
+func TestResponseBufferDrainsLargeAndSubsequentWrites(t *testing.T) {
+	var b responseBuffer
+	data := []byte(strings.Repeat("x", 2*StdoutLimitBytes))
+	for range 3 {
+		n, err := b.Write(data)
+		if err != nil || n != len(data) {
+			t.Fatalf("write=%d err=%v", n, err)
+		}
+	}
+	if !b.overflow || len(b.buf) != StdoutLimitBytes || string(b.buf) != strings.Repeat("x", StdoutLimitBytes) {
+		t.Fatal("capture did not keep the bounded prefix")
 	}
 }

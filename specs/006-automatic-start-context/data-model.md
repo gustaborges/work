@@ -166,7 +166,7 @@ Transitions never revisit a phase; the Importer phase re-evaluates eligibility f
 ## 8. Staging (`internal/staging`) — NEW
 
 ```text
-Stage       { Dir string }                                   // NewStage() creates <tmp>/work/import-*; Remove()
+Stage       { Dir string }                                   // NewStage() creates <tmp>/work-import-*; Remove()
 Item        { Rel string; Dest string; IsDir bool }
 Plan        { Items []Item }                                 // built read-only; sorted (dirs before their files)
 Refusal     { Rel string; Reason RefusalReason }             // implements error; Reason ∈ below

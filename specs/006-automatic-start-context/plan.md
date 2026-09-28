@@ -98,7 +98,7 @@ are *warnings* with six new stable tokens and no exit-code effect.
 - `registry.json`: additive, unversioned. `components[]` gains `on`, `manual`, `inputs`, `key`,
   `discover`; `packages[]` gains `plugin_name` (`contracts/plugin-manifest-extensions.md`).
 - `config/work.json`: **no new keys.**
-- Import stages: `<os temp dir>/work/import-*`, mode 0700, one per Importer execution, removed
+- Import stages: `<os temp dir>/work-import-*`, mode 0700, one per Importer execution, removed
   on every outcome; never inside the Work or the workspace.
 
 **Testing**:

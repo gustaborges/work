@@ -4,8 +4,11 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"testing"
+
+	"github.com/gustaborges/work/internal/diag"
 )
 
 // importerCounts returns the Imported counts reported, keyed by component.
@@ -140,5 +143,51 @@ func TestLaterImporterPlanSeesEarlierImportersFiles(t *testing.T) {
 	}
 	if !slices.Equal(running, []string{"context-suite/importer", "context-suite/importer2"}) {
 		t.Errorf("importer order = %v", running)
+	}
+}
+
+func TestInheritedPipesPersistLinkAndIncorporateImporter(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("descendant holds the fixture executable open during cleanup")
+	}
+	h := newHarness(t, "linker-value-inherited,importer-ok-inherited,importer2-empty")
+	rep := Run(context.Background(), h.ctx)
+	if len(rep.Warnings) != 0 {
+		t.Fatalf("warnings = %+v", rep.Warnings)
+	}
+	if h.snapshot().Links["github.pull_request"] != "https://example.test/inherited" || len(h.idx.entries) != 1 {
+		t.Fatal("link or provenance missing")
+	}
+	data, err := os.ReadFile(filepath.Join(h.ctx.WorkDir, "notes", "context.md"))
+	if err != nil || string(data) != "imported context\n" {
+		t.Fatalf("artifact=%q err=%v", data, err)
+	}
+	for _, dir := range stageDirsFrom(h) {
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Fatalf("stage survived: %s", dir)
+		}
+	}
+}
+
+func TestOversizedExtensionsHaveNoEffects(t *testing.T) {
+	for _, mode := range []string{"linker-overflow", "linker-value,importer-overflow,importer2-empty"} {
+		t.Run(mode, func(t *testing.T) {
+			h := newHarness(t, mode)
+			rep := Run(context.Background(), h.ctx)
+			if len(rep.Warnings) != 1 || rep.Warnings[0].Token != diag.WarnExtensionResponseInvalid {
+				t.Fatalf("warnings = %+v", rep.Warnings)
+			}
+			if mode == "linker-overflow" && (len(h.snapshot().Links) != 0 || len(h.idx.entries) != 0) {
+				t.Fatal("oversized link persisted")
+			}
+			if _, err := os.Stat(filepath.Join(h.ctx.WorkDir, "notes")); !os.IsNotExist(err) {
+				t.Fatalf("oversized import incorporated: %v", err)
+			}
+			for _, dir := range stageDirsFrom(h) {
+				if _, err := os.Stat(dir); !os.IsNotExist(err) {
+					t.Fatalf("stage survived: %s", dir)
+				}
+			}
+		})
 	}
 }

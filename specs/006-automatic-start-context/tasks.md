@@ -210,21 +210,21 @@ exclusive stage; Work plans, validates and incorporates the output beside `workt
 the stage on every outcome.
 
 **Independent Test**: `linker-value,importer-ok` yields `notes/context.md` in the Work directory
-(not in the worktree), the Importer received the discovered link, no `work/import-*` stage
+(not in the worktree), the Importer received the discovered link, no `work-import-*` stage
 remains, and archiving preserves the artifact (quickstart S9).
 
 Branch: `feature/006-automatic-start-context-p5-us4-importers`, cut from the phase 4 tip.
 
 ### Tests for US4
 
-- [X] T046 [P] [US4] Write `internal/staging/stage_test.go` and `internal/staging/plan_test.go`: `NewStage` creates a new empty mode-0700 directory under `os.TempDir()/work/import-*` unique per call; `Remove` deletes it; `Build` on a clean stage returns items sorted with directories before their files; a destination directory that already exists is merged into when nothing inside collides; an empty stage yields an empty plan; `Build` never modifies the filesystem.
+- [X] T046 [P] [US4] Write `internal/staging/stage_test.go` and `internal/staging/plan_test.go`: `NewStage` creates a new empty mode-0700 directory under `os.TempDir()/work-import-*` unique per call; `Remove` deletes it; `Build` on a clean stage returns items sorted with directories before their files; a destination directory that already exists is merged into when nothing inside collides; an empty stage yields an empty plan; `Build` never modifies the filesystem.
 - [X] T047 [P] [US4] Write `internal/staging/incorporate_test.go` (happy path): `Incorporate` creates directories then files with exclusive create, preserves relative paths, returns the created count, and copies (not renames) so it works across volumes.
 - [X] T048 [P] [US4] Write `internal/extension/run_importer_test.go`: an Importer becomes eligible after a Linker persists its required link and receives the discovered value; an Importer whose required input is absent does not run and produces no warning; restricted/manual-only Importers never run; the stage is removed on success, empty output and failure; empty output succeeds silently; progress events `Running`/`Imported(n)`; a later Importer's plan sees an earlier one's incorporated files (FR-033).
-- [X] T049 [P] [US4] Extend `tests/contract/extension_protocol_test.go` for Importers (empty stdout, object stdout ignored, garbage stdout) and `tests/integration/extensions_import.txtar` with S9: `importer-ok` output lands in the Work directory beside `worktree/`, nothing inside `worktree/`, the launch log shows the discovered link as input, no `work/import-*` remains, `importer-empty` succeeds silently, and after `work archive <id> --yes` the archived directory still holds `work-state.json` and `notes/context.md`.
+- [X] T049 [P] [US4] Extend `tests/contract/extension_protocol_test.go` for Importers (empty stdout, object stdout ignored, garbage stdout) and `tests/integration/extensions_import.txtar` with S9: `importer-ok` output lands in the Work directory beside `worktree/`, nothing inside `worktree/`, the launch log shows the discovered link as input, no `work-import-*` remains, `importer-empty` succeeds silently, and after `work archive <id> --yes` the archived directory still holds `work-state.json` and `notes/context.md`.
 
 ### Implementation for US4
 
-- [X] T050 [P] [US4] Implement `internal/staging/stage.go`: `NewStage` (`os.MkdirTemp` under `<os temp dir>/work/`, prefix `import-`, mode 0700, never inside the Work or workspace) and `Stage.Remove`.
+- [X] T050 [P] [US4] Implement `internal/staging/stage.go`: `NewStage` (`os.MkdirTemp` directly under the trusted system temp directory, prefix `work-import-`, mode 0700, never inside the Work or workspace) and `Stage.Remove`.
 - [X] T051 [P] [US4] Implement `internal/staging/plan.go`: `Build(stageDir, workDir) (Plan, error)` — walk the stage read-only, compute `Item{Rel, Dest, IsDir}` destinations beneath the Work directory (`<workspace>/in-progress/<repo>_<branch>/`), sort directories before their files; define `Refusal{Rel, Reason}` (implements `error`) and `RefusalReason` ∈ `Exists`, `ReservedPath`, `NotRegular`, `EscapesWork`. Build only the clean-path logic here; the refusal matrix is proven in US5.
 - [X] T052 [US4] Implement `internal/staging/incorporate.go`: `(Plan).Incorporate() (created int, err error)` — create directories then files with `O_EXCL`, record exactly what it created in an undo log; on any error remove the recorded items (files then directories, reverse) before returning; honor `WORK_FAIL_AT=incorporate:<n>` for fault injection.
 - [X] T053 [US4] Implement the Importer runner in `internal/extension/importer.go` and extend `Run` in `internal/extension/run.go` with the Importer phase: re-run `Eligible` against the post-Linker state (FR-019), then per Importer in order: emit `Running`, `NewStage`, invoke with `{inputs, output_dir}` via `ipc.RunContext`, accept empty stdout or one JSON object (content ignored), `staging.Build`, `Incorporate`, emit `Imported(n)` when `n > 0`, and always `Stage.Remove` (defer with no context dependency).

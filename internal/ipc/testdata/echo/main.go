@@ -14,11 +14,18 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "hold-pipes" {
+		time.Sleep(4 * time.Second)
+		return
+	}
+
 	data, _ := io.ReadAll(os.Stdin)
 	switch os.Getenv("ECHO_MODE") {
 	case "fail":
@@ -28,6 +35,31 @@ func main() {
 		fmt.Fprint(os.Stdout, "not json")
 	case "stdout":
 		fmt.Fprint(os.Stdout, os.Getenv("ECHO_STDOUT"))
+	case "inherited":
+		fmt.Fprint(os.Stdout, os.Getenv("ECHO_STDOUT"))
+		cmd := exec.Command(os.Args[0], "hold-pipes")
+		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+		if err := cmd.Start(); err != nil {
+			panic(err)
+		}
+		_ = cmd.Process.Release()
+	case "sized", "continuous", "sized-fail":
+		fmt.Fprint(os.Stdout, `{"value":"ok"}`)
+		n, _ := strconv.Atoi(os.Getenv("ECHO_BYTES"))
+		chunk := strings.Repeat(" ", 32<<10)
+		for n > 0 || os.Getenv("ECHO_MODE") == "continuous" {
+			count := len(chunk)
+			if os.Getenv("ECHO_MODE") != "continuous" && n < count {
+				count = n
+			}
+			if _, err := io.WriteString(os.Stdout, chunk[:count]); err != nil {
+				return
+			}
+			n -= count
+		}
+		if os.Getenv("ECHO_MODE") == "sized-fail" {
+			os.Exit(3)
+		}
 	case "silent":
 		// nothing
 	case "hang":

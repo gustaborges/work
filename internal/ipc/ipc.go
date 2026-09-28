@@ -21,8 +21,12 @@ import (
 // show why it failed under WORK_DEBUG, never an unbounded buffer.
 const stderrTailBytes = 4 << 10
 
-// killGrace bounds how long a cancelled run waits for the killed process's
-// pipes to drain, so a grandchild that inherited them cannot hold Work open.
+// StdoutLimitBytes is the maximum response size for every component role.
+// 1 MiB accommodates metadata and repository lists without unbounded capture.
+const StdoutLimitBytes = 1 << 20
+
+// killGrace bounds pipe draining after exit or cancellation, so a grandchild
+// that inherited the handles cannot hold Work open.
 const killGrace = 2 * time.Second
 
 // ErrInvalidResponse marks a component that exited 0 but whose stdout is not
@@ -62,6 +66,24 @@ func (b *tailBuffer) Write(p []byte) (int, error) {
 		b.buf = b.buf[len(b.buf)-b.max:]
 	}
 	return len(p), nil
+}
+
+// responseBuffer retains a bounded prefix but drains every write, so overflow
+// cannot block the component on a full stdout pipe.
+type responseBuffer struct {
+	buf      []byte
+	overflow bool
+}
+
+func (b *responseBuffer) Write(p []byte) (int, error) {
+	n := len(p)
+	remaining := StdoutLimitBytes - len(b.buf)
+	if n > remaining {
+		b.overflow = true
+		p = p[:remaining]
+	}
+	b.buf = append(b.buf, p...)
+	return n, nil
 }
 
 // RepositoryReference is the transient object a Starter produces and a Locator
@@ -128,7 +150,8 @@ type ImporterInput struct {
 // process could not be started or was killed. Exited is true when the process
 // did start and ended unsuccessfully — by a non-zero status or by a signal —
 // which is how a failure to run is told apart from a failure to start. Stderr
-// holds at most the last 4 KiB the process wrote.
+// holds at most the last 4 KiB the process wrote. Stdout holds at most
+// StdoutLimitBytes; overflow is an invalid response on a successful exit.
 type Result struct {
 	Stdout   []byte
 	Stderr   string
@@ -148,21 +171,24 @@ func Run(t Target, stdinJSON []byte) (Result, error) {
 func RunContext(ctx context.Context, t Target, stdinJSON []byte) (Result, error) {
 	cmd := t.command(ctx)
 	cmd.Stdin = bytes.NewReader(stdinJSON)
-	var out bytes.Buffer
+	var out responseBuffer
 	errTail := &tailBuffer{max: stderrTailBytes}
 	cmd.Stdout = &out
 	cmd.Stderr = errTail
 	cmd.WaitDelay = killGrace
 
 	runErr := cmd.Run()
-	res := Result{Stdout: out.Bytes(), Stderr: string(errTail.buf)}
+	res := Result{Stdout: out.buf, Stderr: string(errTail.buf)}
 
-	if runErr == nil {
-		return res, nil
-	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		res.ExitCode = -1
 		return res, fmt.Errorf("ipc: %s interrupted: %w", t, ctxErr)
+	}
+	if runErr == nil || (errors.Is(runErr, exec.ErrWaitDelay) && cmd.ProcessState != nil && cmd.ProcessState.Success()) {
+		if out.overflow {
+			return res, fmt.Errorf("ipc: %s: %w: stdout exceeds %d bytes; reduce the response size", t, ErrInvalidResponse, StdoutLimitBytes)
+		}
+		return res, nil
 	}
 	if ee, ok := errors.AsType[*exec.ExitError](runErr); ok {
 		res.ExitCode = ee.ExitCode()
