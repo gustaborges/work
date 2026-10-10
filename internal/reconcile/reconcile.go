@@ -43,7 +43,9 @@ var areas = []struct {
 // readable, schema-valid snapshot found directly under
 // <workspaceRoot>/in-progress/*/ and <workspaceRoot>/archived/*/. An unreadable
 // snapshot is skipped and collected, never fatal. It opens and closes its own
-// connection to dbPath, creating the file if absent.
+// connection to dbPath, creating the file if absent. The provenance table is
+// emptied too and is not restored: provenance is operational index data, not
+// part of the snapshot, so a rebuilt index has none for existing Works.
 func Rebuild(workspaceRoot, dbPath string) (Report, error) {
 	db, err := openDB(dbPath, true)
 	if err != nil {

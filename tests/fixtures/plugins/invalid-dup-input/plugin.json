@@ -1,0 +1,10 @@
+{
+  "name": "invalid-dup-input",
+  "version": "1.0.0",
+  "components": [
+    { "name": "imp", "role": "importer", "entrypoint": "importer",
+      "on": [ { "event": "start:finalized" } ],
+      "inputs": ["meta:x.y", "link:x.y"] }
+  ],
+  "conventions": []
+}

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/gustaborges/work/internal/diag"
+	"github.com/gustaborges/work/internal/extension"
 )
 
 // The diagnostic border is the one place a failure is rendered
@@ -138,5 +139,87 @@ func TestRenderDiagnosticWorkDebugDoesNotDuplicateBareDiagError(t *testing.T) {
 	renderDiagnostic(&b, strings.NewReader(""), true, diag.New(diag.TargetNotFound, "no Work has that id"))
 	if b.String() != "✘ no Work has that id\n" {
 		t.Errorf("bare diag error changed under WORK_DEBUG: %q", b.String())
+	}
+}
+
+func sampleWarning() diag.Warning {
+	return diag.NewWarning(diag.WarnExtensionFailed, "01J9WORK", "acme/pr-linker", "discover",
+		"it exited unsuccessfully; no link was recorded").WithHint("Run it again with WORK_DEBUG=1 to see why.")
+}
+
+func TestRenderWarningNonInteractiveIsFrozenLine(t *testing.T) {
+	t.Setenv("WORK_DEBUG", "")
+	var b bytes.Buffer
+	renderWarning(&b, strings.NewReader(""), false, sampleWarning())
+
+	want := "warning: extension-failed: acme/pr-linker (discover) for Work 01J9WORK: it exited unsuccessfully; no link was recorded\n"
+	if b.String() != want {
+		t.Errorf("line = %q, want %q", b.String(), want)
+	}
+}
+
+func TestRenderWarningInteractiveShowsSummaryAndHint(t *testing.T) {
+	t.Setenv("WORK_DEBUG", "")
+	t.Setenv("NO_COLOR", "1")
+	var b bytes.Buffer
+	renderWarning(&b, strings.NewReader(""), true, sampleWarning())
+
+	out := b.String()
+	if !strings.Contains(out, "acme/pr-linker: it exited unsuccessfully; no link was recorded") ||
+		!strings.Contains(out, "Run it again with WORK_DEBUG=1") {
+		t.Errorf("interactive warning = %q", out)
+	}
+	if strings.Contains(out, "warning: extension-failed") {
+		t.Errorf("interactive warning used the frozen line: %q", out)
+	}
+	if strings.Contains(out, "\x1b") {
+		t.Errorf("control sequences with NO_COLOR set: %q", out)
+	}
+}
+
+func TestRenderWarningDebugAppendsExitStatusAndStderr(t *testing.T) {
+	w := sampleWarning().WithCause(&extension.Failure{ExitCode: 3, Stderr: "boom\nsecond line\n", Err: errors.New("exited 3")})
+
+	t.Setenv("WORK_DEBUG", "")
+	var quiet bytes.Buffer
+	renderWarning(&quiet, strings.NewReader(""), false, w)
+	if strings.Contains(quiet.String(), "boom") || strings.Contains(quiet.String(), "exit status") {
+		t.Errorf("debug detail leaked without WORK_DEBUG: %q", quiet.String())
+	}
+
+	t.Setenv("WORK_DEBUG", "1")
+	var loud bytes.Buffer
+	renderWarning(&loud, strings.NewReader(""), false, w)
+	for _, want := range []string{"exit status: 3", "boom", "second line"} {
+		if !strings.Contains(loud.String(), want) {
+			t.Errorf("WORK_DEBUG output %q lacks %q", loud.String(), want)
+		}
+	}
+}
+
+func TestProgressObserverLinesAreFrozen(t *testing.T) {
+	var b bytes.Buffer
+	o := newProgressObserver(&b, strings.NewReader(""), false)
+	o.OnEvent(extension.Event{Kind: extension.Running, Component: "acme/pr-linker", Operation: extension.OpDiscover})
+	o.OnEvent(extension.Event{Kind: extension.Linked, Component: "acme/pr-linker", Operation: extension.OpDiscover, Key: "github.pull_request"})
+	o.OnEvent(extension.Event{Kind: extension.Running, Component: "acme/importer", Operation: extension.OpImport})
+	o.OnEvent(extension.Event{Kind: extension.Imported, Component: "acme/importer", Operation: extension.OpImport, Count: 2})
+
+	want := "work: running acme/pr-linker (discover)\n" +
+		"work: acme/pr-linker: linked github.pull_request\n" +
+		"work: running acme/importer (import)\n" +
+		"work: acme/importer: imported 2 item(s)\n"
+	if b.String() != want {
+		t.Errorf("progress =\n%q\nwant\n%q", b.String(), want)
+	}
+}
+
+func TestProgressObserverNoControlSequencesWhenNotATerminal(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	var b bytes.Buffer
+	o := newProgressObserver(&b, strings.NewReader(""), true)
+	o.OnEvent(extension.Event{Kind: extension.Running, Component: "acme/l", Operation: extension.OpDiscover})
+	if strings.Contains(b.String(), "\x1b") || b.String() != "work: running acme/l (discover)\n" {
+		t.Errorf("output = %q", b.String())
 	}
 }

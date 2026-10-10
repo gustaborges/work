@@ -21,6 +21,19 @@ func Human(th theme.Theme, summary, hint string) string {
 	return b.String()
 }
 
+// Warn renders a non-fatal warning for an interactive terminal: "⚠ <summary>"
+// and, when hint is non-empty, "  → <hint>". It mirrors Human but uses the
+// Warning token, because a warning never means the command failed. The
+// trailing newline is included.
+func Warn(th theme.Theme, summary, hint string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s %s\n", warning(th), summary)
+	if hint != "" {
+		fmt.Fprintf(&b, "  %s %s\n", th.Muted.Render(arrow(th)), hint)
+	}
+	return b.String()
+}
+
 // Cancel is the single line an interactively cancelled operation collapses to
 // (contracts/diagnostics.md; exit 20 is unchanged and set by the caller).
 func Cancel(th theme.Theme) string {
@@ -40,6 +53,14 @@ func danger(th theme.Theme) string {
 		return th.Danger.Render("x")
 	}
 	return th.Danger.Render("✘")
+}
+
+// warning returns the ⚠ mark under th, with "!" as the ASCII fallback.
+func warning(th theme.Theme) string {
+	if th.Cap.AsciiMarks {
+		return th.Warning.Render("!")
+	}
+	return th.Warning.Render("⚠")
 }
 
 func arrow(th theme.Theme) string {

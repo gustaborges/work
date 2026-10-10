@@ -1,0 +1,39 @@
+# F5 — the index moves to user_version 3 without losing anything, and provenance
+# is index-only: a rebuild restores Works, meta and links but not provenance.
+
+preparepluginfixture context-suite SUITE
+work plugin install $SUITE
+gitrepo src/demo-ctx-1
+work-set-roots $WORK/dothome/config/work.json $WORK/src
+env WS=$WORK/ws
+env WORK_FIXTURE_MODE=starter-context,linker-none,linker2-none,importer-empty,importer2-empty
+
+work start demo-ctx-1 --workspace $WS --base main --slug migrated --prefix {slug} --yes
+dbuserversion 3
+dbcount 1
+provenancecount 2
+snapsums before-sums
+
+# An F4-era index (user_version 2, no provenance table) is rebuilt once by the
+# first F5 command, from the snapshots, losslessly.
+dbdowngrade
+! work resume
+stderr '^error: usage: '
+dbuserversion 3
+dbcount 1
+snapsums after-sums
+cmp before-sums after-sums
+grep '"github.pull_request": "https://example.test/pr/212"' $WS/in-progress/demo-ctx-1_migrated/work-state.json
+grep '"github.pull_request.number": 212' $WS/in-progress/demo-ctx-1_migrated/work-state.json
+provenancecount 0
+verifycoherent
+
+# A later rebuild after the index is lost behaves the same: Works, meta and links
+# come back from the snapshots; provenance, being operational data, does not.
+rm $WORK_HOME/state/work.db
+! work resume
+dbuserversion 3
+dbcount 1
+provenancecount 0
+cmp before-sums after-sums
+verifycoherent

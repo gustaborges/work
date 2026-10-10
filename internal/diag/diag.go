@@ -167,3 +167,52 @@ func Format(err error) string {
 	}
 	return fmt.Sprintf("error: %s", err)
 }
+
+// Warning tokens: the stable outcomes of a failed extension. Unlike a
+// Category they carry no exit code, because an extension failure never fails
+// the command that ran it.
+const (
+	WarnExtensionStartFailed     = "extension-start-failed"
+	WarnExtensionFailed          = "extension-failed"
+	WarnExtensionResponseInvalid = "extension-response-invalid"
+	WarnExtensionOutputRefused   = "extension-output-refused"
+	WarnExtensionPersistFailed   = "extension-persist-failed"
+	WarnExtensionInterrupted     = "extension-interrupted"
+)
+
+// Warning is a non-fatal outcome reported beside a successful command. Summary
+// and Hint drive the interactive rendering; Cause is the retained internal
+// detail, shown only under WORK_DEBUG. None of them may carry a link or
+// metadata value or any content an extension produced.
+type Warning struct {
+	Token     string
+	Summary   string
+	Hint      string
+	Cause     error
+	Work      string // Work id
+	Component string // "<alias>/<name>"
+	Operation string // "discover" or "import"
+}
+
+// NewWarning builds a Warning for one component operating on one Work.
+func NewWarning(token, work, component, operation, summary string) Warning {
+	return Warning{Token: token, Work: work, Component: component, Operation: operation, Summary: summary}
+}
+
+// WithHint returns w with its interactive next-action hint set.
+func (w Warning) WithHint(hint string) Warning {
+	w.Hint = hint
+	return w
+}
+
+// WithCause returns w carrying an internal cause for WORK_DEBUG output.
+func (w Warning) WithCause(cause error) Warning {
+	w.Cause = cause
+	return w
+}
+
+// FormatWarning renders the single non-interactive stderr line
+// "warning: <token>: <alias>/<name> (<operation>) for Work <id>: <summary>".
+func FormatWarning(w Warning) string {
+	return fmt.Sprintf("warning: %s: %s (%s) for Work %s: %s", w.Token, w.Component, w.Operation, w.Work, w.Summary)
+}

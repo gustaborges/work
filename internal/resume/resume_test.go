@@ -153,7 +153,7 @@ func TestRunFailsCleanlyUnderContention(t *testing.T) {
 	home, db, id, snapPath, wtPath := fixture(t, work.StatusInProgress)
 
 	// Hold the Work's advisory lock from another "operation".
-	release, err := lockfile.Acquire(home.LockPath(lockKey(id)))
+	release, err := lockfile.Acquire(home.WorkLockPath(id))
 	if err != nil {
 		t.Fatal(err)
 	}

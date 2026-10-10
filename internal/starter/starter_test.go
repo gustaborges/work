@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/gustaborges/work/internal/bootstrap"
@@ -274,5 +275,63 @@ func TestInvokeParsesBaseBranchAndStartModes(t *testing.T) {
 	}
 	if len(ref.StartModes) != 2 || ref.StartModes[0] != "contribution" || ref.StartModes[1] != "fork" {
 		t.Errorf("StartModes = %v", ref.StartModes)
+	}
+}
+
+func TestInvokeCarriesMetaAndLinks(t *testing.T) {
+	plugins, c := buildTestdataStarter(t, "publisher")
+	ref, err := Invoke(plugins, c, "anything")
+	if err != nil {
+		t.Fatalf("Invoke: %v", err)
+	}
+	if got := ref.Links["github.pull_request"]; got != "https://example.test/pr/212" {
+		t.Errorf("Links = %v", ref.Links)
+	}
+	if got := ref.Meta["github.pull_request.number"]; got != float64(212) {
+		t.Errorf("Meta = %v", ref.Meta)
+	}
+	if err := ValidateResponse(ref, "publisher-plugin"); err != nil {
+		t.Errorf("ValidateResponse: %v", err)
+	}
+}
+
+func TestValidateResponsePublishedKeys(t *testing.T) {
+	cases := []struct {
+		name    string
+		ref     Reference
+		wantKey string // empty: valid
+	}{
+		{"valid public keys", Reference{
+			Meta:  map[string]any{"github.pull_request.number": 1},
+			Links: map[string]string{"github.pull_request": "https://x"},
+		}, ""},
+		{"own private key", Reference{Meta: map[string]any{"plugin.acme.token": "x"}}, ""},
+		{"neither", Reference{}, ""},
+		{"bad link key", Reference{Links: map[string]string{"GitHub.PR": "x"}}, "GitHub.PR"},
+		{"bad meta key", Reference{Meta: map[string]any{"single": 1}}, "single"},
+		{"foreign private key", Reference{Meta: map[string]any{"plugin.someone-else.x": 1}}, "plugin.someone-else.x"},
+		{"empty link value", Reference{Links: map[string]string{"github.pull_request": ""}}, "github.pull_request"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateResponse(tc.ref, "acme")
+			if tc.wantKey == "" {
+				if err != nil {
+					t.Fatalf("err = %v, want nil", err)
+				}
+				return
+			}
+			if diag.Token(err) != diag.StarterResponseInvalid.Token {
+				t.Fatalf("err = %v, want starter-response-invalid", err)
+			}
+			if !strings.Contains(err.Error(), tc.wantKey) {
+				t.Errorf("error %q does not name key %q", err, tc.wantKey)
+			}
+			for _, v := range tc.ref.Links {
+				if v != "" && strings.Contains(err.Error(), v) {
+					t.Errorf("error %q leaks a link value", err)
+				}
+			}
+		})
 	}
 }

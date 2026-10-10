@@ -2,8 +2,6 @@ package resume
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"time"
 
@@ -63,7 +61,7 @@ func Run(ctx context.Context, p Params) (Result, error) {
 	}
 	now = now.UTC()
 
-	release, err := lockfile.AcquireContext(ctx, p.Home.LockPath(lockKey(p.ID)), lockTimeout)
+	release, err := lockfile.AcquireContext(ctx, p.Home.WorkLockPath(p.ID), lockTimeout)
 	if err != nil {
 		if errors.Is(err, lockfile.ErrTimeout) {
 			return Result{}, diag.New(diag.MaterializationFailed,
@@ -100,11 +98,4 @@ func Run(ctx context.Context, p Params) (Result, error) {
 		res.IndexStale = true
 	}
 	return res, nil
-}
-
-// lockKey is the advisory-lock name for a Work id: sha256(id) hex, scoped per
-// Work rather than per (workspace, repo, branch) (research R17).
-func lockKey(id string) string {
-	sum := sha256.Sum256([]byte(id))
-	return hex.EncodeToString(sum[:])
 }

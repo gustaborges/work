@@ -12,7 +12,7 @@ import (
 )
 
 // SchemaVersion is the current PRAGMA user_version.
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 // Work is one row of the works table.
 type Work struct {
@@ -95,11 +95,24 @@ CREATE INDEX IF NOT EXISTS works_last_accessed ON works(last_accessed_at DESC);
 ALTER TABLE works ADD COLUMN archived_at TEXT;
 CREATE INDEX IF NOT EXISTS works_status ON works(status);
 `,
+	// 2 -> 3 (F5): operational provenance of meta/links keys. Index-only: the
+	// snapshot holds every value, and a rebuild does not restore this table.
+	`
+CREATE TABLE IF NOT EXISTS work_provenance (
+	work_id          TEXT NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+	section          TEXT NOT NULL CHECK (section IN ('meta', 'links')),
+	key              TEXT NOT NULL,
+	source_component TEXT NOT NULL,
+	source_operation TEXT NOT NULL,
+	recorded_at      TEXT NOT NULL,
+	PRIMARY KEY (work_id, section, key)
+);
+`,
 }
 
 // Migrate steps the database forward to SchemaVersion. It is idempotent and
-// safe on a fresh database (runs every step) and on an F1 database (runs only
-// the 1 -> 2 step, preserving existing rows).
+// safe on a fresh database (runs every step) and on an older one (runs only
+// the missing steps, preserving existing rows).
 func (d *DB) Migrate() error {
 	var version int
 	if err := d.sql.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
@@ -117,10 +130,14 @@ func (d *DB) Migrate() error {
 	return nil
 }
 
-// Reset drops the works table and recreates it empty at the current
-// SchemaVersion. It backs a full index rebuild (internal/reconcile); the
-// canonical snapshots are the authority and are never touched.
+// Reset drops the works and provenance tables and recreates them empty at the
+// current SchemaVersion. It backs a full index rebuild (internal/reconcile);
+// the canonical snapshots are the authority and are never touched. Provenance
+// goes first because it references works.
 func (d *DB) Reset() error {
+	if _, err := d.sql.Exec("DROP TABLE IF EXISTS work_provenance"); err != nil {
+		return fmt.Errorf("projection: reset: drop provenance: %w", err)
+	}
 	if _, err := d.sql.Exec("DROP TABLE IF EXISTS works"); err != nil {
 		return fmt.Errorf("projection: reset: drop: %w", err)
 	}
@@ -139,8 +156,19 @@ func (d *DB) UserVersion() (int, error) {
 	return v, nil
 }
 
-// Upsert inserts w or replaces the existing row with the same id.
+// execer is the part of *sql.DB and *sql.Tx that writes need, so one upsert
+// serves both a bare call and a transaction.
+type execer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
+// Upsert inserts w or replaces the existing row with the same id. It never
+// deletes the row first, so a Work's provenance is not cascaded away.
 func (d *DB) Upsert(w Work) error {
+	return upsertWork(d.sql, w)
+}
+
+func upsertWork(x execer, w Work) error {
 	const q = `
 INSERT INTO works (id, slug, status, start_mode, starter, branch, base_branch,
 	branch_convention, repo_name, dir_path, worktree_path, snapshot_path,
@@ -154,7 +182,7 @@ ON CONFLICT(id) DO UPDATE SET
 	snapshot_path=excluded.snapshot_path, created_at=excluded.created_at,
 	last_accessed_at=excluded.last_accessed_at, archived_at=excluded.archived_at
 `
-	_, err := d.sql.Exec(q, w.ID, w.Slug, w.Status, w.StartMode, w.Starter, w.Branch,
+	_, err := x.Exec(q, w.ID, w.Slug, w.Status, w.StartMode, w.Starter, w.Branch,
 		w.BaseBranch, w.BranchConvention, w.RepoName, w.DirPath, w.WorktreePath,
 		w.SnapshotPath, w.CreatedAt, w.LastAccessedAt, nullIfEmpty(w.ArchivedAt))
 	if err != nil {
@@ -266,4 +294,87 @@ func (d *DB) MarkArchived(id string, row Work) error {
 		return fmt.Errorf("projection: mark-archived %s: %w", id, err)
 	}
 	return nil
+}
+
+// Provenance records which component last supplied a meta or links key of a
+// Work and how. Only the current source is kept: a later publication replaces
+// it (last source wins). The value itself lives only in the snapshot.
+type Provenance struct {
+	WorkID string
+	// Section is "meta" or "links".
+	Section string
+	Key     string
+	// SourceComponent is the component's "<alias>/<name>".
+	SourceComponent string
+	// SourceOperation is "start" for a Starter's publication and "discover"
+	// for a Linker's.
+	SourceOperation string
+	// RecordedAt is RFC 3339 UTC.
+	RecordedAt string
+}
+
+const upsertProvenanceSQL = `
+INSERT INTO work_provenance (work_id, section, key, source_component, source_operation, recorded_at)
+VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT(work_id, section, key) DO UPDATE SET
+	source_component=excluded.source_component,
+	source_operation=excluded.source_operation,
+	recorded_at=excluded.recorded_at
+`
+
+func recordProvenance(x execer, entries []Provenance) error {
+	for _, p := range entries {
+		if _, err := x.Exec(upsertProvenanceSQL, p.WorkID, p.Section, p.Key,
+			p.SourceComponent, p.SourceOperation, p.RecordedAt); err != nil {
+			return fmt.Errorf("projection: provenance %s %s.%s: %w", p.WorkID, p.Section, p.Key, err)
+		}
+	}
+	return nil
+}
+
+// UpsertWithProvenance writes the Work row and its provenance entries in one
+// transaction, so no Work is indexed without the provenance of the context it
+// was created with. An entry that fails leaves no row behind.
+func (d *DB) UpsertWithProvenance(w Work, entries []Provenance) error {
+	tx, err := d.sql.Begin()
+	if err != nil {
+		return fmt.Errorf("projection: upsert %s: %w", w.ID, err)
+	}
+	defer tx.Rollback()
+	if err := upsertWork(tx, w); err != nil {
+		return err
+	}
+	if err := recordProvenance(tx, entries); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("projection: upsert %s: %w", w.ID, err)
+	}
+	return nil
+}
+
+// RecordProvenance upserts entries, replacing the previous source of each
+// (work, section, key).
+func (d *DB) RecordProvenance(entries ...Provenance) error {
+	return recordProvenance(d.sql, entries)
+}
+
+// Provenance returns a Work's provenance rows ordered by section then key.
+func (d *DB) Provenance(workID string) ([]Provenance, error) {
+	rows, err := d.sql.Query(`SELECT work_id, section, key, source_component, source_operation, recorded_at
+FROM work_provenance WHERE work_id = ? ORDER BY section, key`, workID)
+	if err != nil {
+		return nil, fmt.Errorf("projection: provenance %s: %w", workID, err)
+	}
+	defer rows.Close()
+
+	var out []Provenance
+	for rows.Next() {
+		var p Provenance
+		if err := rows.Scan(&p.WorkID, &p.Section, &p.Key, &p.SourceComponent, &p.SourceOperation, &p.RecordedAt); err != nil {
+			return nil, fmt.Errorf("projection: scan provenance: %w", err)
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
 }
