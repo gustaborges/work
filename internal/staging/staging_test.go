@@ -59,6 +59,11 @@ func relOf(p Plan) []string {
 }
 
 func TestNewStageIsPrivateUniqueAndRemovable(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		// macOS commonly supplies TMPDIR with a trailing separator.
+		t.Setenv("TMPDIR", t.TempDir()+string(filepath.Separator))
+	}
+
 	a, err := NewStage()
 	if err != nil {
 		t.Fatal(err)
@@ -73,7 +78,7 @@ func TestNewStageIsPrivateUniqueAndRemovable(t *testing.T) {
 	if a.Dir == b.Dir {
 		t.Fatalf("two stages share %s", a.Dir)
 	}
-	if want := os.TempDir(); filepath.Dir(a.Dir) != want || !strings.HasPrefix(filepath.Base(a.Dir), "work-import-") {
+	if want := filepath.Clean(os.TempDir()); filepath.Dir(a.Dir) != want || !strings.HasPrefix(filepath.Base(a.Dir), "work-import-") {
 		t.Errorf("stage %s is not under %s/work-import-*", a.Dir, want)
 	}
 	info, err := os.Stat(a.Dir)
