@@ -1,0 +1,66 @@
+# F5 US1 — installing Importer/Linker declarations (quickstart S1-S3).
+
+# S1: context-suite installs and every declaration reaches the registry.
+preparepluginfixture context-suite SUITE
+work plugin install $SUITE
+stdout 'work: installed context-suite \(local-pinned\)'
+grep '"key": "github.pull_request"' $WORK/dothome/state/registry.json
+grep '"automatic": true' $WORK/dothome/state/registry.json
+grep '"event": "start:finalized"' $WORK/dothome/state/registry.json
+grep '"display_name": "Context Importer"' $WORK/dothome/state/registry.json
+grep '"work:start_mode:optional"' $WORK/dothome/state/registry.json
+grep '"plugin_name": "context-suite"' $WORK/dothome/state/registry.json
+
+# `work plugin list` is unchanged: origin and pinned reference only.
+work plugin list
+stdout 'context-suite  local-pinned'
+stdout 'importer2 \(importer\)'
+! stdout 'start:finalized'
+! stdout 'inputs'
+
+# A restriction to a Starter that is not installed still installs.
+preparepluginfixture restricted-suite RESTRICTED
+work plugin install $RESTRICTED
+stdout 'work: installed restricted-suite'
+
+# S2: every malformed variant is plugin-invalid and registers nothing.
+cp $WORK/dothome/state/registry.json before.json
+preparepluginfixture invalid-event BAD1
+! work plugin install $BAD1
+stderr 'error: plugin-invalid:'
+preparepluginfixture invalid-input BAD2
+! work plugin install $BAD2
+stderr 'error: plugin-invalid:'
+preparepluginfixture invalid-dup-input BAD3
+! work plugin install $BAD3
+stderr 'error: plugin-invalid:'
+preparepluginfixture invalid-key-owner BAD4
+! work plugin install $BAD4
+stderr 'error: plugin-invalid:'
+preparepluginfixture invalid-manual BAD5
+! work plugin install $BAD5
+stderr 'error: plugin-invalid:'
+cmp $WORK/dothome/state/registry.json before.json
+! exists $WORK/dothome/plugins/invalid-event
+! exists $WORK/dothome/plugins/invalid-input
+! exists $WORK/dothome/plugins/invalid-dup-input
+! exists $WORK/dothome/plugins/invalid-key-owner
+! exists $WORK/dothome/plugins/invalid-manual
+
+# S3: a runtime that is not on PATH fails the install with exit 34, nothing kept.
+preparepluginfixture invalid-runtime BADRT
+! work plugin install $BADRT
+stderr 'error: plugin-install-failed: .*"no-such-interpreter".*not found on PATH'
+cmp $WORK/dothome/state/registry.json before.json
+! exists $WORK/dothome/plugins/invalid-runtime
+
+# S3 (Unix): an interpreted Starter with no exec bit runs through its runtime.
+[!exec:sh] skip 'no sh'
+[windows] skip 'runtime-sh is Unix-only'
+preparepluginfixture runtime-sh SH
+work plugin install $SH
+gitrepo src/runtime-sh-repo
+work-set-roots $WORK/dothome/config/work.json $WORK/src
+work start demo-sh-1 --workspace $WORK/ws --base main --slug via-sh --prefix {slug} --yes
+stdout 'work: created [0-9A-HJKMNP-TV-Z]{26}'
+grep '"starter": "runtime-sh/starter"|"starter": "starter"' $WORK/ws/in-progress/runtime-sh-repo_via-sh/work-state.json

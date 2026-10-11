@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -100,6 +101,10 @@ func Install(pluginsDir string, reg *registry.Registry, source string, opts Opti
 		}
 	}
 
+	if err := preflightRuntimes(manifest); err != nil {
+		return Result{}, err
+	}
+
 	err = StageThenSwap(pluginsDir, alias, func(staging string) error {
 		if opts.Link {
 			return linkSource(staging, contentDir)
@@ -114,24 +119,11 @@ func Install(pluginsDir string, reg *registry.Registry, source string, opts Opti
 	for _, cv := range manifest.Conventions {
 		conventionNames = append(conventionNames, cv.Name)
 	}
-	pkg := registry.Package{Alias: alias, Origin: origin, Reference: reference, Conventions: conventionNames}
+	pkg := registry.Package{Alias: alias, Origin: origin, Reference: reference, Conventions: conventionNames, PluginName: manifest.Name}
 	reg.RemoveAlias(alias)
 	reg.UpsertPackage(pkg)
 	for _, c := range manifest.Components {
-		entry := registry.Component{
-			Alias:       alias,
-			Name:        c.Name,
-			Role:        c.Role,
-			Entrypoint:  c.Entrypoint,
-			Runtime:     c.Runtime,
-			Pattern:     c.Pattern,
-			Accepts:     c.Accepts,
-			DisplayName: c.DisplayName,
-			Description: c.Description,
-		}
-		if c.IsFallbackStarter() {
-			entry.StarterLayer = registry.LayerFallback
-		}
+		entry := ComponentEntry(alias, c)
 		reg.UpsertComponent(entry)
 	}
 	for _, cv := range manifest.Conventions {
@@ -139,6 +131,54 @@ func Install(pluginsDir string, reg *registry.Registry, source string, opts Opti
 	}
 
 	return Result{Package: pkg, Components: manifest.Components}, nil
+}
+
+// ComponentEntry is the one place a manifest component becomes a registry
+// entry, shared by Install and the seed bootstrap so activation data cannot
+// drift between the two paths. A Linker's discover.inputs is copied into the
+// single Inputs slot the runtime reads.
+func ComponentEntry(alias string, c plugin.Component) registry.Component {
+	entry := registry.Component{
+		Alias:       alias,
+		Name:        c.Name,
+		Role:        c.Role,
+		Entrypoint:  c.Entrypoint,
+		Runtime:     c.Runtime,
+		Pattern:     c.Pattern,
+		Accepts:     c.Accepts,
+		DisplayName: c.DisplayName,
+		Description: c.Description,
+		On:          c.On,
+		Manual:      c.Manual,
+		Inputs:      c.Inputs,
+		Key:         c.Key,
+	}
+	if d := c.Discover; d != nil {
+		disc := *d
+		entry.Discover = &disc
+		entry.Inputs = d.Inputs
+	}
+	if c.IsFallbackStarter() {
+		entry.StarterLayer = registry.LayerFallback
+	}
+	return entry
+}
+
+// preflightRuntimes fails when a declared runtime is not on PATH, before
+// anything is staged or registered: a package that could never start is
+// better refused now than warned about on every later start.
+func preflightRuntimes(m *plugin.Manifest) error {
+	for _, c := range m.Components {
+		if c.Runtime == "" {
+			continue
+		}
+		if _, err := exec.LookPath(c.Runtime); err != nil {
+			return diag.Newf(diag.PluginInstallFailed,
+				"the runtime %q declared by component %q was not found on PATH", c.Runtime, c.Name).
+				WithHint(fmt.Sprintf("Install %q or fix PATH, then install again.", c.Runtime))
+		}
+	}
+	return nil
 }
 
 // obtainContent resolves source into a readable directory containing

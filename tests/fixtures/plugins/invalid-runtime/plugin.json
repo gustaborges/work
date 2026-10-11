@@ -1,0 +1,8 @@
+{
+  "name": "invalid-runtime",
+  "version": "1.0.0",
+  "components": [
+    { "name": "starter", "role": "starter", "entrypoint": "starter.sh", "runtime": "no-such-interpreter" }
+  ],
+  "conventions": []
+}

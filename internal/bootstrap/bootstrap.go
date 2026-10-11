@@ -266,20 +266,7 @@ func registerComponents(h workhome.Home, manifest *plugin.Manifest) error {
 		return diag.Wrap(diag.BootstrapFailed, err, "cannot read the component registry")
 	}
 	for _, c := range manifest.Components {
-		entry := registry.Component{
-			Alias:       Alias,
-			Name:        c.Name,
-			Role:        c.Role,
-			Entrypoint:  c.Entrypoint,
-			Runtime:     c.Runtime,
-			Pattern:     c.Pattern,
-			Accepts:     c.Accepts,
-			DisplayName: c.DisplayName,
-			Description: c.Description,
-		}
-		if c.IsFallbackStarter() {
-			entry.StarterLayer = registry.LayerFallback
-		}
+		entry := plugininstall.ComponentEntry(Alias, c)
 		reg.UpsertComponent(entry)
 	}
 	for _, cv := range manifest.Conventions {

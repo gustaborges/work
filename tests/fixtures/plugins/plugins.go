@@ -1,8 +1,10 @@
 // Package plugins builds the fake plugin packages in this directory
 // (specific-starter, colliding-starter, invalid-manifest, fallback-starter-a,
-// fallback-starter-b) into installable directories, so tests/plugininstall,
-// tests/contract, and tests/integration can exercise `work plugin install`
-// and internal/starter.Match without a real third-party plugin.
+// fallback-starter-b, context-suite, restricted-suite, runtime-sh and the
+// manifest-only invalid-* packages) into installable directories, so
+// tests/plugininstall, tests/contract, and tests/integration can exercise
+// `work plugin install`, internal/starter.Match and the automatic-context
+// extensions without a real third-party plugin.
 package plugins
 
 import (
@@ -22,9 +24,12 @@ import (
 // tests/fixtures/locators/locators.go's Build pattern but stages a whole
 // installable directory rather than registering a component directly.
 //
-// invalid-manifest has no main.go (it is never meant to build or run — its
-// install always fails manifest validation first) and must not be passed
-// here; reference it by its checked-in path instead.
+// A component that declares a "runtime" is a script: its entrypoint file is
+// copied verbatim (never marked executable, never suffixed) so the runtime
+// invocation path is what gets exercised. A fixture without a main.go and
+// without such scripts (invalid-manifest and the other invalid-* packages,
+// which fail manifest validation before any entrypoint is touched) yields just
+// its plugin.json.
 func Prepare(t *testing.T, fixture string) string {
 	t.Helper()
 	_, thisFile, _, _ := runtime.Caller(0)
@@ -37,6 +42,7 @@ func Prepare(t *testing.T, fixture string) string {
 	var m struct {
 		Components []struct {
 			Entrypoint string `json:"entrypoint"`
+			Runtime    string `json:"runtime"`
 		} `json:"components"`
 	}
 	if err := json.Unmarshal(manifest, &m); err != nil {
@@ -54,6 +60,19 @@ func Prepare(t *testing.T, fixture string) string {
 			continue
 		}
 		built[c.Entrypoint] = true
+		if c.Runtime != "" {
+			script, err := os.ReadFile(filepath.Join(pkgDir, c.Entrypoint))
+			if err != nil {
+				continue
+			}
+			if err := os.WriteFile(filepath.Join(dir, c.Entrypoint), script, 0o644); err != nil {
+				t.Fatalf("copy fixture %s script %s: %v", fixture, c.Entrypoint, err)
+			}
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(pkgDir, "main.go")); err != nil {
+			continue
+		}
 		bin := filepath.Join(dir, c.Entrypoint)
 		if runtime.GOOS == "windows" {
 			bin += ".exe"

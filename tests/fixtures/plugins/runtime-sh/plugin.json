@@ -1,0 +1,8 @@
+{
+  "name": "runtime-sh",
+  "version": "1.0.0",
+  "components": [
+    { "name": "starter", "role": "starter", "entrypoint": "starter.sh", "runtime": "sh", "pattern": "^demo-sh-[0-9]+$" }
+  ],
+  "conventions": []
+}

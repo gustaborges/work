@@ -3,6 +3,7 @@ package diag
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -150,5 +151,37 @@ func TestWrapKeepsCauseHidden(t *testing.T) {
 	}
 	if !errors.Is(err, cause) {
 		t.Errorf("errors.Is(err, cause) = false, want true")
+	}
+}
+
+func TestWarningTokensAreTheSixStableOnes(t *testing.T) {
+	got := []string{
+		WarnExtensionStartFailed, WarnExtensionFailed, WarnExtensionResponseInvalid,
+		WarnExtensionOutputRefused, WarnExtensionPersistFailed, WarnExtensionInterrupted,
+	}
+	want := []string{
+		"extension-start-failed", "extension-failed", "extension-response-invalid",
+		"extension-output-refused", "extension-persist-failed", "extension-interrupted",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("tokens = %v, want %v", got, want)
+	}
+}
+
+func TestWarningsAreNotCategories(t *testing.T) {
+	for _, c := range All {
+		if strings.HasPrefix(c.Token, "extension-") {
+			t.Errorf("category %q must not exist: extension failures are warnings without an exit code", c.Token)
+		}
+	}
+}
+
+func TestFormatWarning(t *testing.T) {
+	w := NewWarning(WarnExtensionFailed, "01WORK", "gh/linker", "discover", "exited with status 1").
+		WithHint("Run with WORK_DEBUG=1 for details.").
+		WithCause(errors.New("secret detail"))
+	want := "warning: extension-failed: gh/linker (discover) for Work 01WORK: exited with status 1"
+	if got := FormatWarning(w); got != want {
+		t.Errorf("FormatWarning = %q, want %q", got, want)
 	}
 }

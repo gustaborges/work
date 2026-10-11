@@ -15,9 +15,14 @@ import (
 	"strings"
 
 	"github.com/gustaborges/work/internal/atomicfile"
+	"github.com/gustaborges/work/internal/ipc"
+	"github.com/gustaborges/work/internal/plugin"
 )
 
-// Component is one registered component. Identity is (Alias, Name).
+// Component is one registered component. Identity is (Alias, Name). The
+// activation fields (On, Manual, Inputs, Key, Discover) are recorded for
+// Importers and Linkers; a component registered before they existed has none
+// and is never eligible until it is reinstalled.
 type Component struct {
 	Alias        string   `json:"alias"`
 	Name         string   `json:"name"`
@@ -29,17 +34,36 @@ type Component struct {
 	Accepts      []string `json:"accepts,omitempty"`
 	DisplayName  string   `json:"display_name,omitempty"`
 	Description  string   `json:"description,omitempty"`
+
+	On       []plugin.Subscription `json:"on,omitempty"`
+	Manual   *plugin.Manual        `json:"manual,omitempty"`
+	Inputs   []string              `json:"inputs,omitempty"` // importer inputs, or a linker's discover.inputs
+	Key      string                `json:"key,omitempty"`
+	Discover *plugin.Discover      `json:"discover,omitempty"`
 }
 
-// EntrypointPath resolves the component's executable inside a plugins
-// directory: <pluginsDir>/<alias>/source/<entrypoint>, with a ".exe" suffix on
-// Windows. It mirrors the layout bootstrap writes.
+// EntrypointPath resolves the component's entrypoint inside a plugins
+// directory: <pluginsDir>/<alias>/source/<entrypoint>. On Windows a native
+// executable gets a ".exe" suffix; a script run by a declared runtime keeps
+// its name, since it is not itself executable.
 func (c Component) EntrypointPath(pluginsDir string) string {
 	p := filepath.Join(pluginsDir, c.Alias, "source", c.Entrypoint)
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == "windows" && c.Runtime == "" {
 		p += ".exe"
 	}
 	return p
+}
+
+// Target says how to start the component: through its declared runtime when
+// it has one, directly otherwise.
+func (c Component) Target(pluginsDir string) ipc.Target {
+	return ipc.Target{Runtime: c.Runtime, Path: c.EntrypointPath(pluginsDir)}
+}
+
+// QualifiedName is "<alias>/<name>", the component's unambiguous identity in
+// ordering, provenance and warnings.
+func (c Component) QualifiedName() string {
+	return c.Alias + "/" + c.Name
 }
 
 // Convention is one registered branch convention. Identity is Name.
@@ -62,6 +86,7 @@ type Package struct {
 	Origin      string   `json:"origin"`                // one of the Origin* constants
 	Reference   string   `json:"reference"`             // absolute source path (local kinds), or "<source>@<sha>" (remote)
 	Conventions []string `json:"conventions,omitempty"` // convention names this package's manifest declared
+	PluginName  string   `json:"plugin_name,omitempty"` // manifest name; the alias stands in when empty
 }
 
 // Registry is the whole registry.json document.
@@ -185,6 +210,17 @@ func (r *Registry) PackageByAlias(alias string) (Package, bool) {
 	return Package{}, false
 }
 
+// PluginNameOf returns the manifest name of the plugin installed under alias.
+// It differs from the alias when the user installed with --as, and private
+// Semantic Conventions keys are owned by the manifest name. A package recorded
+// before the name was stored falls back to the alias.
+func (r *Registry) PluginNameOf(alias string) string {
+	if p, ok := r.PackageByAlias(alias); ok && p.PluginName != "" {
+		return p.PluginName
+	}
+	return alias
+}
+
 // ListPackages returns a copy of the registered packages, sorted by alias.
 func (r *Registry) ListPackages() []Package {
 	out := slices.Clone(r.Packages)
@@ -201,6 +237,15 @@ func (r *Registry) ByRole(role string) []Component {
 		}
 	}
 	return out
+}
+
+// Extensions returns the Importers or Linkers registered with the given role.
+// Any other role yields nothing: Starters and Locators are not extensions.
+func (r *Registry) Extensions(role string) []Component {
+	if role != plugin.RoleImporter && role != plugin.RoleLinker {
+		return nil
+	}
+	return r.ByRole(role)
 }
 
 // ListConventions returns a copy of the registered conventions.

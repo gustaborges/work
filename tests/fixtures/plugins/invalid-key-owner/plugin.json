@@ -1,0 +1,9 @@
+{
+  "name": "invalid-key-owner",
+  "version": "1.0.0",
+  "components": [
+    { "name": "lnk", "role": "linker", "key": "plugin.someone-else.pr", "entrypoint": "linker",
+      "discover": { "automatic": true, "on": [ { "event": "start:finalized" } ] } }
+  ],
+  "conventions": []
+}
