@@ -38,7 +38,7 @@ func newF6Harness(t *testing.T) *f6Harness {
 	if b, err := exec.Command("go", "build", "-o", h.bin, "github.com/gustaborges/work/cmd/work").CombinedOutput(); err != nil {
 		t.Fatal(err, string(b))
 	}
-	h.env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + root, "USERPROFILE=" + root, "WORK_HOME=" + filepath.Join(root, "home"), "GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_CONFIG_SYSTEM=" + os.DevNull, "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t", "WORK_FIXTURE_LOG=" + h.log, "TERM=xterm-256color"}
+	h.env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + root, "USERPROFILE=" + root, "TMPDIR=" + root, "TEMP=" + root, "TMP=" + root, "WORK_HOME=" + filepath.Join(root, "home"), "GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_CONFIG_SYSTEM=" + os.DevNull, "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t", "WORK_FIXTURE_LOG=" + h.log, "TERM=xterm-256color"}
 	// Windows needs SystemRoot for subprocess startup.
 	if v := os.Getenv("SystemRoot"); v != "" {
 		h.env = append(h.env, "SystemRoot="+v)

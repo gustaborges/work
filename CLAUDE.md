@@ -1,41 +1,32 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/006-automatic-start-context/plan.md`
+`specs/007-on-demand-context/plan.md`
 
-Active feature: **F5 — Automatic Context on Start** (`specs/006-automatic-start-context/`).
+Active feature: **F6 — On-Demand Context** (`specs/007-on-demand-context/`).
 Design artifacts: `plan.md`, `research.md`, `data-model.md`, `quickstart.md`,
-`contracts/`. Builds on **F1** (`specs/001-first-local-work/`, release 0.1),
-**F2** (`specs/002-daily-cycle/`, release 0.2), **F2.5** (`specs/003-terminal-ux-revamp/`,
-Terminal UX Revamp), **F3** (`specs/004-local-clone-locator/`, release 0.4, Find the
-Local Clone) and **F4** (`specs/005-plugin-origins/`, New Origins via Plugin). Stack
-unchanged: Go 1.26 single binary (Cobra + Bubble Tea/Lip Gloss via `internal/present`),
-system `git` as a subprocess, `modernc.org/sqlite` projection, embedded self-contained
-seed package (`seed/`). Module `github.com/gustaborges/work`.
+`contracts/`. Implementation is complete; milestone and validation evidence is in `tasks.md`. Builds on F1–F5, including
+`specs/006-automatic-start-context/` for input projection, semantic keys,
+external component execution, atomic link publication and safe import staging.
+Stack remains Go 1.26, Cobra, Bubble Tea/Lip Gloss through `internal/present`,
+system Git, `modernc.org/sqlite`, and the embedded offline seed package.
 
-F5 makes installed Linkers and Importers run when `work start` creates a Work. After
-`create.Run` commits, `start:finalized` runs eligible Linker discovery, persists the links,
-then runs eligible Importers through exclusive staging; an extension failure is a warning
-and `work start` still exits 0 with a usable Work. A Starter's `meta`/`links` are now
-consumed into the Work's first snapshot. It adds `internal/semconv` (key grammar, ownership,
-the five exposed `work` facts), `internal/extension` (pure `Eligible`, the phases, failure →
-warning) and `internal/staging` (read-only plan, all-or-nothing incorporation). It also
-closes three gaps found in the F1–F4 code: the Importer/Linker manifest shapes now follow
-ADD §4 (the F1 placeholder shapes are replaced), the registry records activation data
-through one shared `plugininstall.ComponentEntry`, and a component's declared `runtime` is
-finally used to invoke it and preflighted at install (`ipc.Target`). `work-state.json` stays
-at schema 3 (no new field); `work.db` moves to `user_version` 3 (`work_provenance`, index-only
-and not restored by a rebuild); `registry.json` gains only additive fields; `config/work.json`
-gains no key. Semantic Conventions v1 is published as
-`specs/006-automatic-start-context/contracts/semantic-conventions.md`. **No new exit code**:
-manifest problems reuse `plugin-invalid` (31), a missing runtime `plugin-install-failed`
-(34), an invalid Starter key `starter-response-invalid` (37); extension failures are
-warnings with six stable `extension-*` tokens on the UI channel. Every
-F1/F2/F2.5/F3/F4 command grammar, transaction guarantee, stable stdout line, error token
-and exit code is preserved; `work start <path>` and the reference Starter's fallback-only
-journey are unchanged, start no extension, and print nothing extra.
-Authorities: ADR-0000, ADR-0002, ADR-0003, ADR-0006, ADR-0012, ADR-0013, ADD §3, §4,
-§9, §10, §11.
+F6 adds `work status [WORK] [--json]`, `work link [LINKER] [VALUE]` and
+`work import [IMPORTER]`. Status reads canonical snapshots without bootstrap,
+index repair, extensions, access updates or shell repositioning. Link associates
+exact non-empty text without a plugin subprocess; import invokes only the
+selected eligible manual provider and shares F5 staging/IPC contracts.
+The design adds pure `internal/workcontext` resolution, retained optional
+package enablement (legacy default true), shared manual eligibility/publication/
+import helpers, and cancellable artifact application with rollback ownership
+retained through cleanup and commitment. Package management commands remain F7.
+Snapshot schema and database version remain 3; manual provenance uses operation
+`link`. Manual failures return the documented command errors; automatic start
+failures retain existing warnings and success behavior. All prior command and
+presentation contracts remain binding.
+
+Authorities: PRD FR-30/31/38 and related integrity/UX requirements; ADD §3, §4,
+§9–§12; accepted ADR-0000, ADR-0006, ADR-0012, ADR-0013, ADR-0019–ADR-0021.
 <!-- SPECKIT END -->
 
 
