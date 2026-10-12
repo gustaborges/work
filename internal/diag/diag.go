@@ -60,7 +60,8 @@ var (
 	StarterAmbiguous       = Category{Token: "starter-ambiguous", Code: 36}
 	StarterResponseInvalid = Category{Token: "starter-response-invalid", Code: 37}
 	ConventionUnknown      = Category{Token: "convention-unknown", Code: 38}
-	// F6 manual operations. Automatic extension failures remain warnings.
+	// Manual link/import operation failures; automatic extension failures remain
+	// warnings.
 	ManualComponentUnavailable = Category{Token: "manual-component-unavailable", Code: 39}
 	ManualComponentAmbiguous   = Category{Token: "manual-component-ambiguous", Code: 40}
 	NoEligibleComponent        = Category{Token: "no-eligible-component", Code: 41}
@@ -85,6 +86,20 @@ var All = []Category{
 	PluginInvalid, PluginAliasConflict, PluginFallbackConflict, PluginInstallFailed,
 	StarterNotMatched, StarterAmbiguous, StarterResponseInvalid, ConventionUnknown,
 	ManualComponentUnavailable, ManualComponentAmbiguous, NoEligibleComponent, RequiredInputMissing, LinkFailed, ExtensionStartFailed, ExtensionFailed, ExtensionResponseInvalid, ExtensionOutputRefused, ExtensionPersistFailed, ExtensionCleanupFailed,
+}
+
+// IsManualOperation reports whether c is one of the categories a manual link or
+// import can fail with. Their errors retain an internal cause or provider
+// stderr that the final renderer exposes only under WORK_DEBUG.
+func (c Category) IsManualOperation() bool {
+	switch c {
+	case ManualComponentUnavailable, ManualComponentAmbiguous, NoEligibleComponent,
+		RequiredInputMissing, LinkFailed, ExtensionStartFailed, ExtensionFailed,
+		ExtensionResponseInvalid, ExtensionOutputRefused, ExtensionPersistFailed,
+		ExtensionCleanupFailed:
+		return true
+	}
+	return false
 }
 
 // Error is a failure tagged with a Category. Msg is shown to the user; Err, when

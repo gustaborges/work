@@ -196,3 +196,12 @@ func TestFormatWarning(t *testing.T) {
 		t.Errorf("FormatWarning = %q, want %q", got, want)
 	}
 }
+
+func TestIsManualOperationCoversExactlyTheManualCategories(t *testing.T) {
+	for _, c := range All {
+		want := c.Code >= ManualComponentUnavailable.Code && c.Code <= ExtensionCleanupFailed.Code
+		if c.IsManualOperation() != want {
+			t.Errorf("%s (%d): IsManualOperation = %v, want %v", c.Token, c.Code, !want, want)
+		}
+	}
+}

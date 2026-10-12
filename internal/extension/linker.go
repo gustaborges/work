@@ -7,6 +7,7 @@ import (
 
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/ipc"
+	"github.com/gustaborges/work/internal/lockfile"
 	"github.com/gustaborges/work/internal/projection"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/workcontext"
@@ -40,9 +41,13 @@ func (r *runner) runLinker(ctx context.Context, d Decision) bool {
 		if r.interrupted(ctx, name, OpDiscover) {
 			return false
 		}
+		hint := "Check that the Work's directory is writable, then start again."
+		if errors.Is(err, lockfile.ErrTimeout) {
+			hint = "Another work operation was using this Work; start again in a moment."
+		}
 		w := r.warning(diag.WarnExtensionPersistFailed, name, OpDiscover,
 			"Work could not save the link it found; no link was recorded").
-			WithHint("Check that the Work's directory is writable, then start again.").
+			WithHint(hint).
 			WithCause(err)
 		r.warn(w)
 		return true

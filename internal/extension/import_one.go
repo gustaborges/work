@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"time"
 
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/ipc"
@@ -21,12 +20,15 @@ import (
 // ImportParams captures one provider and canonical destination. Automatic
 // callers retain their event policy; manual callers reload retained state.
 type ImportParams struct {
-	Home         workhome.Home
-	Expected     workcontext.Context
-	Component    registry.Component
-	Reload       func() (*registry.Registry, error)
-	Automatic    bool
-	Starter      registry.Component
+	Home      workhome.Home
+	Expected  workcontext.Context
+	Component registry.Component
+	Reload    func() (*registry.Registry, error)
+	Automatic bool
+	Starter   registry.Component
+	// Started, when set, runs once validation has passed and just before the
+	// Importer is invoked, so callers announce only work that actually begins.
+	Started      func()
 	invoke       func(context.Context, ipc.Target, ipc.ImporterInput) (ipc.Result, error)
 	remove       func(*staging.Stage) error
 	apply        func(context.Context, staging.Plan) (*staging.Applied, error)
@@ -40,16 +42,31 @@ type ImportResult struct {
 	Ran   bool
 }
 
+var importMessages = map[diag.Category]string{
+	diag.Cancelled:                  "import cancelled",
+	diag.ManualComponentUnavailable: "the selected provider changed; select it again",
+	diag.RequiredInputMissing:       "the Importer declares an input Work cannot read",
+	diag.ExtensionStartFailed:       "the Importer could not be started",
+	diag.ExtensionFailed:            "the Importer exited unsuccessfully",
+	diag.ExtensionResponseInvalid:   "the Importer returned an invalid response",
+	diag.ExtensionOutputRefused:     "unsafe or colliding output was refused",
+	diag.ExtensionPersistFailed:     "the files could not be incorporated",
+	diag.ExtensionCleanupFailed:     "cleanup or rollback needs recovery",
+}
+
 // ImportOne runs outside the Work lock, then validates, applies, cleans and
 // commits under that lock. Cleanup and compensation never use cancelled ctx.
 func ImportOne(ctx context.Context, p ImportParams) (result ImportResult, err error) {
 	failure := func(cat diag.Category, cause error) error {
 		hint := "Check the plugin and Work directory; use WORK_DEBUG=1 for details."
-		if cat == diag.ExtensionCleanupFailed {
+		message := importMessages[cat]
+		switch {
+		case cat == diag.ExtensionCleanupFailed:
 			hint = "Cleanup could not finish. Use WORK_DEBUG=1 to inspect unresolved paths and removal errors before retrying."
+		case errors.Is(cause, lockfile.ErrTimeout):
+			message, hint = "another work operation is using this Work", "Try again in a moment."
 		}
-		messages := map[int]string{20: "import cancelled", 39: "the selected provider changed; select it again", 44: "the Importer could not be started", 45: "the Importer exited unsuccessfully", 46: "the Importer returned an invalid response", 47: "unsafe or colliding output was refused", 48: "the files could not be incorporated", 49: "cleanup or rollback needs recovery"}
-		return diag.Wrapf(cat, cause, "%s (import) for Work %s: %s", p.Component.QualifiedName(), p.Expected.State.Work.ID, messages[cat.Code]).WithHint(hint)
+		return diag.Wrapf(cat, cause, "%s (import) for Work %s: %s", p.Component.QualifiedName(), p.Expected.State.Work.ID, message).WithHint(hint)
 	}
 	validate := func() (workcontext.Context, registry.Component, error) {
 		if ctx.Err() != nil {
@@ -128,6 +145,9 @@ func ImportOne(ctx context.Context, p ImportParams) (result ImportResult, err er
 		invoke = ipc.InvokeImporter
 	}
 	result.Ran = true
+	if p.Started != nil {
+		p.Started()
+	}
 	res, runErr := invoke(ctx, c.Target(p.Home.PluginsDir()), ipc.ImporterInput{Inputs: inputs, OutputDir: stage.Dir})
 	if runErr != nil {
 		cat := diag.ExtensionStartFailed
@@ -141,7 +161,7 @@ func ImportOne(ctx context.Context, p ImportParams) (result ImportResult, err er
 		}
 		return result, failure(cat, &Failure{ExitCode: res.ExitCode, Stderr: res.Stderr, Err: runErr})
 	}
-	release, err = lockfile.AcquireContext(ctx, p.Home.WorkLockPath(current.State.Work.ID), 3*time.Second)
+	release, err = lockfile.AcquireContext(ctx, p.Home.WorkLockPath(current.State.Work.ID), lockTimeout)
 	if err != nil {
 		if ctx.Err() != nil {
 			return result, failure(diag.Cancelled, ctx.Err())

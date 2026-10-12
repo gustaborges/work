@@ -68,6 +68,7 @@ stderr '^error: manual-component-unavailable:'
 stderr '^error: manual-component-ambiguous:.*alternate/importer, manual/importer'
 ! exec work import manual/needs-input
 stderr '^error: required-input-missing:.*link:github.issue'
+! stderr 'running'
 ! stderr 'secret'
 package-enabled manual false
 ! exec work link manual/linker secret

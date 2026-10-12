@@ -35,7 +35,15 @@ func renderDiagnostic(ui io.Writer, in io.Reader, interactive bool, err error) i
 
 	if !interactive {
 		fmt.Fprintln(ui, diag.Format(err))
-		renderImportDebug(ui, err)
+		if os.Getenv("WORK_DEBUG") != "" {
+			var d *diag.Error
+			if errors.As(err, &d) && d.Category.IsManualOperation() {
+				if chain := causeChain(d.Err, true); chain != "" {
+					fmt.Fprintln(ui, chain)
+				}
+				renderRetainedStderr(ui, err)
+			}
+		}
 		return diag.ExitCode(err)
 	}
 
@@ -60,7 +68,7 @@ func renderDiagnostic(ui io.Writer, in io.Reader, interactive bool, err error) i
 		// is already printed above and would only be duplicated.
 		debugErr := err
 		keepSingle := d == nil
-		if d != nil && d.Category.Code >= 39 && d.Category.Code <= 49 {
+		if d != nil && d.Category.IsManualOperation() {
 			debugErr = d.Err
 			keepSingle = true
 		}
@@ -69,25 +77,13 @@ func renderDiagnostic(ui io.Writer, in io.Reader, interactive bool, err error) i
 		}
 	}
 	if os.Getenv("WORK_DEBUG") != "" {
-		var f *extension.Failure
-		if errors.As(err, &f) && f.Stderr != "" {
-			fmt.Fprintf(ui, "  stderr: %s\n", strings.TrimSpace(f.Stderr))
-		}
+		renderRetainedStderr(ui, err)
 	}
 	return diag.ExitCode(err)
 }
 
-func renderImportDebug(ui io.Writer, err error) {
-	if os.Getenv("WORK_DEBUG") == "" {
-		return
-	}
-	var d *diag.Error
-	if !errors.As(err, &d) || d.Category.Code < 44 || d.Category.Code > 49 {
-		return
-	}
-	if chain := causeChain(d.Err, true); chain != "" {
-		fmt.Fprintln(ui, chain)
-	}
+// renderRetainedStderr prints the provider stderr retained on err, if any.
+func renderRetainedStderr(ui io.Writer, err error) {
 	var f *extension.Failure
 	if errors.As(err, &f) && f.Stderr != "" {
 		fmt.Fprintf(ui, "  stderr: %s\n", strings.TrimSpace(f.Stderr))

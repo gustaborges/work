@@ -52,26 +52,29 @@ func (r *runner) runImporter(ctx context.Context, d Decision) bool {
 		r.report.Ran++
 	}
 	if err != nil {
-		token := diag.WarnExtensionPersistFailed
-		switch diag.ExitCode(err) {
-		case 20:
+		var category diag.Category
+		if d, ok := errors.AsType[*diag.Error](err); ok {
+			category = d.Category
+		}
+		switch category {
+		case diag.Cancelled:
 			r.interrupted(ctx, name, OpImport)
 			return false
-		case 44, 45, 46:
+		case diag.ExtensionStartFailed, diag.ExtensionFailed, diag.ExtensionResponseInvalid:
 			var failure *Failure
 			if errors.As(err, &failure) {
-				return r.warnRun(ctx, name, OpImport, noneAdded, failure.Err, ipc.Result{ExitCode: failure.ExitCode, Stderr: failure.Stderr, Exited: diag.ExitCode(err) != 44})
+				return r.warnRun(ctx, name, OpImport, noneAdded, failure.Err, ipc.Result{ExitCode: failure.ExitCode, Stderr: failure.Stderr, Exited: category != diag.ExtensionStartFailed})
 			}
-		case 47:
+		case diag.ExtensionOutputRefused:
 			r.warn(r.stagingWarning(name, err))
 			return true
 		}
 		summary := "Work could not add its files; " + noneAdded
-		if diag.ExitCode(err) == 49 {
+		if category == diag.ExtensionCleanupFailed {
 			summary = "cleanup needs recovery; inspect the retained cause with WORK_DEBUG=1"
 		}
-		r.warn(r.warning(token, name, OpImport, summary).WithCause(err))
-		return diag.ExitCode(err) != 20
+		r.warn(r.warning(diag.WarnExtensionPersistFailed, name, OpImport, summary).WithCause(err))
+		return true
 	}
 	n := result.Count
 	if n > 0 {

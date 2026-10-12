@@ -249,3 +249,27 @@ func TestManualRecoveryDebugPreservesJoinedCauses(t *testing.T) {
 		}
 	}
 }
+
+func TestManualFailureCausesAreDebugOnlyInBothModes(t *testing.T) {
+	manual := []diag.Category{diag.ManualComponentUnavailable, diag.RequiredInputMissing, diag.LinkFailed, diag.ExtensionPersistFailed}
+	for _, interactive := range []bool{false, true} {
+		for _, cat := range manual {
+			err := diag.Wrap(cat, errors.New("retained cause"), "manual/linker (link) for Work opaque-id: failed")
+			for _, debug := range []string{"", "1"} {
+				t.Setenv("WORK_DEBUG", debug)
+				var out bytes.Buffer
+				renderDiagnostic(&out, strings.NewReader(""), interactive, err)
+				if got := strings.Contains(out.String(), "retained cause"); got != (debug != "") {
+					t.Errorf("%s interactive=%v debug=%q: cause shown = %v\n%s", cat.Token, interactive, debug, got, out.String())
+				}
+			}
+		}
+	}
+
+	t.Setenv("WORK_DEBUG", "1")
+	var out bytes.Buffer
+	renderDiagnostic(&out, strings.NewReader(""), false, diag.Wrap(diag.Usage, errors.New("retained cause"), "bad usage"))
+	if strings.Contains(out.String(), "retained cause") {
+		t.Errorf("non-manual category leaked its cause: %s", out.String())
+	}
+}

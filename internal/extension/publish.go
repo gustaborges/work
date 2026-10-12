@@ -2,6 +2,7 @@ package extension
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,6 +18,10 @@ import (
 	"github.com/gustaborges/work/internal/workcontext"
 	"github.com/gustaborges/work/internal/workhome"
 )
+
+// lockTimeout is how long manual and automatic commitment wait for the per-Work
+// lock, matching the archive and resume contention policy.
+var lockTimeout = 3 * time.Second
 
 // PublishParams captures the selected provider and Work before collection.
 // Reload runs under the Work lock; Record is a best-effort postcommit trailer.
@@ -45,7 +50,11 @@ func PublishLink(ctx context.Context, p PublishParams) (PublishResult, error) {
 	var result PublishResult
 	id := p.Expected.State.Work.ID
 	failure := func(err error) error {
-		return diag.Wrap(diag.LinkFailed, err, fmt.Sprintf("%s (%s) for Work %s: cannot save the link", p.Component.QualifiedName(), p.Operation, id)).WithHint("Check the Work directory is writable and retry.")
+		message, hint := "cannot save the link", "Check the Work directory is writable and retry."
+		if errors.Is(err, lockfile.ErrTimeout) {
+			message, hint = "another work operation is using this Work", "Try again in a moment."
+		}
+		return diag.Wrap(diag.LinkFailed, err, fmt.Sprintf("%s (%s) for Work %s: %s", p.Component.QualifiedName(), p.Operation, id, message)).WithHint(hint)
 	}
 	cancelled := func() error { return diag.Wrap(diag.Cancelled, ctx.Err(), "link cancelled") }
 	if ctx.Err() != nil {
@@ -54,7 +63,7 @@ func PublishLink(ctx context.Context, p PublishParams) (PublishResult, error) {
 	if err := semconv.ValidLinkValue(p.Value); err != nil {
 		return result, diag.Wrap(diag.Usage, err, "supply a non-empty link value")
 	}
-	release, err := lockfile.AcquireContext(ctx, p.Home.WorkLockPath(id), 3*time.Second)
+	release, err := lockfile.AcquireContext(ctx, p.Home.WorkLockPath(id), lockTimeout)
 	if err != nil {
 		if ctx.Err() != nil {
 			return result, cancelled()
