@@ -177,3 +177,20 @@ func TestStatusHelpAndLocalJSON(t *testing.T) {
 		t.Fatal("inherited JSON flag exposed")
 	}
 }
+
+func TestLinkHelpGrammarAndGroup(t *testing.T) {
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"link", "--help"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "link [LINKER] [VALUE]") || strings.Contains(out.String(), "--json") || strings.Contains(out.String(), "--yes") {
+		t.Fatal(out.String())
+	}
+	c, _, err := root.Find([]string{"link"})
+	if err != nil || c.GroupID != groupInWork {
+		t.Fatal(c, err)
+	}
+}

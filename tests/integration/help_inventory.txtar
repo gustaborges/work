@@ -48,3 +48,10 @@ stdout '(?m)^Daily Commands:$'
 work status --help
 stdout 'status \[WORK\]'
 stdout '--json'
+
+work --help
+stdout -count=1 '(?m)^  link '
+work link --help
+stdout 'link \[LINKER\] \[VALUE\]'
+! stdout '\-\-json'
+! stdout '\-\-yes'

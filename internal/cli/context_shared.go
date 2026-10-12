@@ -8,6 +8,7 @@ import (
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/present"
 	"github.com/gustaborges/work/internal/projection"
+	"github.com/gustaborges/work/internal/reconcile"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/work"
 	"github.com/gustaborges/work/internal/workcontext"
@@ -87,4 +88,18 @@ func reloadContextProvider(home workhome.Home, selected registry.Component) (reg
 		}
 	}
 	return registry.Component{}, diag.New(diag.ManualComponentUnavailable, "the selected manual component is no longer available")
+}
+
+// recordContextLink updates only this Work's derived row/current source. A
+// failed optional index never causes a committed snapshot to be reported lost.
+func recordContextLink(home workhome.Home, c workcontext.Context, entry projection.Provenance) error {
+	db, err := projection.Open(home.DBFile())
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if err := db.Migrate(); err != nil {
+		return err
+	}
+	return db.UpsertWithProvenance(reconcile.SnapshotRow(c.State, c.WorkDir), []projection.Provenance{entry})
 }

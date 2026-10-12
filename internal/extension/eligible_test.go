@@ -190,3 +190,20 @@ func TestDisabledExtensionsExcluded(t *testing.T) {
 		r.Packages = []registry.Package{{Alias: "acme", Enabled: &off}}
 	}
 }
+
+func TestResolveInputsTypedPresenceAndMissing(t *testing.T) {
+	s := subject("new", nil, map[string]any{"plugin.acme.null": nil, "plugin.acme.number": float64(42)})
+	inputs, missing, err := ResolveInputs([]string{"work:worktree_path", "work:start_mode", "work:branch", "work:base_branch", "work:slug", "meta:plugin.acme.null:optional", "meta:plugin.acme.number", "meta:plugin.acme.absent:optional", "link:z.missing", "link:a.missing"}, s)
+	if err != nil || !slices.Equal(missing, []string{"link:a.missing", "link:z.missing"}) {
+		t.Fatal(missing, err)
+	}
+	if len(inputs) != 7 || inputs["plugin.acme.number"] != float64(42) {
+		t.Fatal(inputs)
+	}
+	if v, ok := inputs["plugin.acme.null"]; !ok || v != nil {
+		t.Fatal(inputs)
+	}
+	if _, _, err := ResolveInputs([]string{"invalid"}, s); err == nil {
+		t.Fatal("malformed declaration accepted")
+	}
+}

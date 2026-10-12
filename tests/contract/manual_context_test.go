@@ -10,7 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gustaborges/work/internal/plugin"
+	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/work"
+	"github.com/gustaborges/work/internal/workhome"
 )
 
 func TestStatusOutputContract(t *testing.T) {
@@ -94,5 +97,57 @@ func TestStatusOutputContract(t *testing.T) {
 	err := cmd.Run()
 	if err == nil || out.Len() != 0 || strings.Count(stderr.String(), "error:") != 1 {
 		t.Fatal(err, out.String(), stderr.String())
+	}
+}
+
+// A Linker declaration is sufficient: association never needs its runtime or
+// entrypoint, nor its deliberately missing discovery inputs.
+func TestLinkOutputAndNoExecutableContract(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "work"+exeSuffix())
+	if out, err := exec.Command("go", "build", "-o", bin, "github.com/gustaborges/work/cmd/work").CombinedOutput(); err != nil {
+		t.Fatal(err, string(out))
+	}
+	home := workhome.At(filepath.Join(t.TempDir(), "home"))
+	t.Setenv("WORK_HOME", home.Root())
+	reg := &registry.Registry{Components: []registry.Component{{Alias: "manual", Name: "linker", Role: plugin.RoleLinker, Key: "github.pull_request", Entrypoint: "absent", Runtime: "missing-runtime", Inputs: []string{"meta:missing.fact"}, Manual: &plugin.Manual{DisplayName: "Pull request"}}}}
+	if err := registry.Save(home.RegistryFile(), reg); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "in-progress", "work")
+	os.MkdirAll(dir, 0755)
+	state := &work.State{Work: work.WorkSection{ID: "opaque-id", Status: "in-progress", StartMode: "contribution", Starter: "test", Branch: "branch", BaseBranch: "main", CreatedAt: "2026-01-01T00:00:00Z", LastAccessedAt: "2026-01-01T00:00:00Z"}, Links: map[string]string{"github.pull_request": "starter"}, Meta: map[string]any{"test.number": float64(7)}}
+	path := filepath.Join(dir, "work-state.json")
+	if err := work.Write(path, state); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{" exact $shell; text ", "--leading-dash", "\n\tcontrol\x1b"} {
+		cmd := exec.Command(bin, "link", "manual/linker", "--", value)
+		cmd.Dir = dir
+		var out, ui bytes.Buffer
+		cmd.Stdout = &out
+		cmd.Stderr = &ui
+		if err := cmd.Run(); err != nil || ui.Len() != 0 || out.String() != "work: linked opaque-id github.pull_request manual/linker\n" {
+			t.Fatal(err, out.String(), ui.String())
+		}
+		actual, err := work.Read(path)
+		if err != nil || actual.Links["github.pull_request"] != value || actual.Work != state.Work || actual.Meta["test.number"] != float64(7) {
+			t.Fatal(actual, err)
+		}
+	}
+	before, _ := os.ReadFile(path)
+	for _, args := range [][]string{{"link"}, {"link", "manual/linker"}, {"link", "manual/linker", ""}, {"link", "manual/linker", "value", "--json=false"}, {"link", "manual/linker", "value", "--yes"}} {
+		cmd := exec.Command(bin, args...)
+		cmd.Dir = dir
+		var out, ui bytes.Buffer
+		cmd.Stdout = &out
+		cmd.Stderr = &ui
+		err := cmd.Run()
+		if e, ok := err.(*exec.ExitError); !ok || e.ExitCode() != 2 || out.Len() != 0 || strings.Count(ui.String(), "error:") != 1 {
+			t.Fatal(args, err, out.String(), ui.String())
+		}
+		after, _ := os.ReadFile(path)
+		if !bytes.Equal(before, after) {
+			t.Fatal("invalid arguments changed canonical state")
+		}
 	}
 }

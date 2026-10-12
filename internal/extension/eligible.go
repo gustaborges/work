@@ -24,8 +24,8 @@ func Eligible(reg *registry.Registry, role, event string, s Subject) []Decision 
 		if !subscribed(c, event, s.Starter) {
 			continue
 		}
-		inputs, ok := resolveInputs(c.Inputs, s)
-		if !ok {
+		inputs, missing, err := ResolveInputs(c.Inputs, s)
+		if err != nil || len(missing) != 0 {
 			continue
 		}
 		out = append(out, Decision{Component: c, Inputs: inputs})
@@ -79,25 +79,26 @@ func starterAllowed(starters []string, s registry.Component) bool {
 	return false
 }
 
-// resolveInputs looks up every declared input. It reports false when an input
-// that is not optional has no value; optional ones that are absent are left
-// out of the result rather than sent empty.
-func resolveInputs(declared []string, s Subject) (map[string]any, bool) {
+// ResolveInputs projects declared inputs without coercing their values. Missing
+// required declarations are sorted; absent optional inputs are omitted, while
+// present null metadata remains present.
+func ResolveInputs(declared []string, s Subject) (map[string]any, []string, error) {
 	inputs := make(map[string]any, len(declared))
+	var missing []string
 	for _, raw := range declared {
 		in, err := plugin.ParseInput(raw)
 		if err != nil {
-			return nil, false
+			return nil, nil, err
 		}
 		v, found := lookup(in, s)
-		switch {
-		case found:
+		if found {
 			inputs[in.Key] = v
-		case !in.Optional:
-			return nil, false
+		} else if !in.Optional {
+			missing = append(missing, raw)
 		}
 	}
-	return inputs, true
+	slices.Sort(missing)
+	return inputs, missing, nil
 }
 
 func lookup(in plugin.Input, s Subject) (any, bool) {
