@@ -150,7 +150,7 @@ func TestBuildResolvesSymlinkedWorkDirForDestinations(t *testing.T) {
 	if len(plan.Items) == 0 {
 		t.Fatal("Build produced an empty plan")
 	}
-	wantRoot, err := filepath.EvalSymlinks(work)
+	wantRoot, err := filepath.EvalSymlinks(workLink)
 	if err != nil {
 		t.Fatal(err)
 	}
