@@ -84,7 +84,7 @@ func Build(stageDir, workDir string) (Plan, error) {
 
 	var items []Item
 	dirs := map[string]os.FileInfo{}
-	rootInfo, err := os.Stat(root)
+	rootInfo, err := lstatIdentity(root)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -105,7 +105,7 @@ func Build(stageDir, workDir string) (Plan, error) {
 			return &Refusal{Rel: item.Rel, Reason: reason}
 		}
 		if item.IsDir {
-			info, err := os.Lstat(item.Dest)
+			info, err := lstatIdentity(item.Dest)
 			if err == nil {
 				for path, previous := range dirs {
 					if path != item.Dest && os.SameFile(previous, info) {
@@ -133,6 +133,20 @@ func Build(stageDir, workDir string) (Plan, error) {
 		return strings.Compare(a.Rel, b.Rel)
 	})
 	return Plan{Items: items, dirs: dirs}, nil
+}
+
+// lstatIdentity captures identity now. On Windows, Lstat defers loading the
+// file ID until SameFile is called; waiting until rollback could capture a
+// replacement at the original path instead of the entry we created.
+func lstatIdentity(path string) (os.FileInfo, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !os.SameFile(info, info) {
+		return nil, fmt.Errorf("staging: cannot capture file identity: %s", path)
+	}
+	return info, nil
 }
 
 // refuse applies the refusal matrix to one staged entry.

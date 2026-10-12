@@ -111,7 +111,7 @@ func (p Plan) ApplyContext(ctx context.Context) (*Applied, error) {
 			}
 			a.undo = append(a.undo, it.Dest)
 			a.Created++
-			info, err := os.Lstat(it.Dest)
+			info, err := lstatIdentity(it.Dest)
 			if err != nil {
 				return a, err
 			}
@@ -128,7 +128,11 @@ func (p Plan) ApplyContext(ctx context.Context) (*Applied, error) {
 			if made {
 				a.undo = append(a.undo, it.Dest)
 				a.Created++
-				a.owned[it.Dest], _ = os.Lstat(it.Dest)
+				owned, identityErr := lstatIdentity(it.Dest)
+				if identityErr != nil {
+					return a, errors.Join(err, identityErr)
+				}
+				a.owned[it.Dest] = owned
 			}
 			if err != nil {
 				if errors.Is(err, fs.ErrExist) {
@@ -151,7 +155,7 @@ func (p Plan) Incorporate() (int, error) {
 }
 
 func copyExclusiveContext(ctx context.Context, it Item) (bool, error) {
-	source, err := os.Lstat(it.Src)
+	source, err := lstatIdentity(it.Src)
 	if err != nil {
 		return false, err
 	}

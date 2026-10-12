@@ -33,7 +33,7 @@ func TestLookupPathHintPure(t *testing.T) {
 	for _, kind := range []string{"missing", "corrupt", "old", "stale", "wal", "pending"} {
 		t.Run(kind, func(t *testing.T) {
 			dir := t.TempDir()
-			path := filepath.Join(dir, "sp ace-ação?#.db")
+			path := filepath.Join(dir, "sp ace-ação%#.db")
 			want := filepath.Join(dir, "in-progress", "work", "work-state.json")
 			switch kind {
 			case "corrupt":
