@@ -441,3 +441,34 @@ func TestResetDropsProvenanceBeforeWorks(t *testing.T) {
 		t.Errorf("provenance survived Reset: %+v", got)
 	}
 }
+
+func TestLinkPublicationReplacesOnlyCurrentSource(t *testing.T) {
+	db := openTest(t)
+	w := sampleWork("W1")
+	other := sampleWork("W2")
+	original := Provenance{WorkID: w.ID, Section: "links", Key: "github.pull_request", SourceComponent: "starter/source", SourceOperation: "start", RecordedAt: "2026-01-01T00:00:00Z"}
+	preserved := original
+	preserved.Key = "other.link"
+	if err := db.UpsertWithProvenance(w, []Provenance{original, preserved}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Upsert(other); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"manual/linker", "alternate/linker"} {
+		current := original
+		current.SourceComponent = name
+		current.SourceOperation = "link"
+		current.RecordedAt = "2026-01-02T00:00:00Z"
+		if err := db.UpsertWithProvenance(w, []Provenance{current}); err != nil {
+			t.Fatal(err)
+		}
+		entries, err := db.Provenance(w.ID)
+		if err != nil || !reflect.DeepEqual(entries, []Provenance{current, preserved}) {
+			t.Fatal(entries, err)
+		}
+	}
+	if row, ok, err := db.Get(other.ID); err != nil || !ok || row != other {
+		t.Fatal(row, err)
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/gustaborges/work/internal/plugin"
+	"github.com/gustaborges/work/internal/registry"
 )
 
 func parseFixture(t *testing.T, name string) error {
@@ -21,7 +22,7 @@ func parseFixture(t *testing.T, name string) error {
 }
 
 func TestValidFixturesParse(t *testing.T) {
-	for _, name := range []string{"context-suite", "restricted-suite", "runtime-sh"} {
+	for _, name := range []string{"context-suite", "restricted-suite", "runtime-sh", "manual-suite"} {
 		if err := parseFixture(t, name); err != nil {
 			t.Errorf("%s: %v", name, err)
 		}
@@ -73,5 +74,32 @@ func TestPrepareStagesScriptsAndBinaries(t *testing.T) {
 		if _, err := os.Stat(bin); err != nil {
 			t.Errorf("context-suite is missing %s: %v", e, err)
 		}
+	}
+}
+
+func TestManualFixtureAliasesAndRetainedState(t *testing.T) {
+	dir := Prepare(t, "manual-suite")
+	for _, name := range []string{"linker", "importer", "needs-input", "automatic-only"} {
+		if runtime.GOOS == "windows" {
+			name += ".exe"
+		}
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := filepath.Join(t.TempDir(), "registry.json")
+	r := &registry.Registry{Packages: []registry.Package{{Alias: "manual"}, {Alias: "alternate"}}}
+	if err := registry.Save(path, r); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetPackageEnabled(path, "manual", false); err != nil {
+		t.Fatal(err)
+	}
+	r, err := registry.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Packages[0].Enabled == nil || *r.Packages[0].Enabled || r.Packages[1].Enabled != nil {
+		t.Fatalf("state: %+v", r.Packages)
 	}
 }

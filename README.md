@@ -6,11 +6,11 @@ a canonical `work-state.json` snapshot, and a lookup record in a local SQLite
 projection. One command takes you from a local clone to a ready checkout — offline,
 with no network and no AI on the path.
 
-This repository now carries the **F1 — First Local Work** slice, the
-**F2 — Daily Cycle** slice, and the **F2.5 — Terminal UX Revamp** presentation
-slice on top of them. The commands are `work start`, `work resume`,
-`work archive`, and `work shell-init`; bare `work` in a terminal prints a
-branded splash and exits.
+Work supports local creation and daily lifecycle commands, installed plugin packages,
+automatic start context, and **F6 — On-Demand Context**. Inside a Work, inspect saved
+context with `work status`, associate a reference with `work link`, or run one manual
+artifact provider with `work import`. Bare `work` in a terminal prints a branded
+splash and exits.
 
 `work resume` returns you to an existing Work (most recently accessed first);
 `work archive` closes one or more Works, preserving each snapshot under
@@ -61,9 +61,59 @@ State lives under `~/.work` (override with `WORK_HOME`):
 | Path | Contents |
 |---|---|
 | `~/.work/config/work.json` | workspace root, repository roots, resolution policy (human-editable) |
-| `~/.work/state/work.db` | SQLite projection — **disposable**: deleted or corrupt, it is rebuilt from the snapshots on the next `work` command |
+| `~/.work/state/work.db` | SQLite projection — **disposable**: deleted or corrupt, it is rebuilt from snapshots by lifecycle operations; `work status` only reads |
 | `~/.work/state/registry.json` | component registry (generated) |
 | `~/.work/plugins/work-reference/` | the embedded seed package, installed on first run |
+
+## Saved context and manual enrichment
+
+```text
+work status [WORK] [--json]
+work link [LINKER] [VALUE]
+work import [IMPORTER]
+```
+
+From an active Work directory or its checkout:
+
+```sh
+work status
+work status --json
+# Substitute an installed provider's qualified name and declared relation.
+work link my-package/linker 'https://example.test/pr/212'
+work import my-package/importer
+```
+
+`status` displays the canonical ID, lifecycle state, branch, location and saved
+links. An explicit complete Work ID also works outside the Work and can inspect
+archives. Status does not execute Git or plugins, update access times, repair an
+index or create state. For an old unconfigured workspace without an index hint,
+enter the Work's directory and run `work status` there.
+
+`link` saves the exact non-empty text supplied, including surrounding spaces,
+under the selected Linker's declared semantic key. It replaces that relation's
+current value without running the plugin. Quote values as one shell argument;
+use `work link my-package/linker -- '-leading-dash'` when needed. The success
+receipt names the relation and provider and omits the value.
+
+`import` runs exactly one enabled manual Importer with its declared present
+inputs, including saved links. It adds files alongside the checkout, never
+overwrites existing files, and preserves imported artifacts during archive.
+Unsafe output is refused as a whole; recoverable failures and cancellation undo
+new artifacts and remove staging. If cleanup itself fails, inspect the recovery
+diagnostic with `WORK_DEBUG=1` before retrying. Execution details and plugin stderr
+are shown only in debug mode.
+
+In a terminal, omit the provider to choose from eligible manual components;
+`work link LINKER` collects only the value. Non-interactive calls require every
+argument. Qualified `alias/name` identities resolve ambiguous bare names.
+Providers must declare manual availability; Importers also require all declared
+mandatory inputs. Missing links can be supplied with `work link`; unavailable
+providers require an installed/enabled package. Package enable/disable commands
+are reserved for F7. Only `status` accepts JSON output; mutations reject `--json`,
+including `--json=false`. All three commands leave your shell position unchanged.
+
+See the [F6 validation guide](specs/007-on-demand-context/quickstart.md) for an
+offline fixture demonstration, failure scenarios and verification evidence.
 
 ## Shell integration (optional but recommended)
 

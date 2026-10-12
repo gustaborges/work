@@ -5,6 +5,7 @@
 package atomicfile
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,7 +14,16 @@ import (
 // WriteFile atomically replaces path with data. The destination directory must
 // already exist. The resulting file has mode 0o644 (subject to umask on
 // creation of the temp file).
-func WriteFile(path string, data []byte) (err error) {
+func WriteFile(path string, data []byte) error {
+	return WriteFileContext(context.Background(), path, data)
+}
+
+// WriteFileContext checks cancellation before preparing the file and immediately
+// before replacement. Once replacement succeeds, later cancellation is success.
+func WriteFileContext(ctx context.Context, path string, data []byte) (err error) {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	dir := filepath.Dir(path)
 
 	f, err := os.CreateTemp(dir, ".atomic-*.tmp")
@@ -41,6 +51,9 @@ func WriteFile(path string, data []byte) (err error) {
 	}
 	if err = os.Chmod(tmp, 0o644); err != nil {
 		return fmt.Errorf("atomicfile: chmod %s: %w", tmp, err)
+	}
+	if err = ctx.Err(); err != nil {
+		return err
 	}
 	if err = replace(tmp, path); err != nil {
 		return fmt.Errorf("atomicfile: renaming %s to %s: %w", tmp, path, err)

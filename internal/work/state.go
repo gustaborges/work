@@ -21,6 +21,7 @@ package work
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -116,6 +117,12 @@ func Decode(data []byte) (*State, error) {
 
 // Write validates s, forces schema 3, and writes it to path atomically.
 func Write(path string, s *State) error {
+	return WriteContext(context.Background(), path, s)
+}
+
+// WriteContext is Write with a final cancellation check before the atomic
+// replacement. After replacement, the saved state is committed success.
+func WriteContext(ctx context.Context, path string, s *State) error {
 	if s.Meta == nil {
 		s.Meta = map[string]any{}
 	}
@@ -131,7 +138,7 @@ func Write(path string, s *State) error {
 		return fmt.Errorf("work-state: marshaling: %w", err)
 	}
 	data = append(data, '\n')
-	if err := atomicfile.WriteFile(path, data); err != nil {
+	if err := atomicfile.WriteFileContext(ctx, path, data); err != nil {
 		return fmt.Errorf("work-state: writing %s: %w", path, err)
 	}
 	return nil

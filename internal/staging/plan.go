@@ -66,6 +66,7 @@ type Item struct {
 // Plan is what incorporating a stage would create, parents before children.
 type Plan struct {
 	Items []Item
+	dirs  map[string]os.FileInfo
 }
 
 // Build walks the stage read-only and returns the plan for adding its content
@@ -82,6 +83,12 @@ func Build(stageDir, workDir string) (Plan, error) {
 	}
 
 	var items []Item
+	dirs := map[string]os.FileInfo{}
+	rootInfo, err := lstatIdentity(root)
+	if err != nil {
+		return Plan{}, err
+	}
+	dirs[workDir] = rootInfo
 	walkErr := filepath.WalkDir(stageDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -96,6 +103,17 @@ func Build(stageDir, workDir string) (Plan, error) {
 		item := Item{Rel: filepath.ToSlash(rel), Src: path, Dest: filepath.Join(workDir, rel), IsDir: d.IsDir()}
 		if reason, ok := refuse(item, d, root); ok {
 			return &Refusal{Rel: item.Rel, Reason: reason}
+		}
+		if item.IsDir {
+			info, err := lstatIdentity(item.Dest)
+			if err == nil {
+				for path, previous := range dirs {
+					if path != item.Dest && os.SameFile(previous, info) {
+						return &Refusal{Rel: item.Rel, Reason: Exists}
+					}
+				}
+				dirs[item.Dest] = info
+			}
 		}
 		items = append(items, item)
 		return nil
@@ -114,7 +132,21 @@ func Build(stageDir, workDir string) (Plan, error) {
 		}
 		return strings.Compare(a.Rel, b.Rel)
 	})
-	return Plan{Items: items}, nil
+	return Plan{Items: items, dirs: dirs}, nil
+}
+
+// lstatIdentity captures identity now. On Windows, Lstat defers loading the
+// file ID until SameFile is called; waiting until rollback could capture a
+// replacement at the original path instead of the entry we created.
+func lstatIdentity(path string) (os.FileInfo, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !os.SameFile(info, info) {
+		return nil, fmt.Errorf("staging: cannot capture file identity: %s", path)
+	}
+	return info, nil
 }
 
 // refuse applies the refusal matrix to one staged entry.

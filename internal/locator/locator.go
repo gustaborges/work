@@ -149,7 +149,7 @@ func availableComponent(reg *registry.Registry, ref string) (registry.Component,
 		return registry.Component{}, false
 	}
 	for _, c := range reg.Components {
-		if c.Alias == alias && c.Name == name && c.Role == registry.RoleRepositoryLocator {
+		if c.Alias == alias && c.Name == name && c.Role == registry.RoleRepositoryLocator && reg.PackageEnabled(alias) {
 			return c, true
 		}
 	}

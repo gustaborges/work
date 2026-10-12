@@ -284,3 +284,46 @@ func TestExtensionsReturnsOnlyImportersAndLinkers(t *testing.T) {
 		}
 	}
 }
+
+func TestRetainedEnablement(t *testing.T) {
+	for _, value := range []string{"", "null", "true", "false"} {
+		t.Run(value, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "registry.json")
+			field := ""
+			if value != "" {
+				field = `,"enabled":` + value
+			}
+			data := `{"packages":[{"alias":"owned","conventions":["shared","exclusive"]` + field + `},{"alias":"other","conventions":["shared"]}],"components":[{"alias":"owned","name":"one"},{"alias":"legacy","name":"two"}],"conventions":[{"name":"shared"},{"name":"exclusive"},{"name":"ownerless"}]}`
+			if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			r, err := Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			enabled := value != "false"
+			if r.PackageEnabled("owned") != enabled || !r.PackageEnabled("legacy") {
+				t.Fatal("enabled predicate")
+			}
+			e := r.Effective()
+			n := 2
+			if !enabled {
+				n = 1
+			}
+			if len(e.Components) != n {
+				t.Fatalf("%+v", e)
+			}
+			if _, ok := e.ConventionByName("exclusive"); ok != enabled {
+				t.Fatal("exclusive ownership")
+			}
+			for _, name := range []string{"shared", "ownerless"} {
+				if _, ok := e.ConventionByName(name); !ok {
+					t.Fatal(name)
+				}
+			}
+			if len(r.Components) != 2 || len(r.ListConventions()) != 3 || len(r.ListPackages()) != 2 {
+				t.Fatal("raw inventory changed")
+			}
+		})
+	}
+}

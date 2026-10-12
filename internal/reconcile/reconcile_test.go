@@ -404,3 +404,25 @@ func TestReconcileKeepsProvenanceOfExistingWorks(t *testing.T) {
 		t.Errorf("Reconcile's upsert cascaded provenance away: %+v", got)
 	}
 }
+
+func TestSelectedSnapshotRow(t *testing.T) {
+	for _, area := range []string{work.StatusInProgress, work.StatusArchived} {
+		path := writeSnap(t, t.TempDir(), area, "demo_topic", "opaque-id", "topic", "topic", area, "2026-01-02T00:00:00Z")
+		state, err := work.Read(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		before, _ := os.ReadFile(path)
+		row := SnapshotRow(state, filepath.Dir(path))
+		if row.ID != state.Work.ID || row.RepoName != "demo" || row.SnapshotPath != path || row.LastAccessedAt != state.Work.LastAccessedAt {
+			t.Fatal(row)
+		}
+		if (row.WorktreePath == "") != (area == work.StatusArchived) {
+			t.Fatal(row)
+		}
+		after, _ := os.ReadFile(path)
+		if string(before) != string(after) {
+			t.Fatal("row conversion wrote snapshot")
+		}
+	}
+}

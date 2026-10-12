@@ -82,6 +82,7 @@ type Convention struct {
 // names are), so Package is where a package's own declared convention names
 // are recorded.
 type Package struct {
+	Enabled     *bool    `json:"enabled,omitempty"` // retained core state; nil means enabled
 	Alias       string   `json:"alias"`
 	Origin      string   `json:"origin"`                // one of the Origin* constants
 	Reference   string   `json:"reference"`             // absolute source path (local kinds), or "<source>@<sha>" (remote)
@@ -282,4 +283,40 @@ func (r *Registry) HasComponent(alias, name string) bool {
 		}
 	}
 	return false
+}
+
+// PackageEnabled interprets retained state. Legacy ownerless entries and
+// omitted/null fields remain enabled. Raw queries never apply this predicate.
+func (r *Registry) PackageEnabled(alias string) bool {
+	p, ok := r.PackageByAlias(alias)
+	return !ok || p.Enabled == nil || *p.Enabled
+}
+
+// Effective returns a separate catalog for activation and availability.
+// Convention names retain their shared ownership: any enabled owner suffices.
+func (r *Registry) Effective() *Registry {
+	out := &Registry{}
+	for _, p := range r.Packages {
+		if r.PackageEnabled(p.Alias) {
+			out.Packages = append(out.Packages, p)
+		}
+	}
+	for _, c := range r.Components {
+		if r.PackageEnabled(c.Alias) {
+			out.Components = append(out.Components, c)
+		}
+	}
+	for _, c := range r.Conventions {
+		owned, enabled := false, false
+		for _, p := range r.Packages {
+			if slices.Contains(p.Conventions, c.Name) {
+				owned = true
+				enabled = enabled || r.PackageEnabled(p.Alias)
+			}
+		}
+		if !owned || enabled {
+			out.Conventions = append(out.Conventions, c)
+		}
+	}
+	return out
 }

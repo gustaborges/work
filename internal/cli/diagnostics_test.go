@@ -1,6 +1,10 @@
 package cli
 
 import (
+	"bytes"
+	"github.com/gustaborges/work/internal/plugin"
+	"github.com/gustaborges/work/internal/registry"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -130,4 +134,52 @@ func errorLine(s string) string {
 		}
 	}
 	return ""
+}
+
+func TestManualDiagnosticsContract(t *testing.T) {
+	for _, tc := range []struct {
+		args  []string
+		code  int
+		token string
+	}{
+		{[]string{"link"}, 2, "usage"},
+		{[]string{"link", "manual/linker", ""}, 2, "usage"},
+		{[]string{"import", ""}, 2, "usage"},
+		{[]string{"link", "unknown", "private-value"}, 39, "manual-component-unavailable"},
+		{[]string{"import", "manual/linker"}, 39, "manual-component-unavailable"},
+		{[]string{"import", "manual/importer"}, 42, "required-input-missing"},
+		{[]string{"import", "importer"}, 40, "manual-component-ambiguous"},
+	} {
+		t.Run(strings.Join(tc.args, "/"), func(t *testing.T) {
+			home, path, _ := linkContext(t)
+			r, err := registry.Load(home.RegistryFile())
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, alias := range []string{"manual", "alternate"} {
+				r.Components = append(r.Components, registry.Component{Alias: alias, Name: "importer", Role: plugin.RoleImporter, Manual: &plugin.Manual{DisplayName: "Context"}, Inputs: []string{"link:github.issue", "meta:github.absent"}})
+			}
+			if err := registry.Save(home.RegistryFile(), r); err != nil {
+				t.Fatal(err)
+			}
+			before, _ := os.ReadFile(path)
+			root := newRootCmd()
+			var out, ui bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&ui)
+			root.SetArgs(tc.args)
+			err = root.Execute()
+			code := renderDiagnostic(&ui, strings.NewReader(""), false, err)
+			if code != tc.code || out.Len() != 0 || strings.Count(ui.String(), "error: ") != 1 || !strings.HasPrefix(errorLine(ui.String()), "error: "+tc.token+": ") || strings.Contains(ui.String(), "private-value") {
+				t.Fatal(code, out.String(), ui.String())
+			}
+			if tc.code == 42 && !strings.Contains(ui.String(), "link:github.issue, meta:github.absent") {
+				t.Fatal("unsorted missing declarations", ui.String())
+			}
+			after, _ := os.ReadFile(path)
+			if !bytes.Equal(before, after) {
+				t.Fatal("failed command mutated state")
+			}
+		})
+	}
 }

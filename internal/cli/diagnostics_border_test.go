@@ -223,3 +223,53 @@ func TestProgressObserverNoControlSequencesWhenNotATerminal(t *testing.T) {
 		t.Errorf("output = %q", b.String())
 	}
 }
+
+func TestManualRecoveryDebugPreservesJoinedCauses(t *testing.T) {
+	for _, interactive := range []bool{false, true} {
+		for _, debug := range []string{"", "1"} {
+			t.Setenv("WORK_DEBUG", debug)
+			cause := errors.Join(&extension.Failure{ExitCode: 1, Stderr: "private stderr", Err: errors.New("execution cause")}, errors.New("rollback unresolved path"))
+			err := diag.Wrap(diag.ExtensionCleanupFailed, cause, "manual/importer (import) for Work opaque-id: cleanup needs recovery")
+			var out bytes.Buffer
+			if code := renderDiagnostic(&out, strings.NewReader(""), interactive, err); code != 49 {
+				t.Fatal(code)
+			}
+			s := out.String()
+			if !strings.Contains(s, "manual/importer (import) for Work opaque-id") {
+				t.Fatal(s)
+			}
+			for _, detail := range []string{"private stderr", "execution cause", "rollback unresolved path"} {
+				if strings.Contains(s, detail) != (debug != "") {
+					t.Fatal(debug, s)
+				}
+			}
+			if strings.Count(s, "cleanup needs recovery") != 1 {
+				t.Fatal("duplicate final diagnostic", s)
+			}
+		}
+	}
+}
+
+func TestManualFailureCausesAreDebugOnlyInBothModes(t *testing.T) {
+	manual := []diag.Category{diag.ManualComponentUnavailable, diag.RequiredInputMissing, diag.LinkFailed, diag.ExtensionPersistFailed}
+	for _, interactive := range []bool{false, true} {
+		for _, cat := range manual {
+			err := diag.Wrap(cat, errors.New("retained cause"), "manual/linker (link) for Work opaque-id: failed")
+			for _, debug := range []string{"", "1"} {
+				t.Setenv("WORK_DEBUG", debug)
+				var out bytes.Buffer
+				renderDiagnostic(&out, strings.NewReader(""), interactive, err)
+				if got := strings.Contains(out.String(), "retained cause"); got != (debug != "") {
+					t.Errorf("%s interactive=%v debug=%q: cause shown = %v\n%s", cat.Token, interactive, debug, got, out.String())
+				}
+			}
+		}
+	}
+
+	t.Setenv("WORK_DEBUG", "1")
+	var out bytes.Buffer
+	renderDiagnostic(&out, strings.NewReader(""), false, diag.Wrap(diag.Usage, errors.New("retained cause"), "bad usage"))
+	if strings.Contains(out.String(), "retained cause") {
+		t.Errorf("non-manual category leaked its cause: %s", out.String())
+	}
+}

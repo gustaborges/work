@@ -24,7 +24,7 @@ type Catalog struct {
 
 // Load builds a Catalog from the registry.
 func Load(reg *registry.Registry) Catalog {
-	return Catalog{conventions: reg.ListConventions()}
+	return Catalog{conventions: reg.Effective().ListConventions()}
 }
 
 // Prefixes returns the prefixes offered by the named convention.

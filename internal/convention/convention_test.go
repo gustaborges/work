@@ -55,3 +55,15 @@ func TestDefaultPrefix(t *testing.T) {
 		t.Fatalf("got %q err %v", got, err)
 	}
 }
+
+func TestDisabledConventionUnavailable(t *testing.T) {
+	off := false
+	r := &registry.Registry{Packages: []registry.Package{{Alias: "a", Enabled: &off, Conventions: []string{Freeform}}}, Conventions: []registry.Convention{{Name: Freeform, Prefixes: []string{"{slug}"}}}}
+	if _, err := Load(r).DefaultPrefix(Freeform); err == nil {
+		t.Fatal("disabled convention available")
+	}
+	r.Packages = nil
+	if _, err := Load(r).DefaultPrefix(Freeform); err != nil {
+		t.Fatal(err)
+	}
+}

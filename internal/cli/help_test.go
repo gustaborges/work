@@ -154,3 +154,59 @@ func TestHelpCompletionGroupedHelpHidden(t *testing.T) {
 		t.Errorf("auto help command should be hidden: %+v", help)
 	}
 }
+
+func TestStatusHelpAndLocalJSON(t *testing.T) {
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"status", "--help"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "status [WORK]") || !strings.Contains(out.String(), "--json") {
+		t.Fatal(out.String())
+	}
+	status, _, err := root.Find([]string{"status"})
+	if err != nil || status.GroupID != groupInWork {
+		t.Fatal("wrong help group", err)
+	}
+	if status.Flags().Lookup("json").Hidden {
+		t.Fatal("status JSON flag hidden")
+	}
+	if !root.PersistentFlags().Lookup("json").Hidden {
+		t.Fatal("inherited JSON flag exposed")
+	}
+}
+
+func TestLinkHelpGrammarAndGroup(t *testing.T) {
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"link", "--help"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "link [LINKER] [VALUE]") || strings.Contains(out.String(), "--json") || strings.Contains(out.String(), "--yes") {
+		t.Fatal(out.String())
+	}
+	c, _, err := root.Find([]string{"link"})
+	if err != nil || c.GroupID != groupInWork {
+		t.Fatal(c, err)
+	}
+}
+func TestImportHelpGrammarAndGroup(t *testing.T) {
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"import", "--help"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "import [IMPORTER]") || strings.Contains(out.String(), "--json") || strings.Contains(out.String(), "--yes") {
+		t.Fatal(out.String())
+	}
+	c, _, err := root.Find([]string{"import"})
+	if err != nil || c.GroupID != groupInWork {
+		t.Fatal(c, err)
+	}
+}

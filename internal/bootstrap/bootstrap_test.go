@@ -185,3 +185,40 @@ func TestRegisterComponentsUsesSharedEntryBuilder(t *testing.T) {
 		}
 	}
 }
+
+func TestDisabledSeedSurvivesIntegrityAndRepair(t *testing.T) {
+	h := testHome(t)
+	if err := EnsureSeed(h); err != nil {
+		t.Fatal(err)
+	}
+	r, err := registry.Load(h.RegistryFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	off := false
+	r.UpsertPackage(registry.Package{Alias: Alias, Enabled: &off, Conventions: []string{conventionName}})
+	if err := registry.Save(h.RegistryFile(), r); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(filepath.Join(h.PluginsDir(), Alias, ".install-meta.json"))
+	if err := EnsureSeed(h); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := os.ReadFile(filepath.Join(h.PluginsDir(), Alias, ".install-meta.json"))
+	if string(before) != string(after) {
+		t.Fatal("disabled seed reinstalled")
+	}
+	if err := os.Remove(filepath.Join(h.PluginsDir(), Alias, "source", binaryNames()[0])); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureSeed(h); err != nil {
+		t.Fatal(err)
+	}
+	r, err = registry.Load(h.RegistryFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.PackageEnabled(Alias) {
+		t.Fatal("repair lost disablement")
+	}
+}

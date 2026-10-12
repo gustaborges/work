@@ -29,15 +29,8 @@ type Report struct {
 	SnapshotsWritten int
 }
 
-// areas maps a workspace subdirectory to whether the Works under it are
-// archived.
-var areas = []struct {
-	dir      string
-	archived bool
-}{
-	{"in-progress", false},
-	{"archived", true},
-}
+// areas lists the lifecycle directories scanned for canonical snapshots.
+var areas = []string{work.StatusInProgress, work.StatusArchived}
 
 // Rebuild recreates the works table from empty and indexes one row per
 // readable, schema-valid snapshot found directly under
@@ -103,7 +96,7 @@ func Reconcile(db *projection.DB, workspaceRoot string) (Report, error) {
 // not be read, parsed, or validated.
 func scan(workspaceRoot string) (rows []projection.Work, skipped []SkippedSnapshot) {
 	for _, a := range areas {
-		areaDir := filepath.Join(workspaceRoot, a.dir)
+		areaDir := filepath.Join(workspaceRoot, a)
 		entries, err := os.ReadDir(areaDir)
 		if err != nil {
 			continue // a missing area is normal (e.g. nothing archived yet)
@@ -128,31 +121,30 @@ func scan(workspaceRoot string) (rows []projection.Work, skipped []SkippedSnapsh
 				continue
 			}
 
-			w := snap.Work
-			archived := w.Status == work.StatusArchived
-			row := projection.Work{
-				ID:               w.ID,
-				Slug:             w.Slug,
-				Status:           w.Status,
-				StartMode:        w.StartMode,
-				Starter:          w.Starter,
-				Branch:           w.Branch,
-				BaseBranch:       w.BaseBranch,
-				BranchConvention: w.BranchConvention,
-				RepoName:         deriveRepoName(e.Name(), w.Branch, a.archived),
-				DirPath:          dirPath,
-				SnapshotPath:     snapPath,
-				CreatedAt:        w.CreatedAt,
-				LastAccessedAt:   w.LastAccessedAt,
-				ArchivedAt:       w.ArchivedAt,
-			}
-			if !archived {
-				row.WorktreePath = filepath.Join(dirPath, "worktree")
-			}
+			row := SnapshotRow(snap, dirPath)
 			rows = append(rows, row)
 		}
 	}
 	return rows, skipped
+}
+
+// SnapshotRow converts one validated canonical snapshot without scanning or
+// touching the index. Callers can update one row without resetting provenance.
+func SnapshotRow(snap *work.State, dirPath string) projection.Work {
+	w := snap.Work
+	archived := w.Status == work.StatusArchived
+	row := projection.Work{
+		ID: w.ID, Slug: w.Slug, Status: w.Status, StartMode: w.StartMode,
+		Starter: w.Starter, Branch: w.Branch, BaseBranch: w.BaseBranch,
+		BranchConvention: w.BranchConvention,
+		RepoName:         deriveRepoName(filepath.Base(dirPath), w.Branch, filepath.Base(filepath.Dir(dirPath)) == work.StatusArchived),
+		DirPath:          dirPath, SnapshotPath: filepath.Join(dirPath, "work-state.json"),
+		CreatedAt: w.CreatedAt, LastAccessedAt: w.LastAccessedAt, ArchivedAt: w.ArchivedAt,
+	}
+	if !archived {
+		row.WorktreePath = filepath.Join(dirPath, "worktree")
+	}
+	return row
 }
 
 // reasonFor turns a read error into a short skip reason.

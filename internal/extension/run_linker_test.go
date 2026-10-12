@@ -3,9 +3,11 @@ package extension
 import (
 	"context"
 	"errors"
+	"github.com/gustaborges/work/internal/plugin"
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/gustaborges/work/internal/diag"
 )
@@ -176,6 +178,37 @@ func TestRunOrderAndResultAreIdenticalAcrossRepeats(t *testing.T) {
 		}
 		if n := len(h.idx.entries); n != 2 || h.idx.entries[1].SourceComponent != "context-suite/linker2" {
 			t.Fatalf("run %d: provenance = %+v", i, h.idx.entries)
+		}
+	}
+}
+
+func TestAutomaticPublicationKeepsLatestStateAndRefusesArchive(t *testing.T) {
+	for _, archived := range []bool{false, true} {
+		h := newHarness(t, "linker-value")
+		latest := h.snapshot()
+		latest.Links["other.link"] = "newer"
+		latest.Work.LastAccessedAt = "2026-03-01T00:00:00Z"
+		if archived {
+			latest.Archive(time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC))
+		}
+		if err := workWrite(h, latest); err != nil {
+			t.Fatal(err)
+		}
+		r := newRunner(h.ctx)
+		d := Eligible(h.ctx.Registry, plugin.RoleLinker, StartFinalized, r.subject())[0]
+		if !r.runLinker(context.Background(), d) {
+			t.Fatal("ordinary failure interrupted automatic start")
+		}
+		saved := h.snapshot()
+		if saved.Work != latest.Work || saved.Links["other.link"] != "newer" {
+			t.Fatal(saved)
+		}
+		if archived {
+			if saved.Links["github.pull_request"] != "" || len(r.report.Warnings) != 1 || r.report.Warnings[0].Token != diag.WarnExtensionPersistFailed {
+				t.Fatal(saved, r.report)
+			}
+		} else if saved.Links["github.pull_request"] == "" || len(r.report.Warnings) != 0 {
+			t.Fatal(saved, r.report)
 		}
 	}
 }
