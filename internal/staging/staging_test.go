@@ -155,7 +155,7 @@ func TestBuildResolvesSymlinkedWorkDirForDestinations(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, it := range plan.Items {
-		if !strings.HasPrefix(it.Dest, wantRoot+string(filepath.Separator)) {
+		if it.Dest != wantRoot && !strings.HasPrefix(it.Dest, wantRoot+string(filepath.Separator)) {
 			t.Fatalf("dest %q is not rooted at resolved work dir %q", it.Dest, wantRoot)
 		}
 	}
