@@ -82,6 +82,7 @@ type Convention struct {
 // names are), so Package is where a package's own declared convention names
 // are recorded.
 type Package struct {
+	Enabled     *bool    `json:"enabled,omitempty"` // retained core state; nil means enabled
 	Alias       string   `json:"alias"`
 	Origin      string   `json:"origin"`                // one of the Origin* constants
 	Reference   string   `json:"reference"`             // absolute source path (local kinds), or "<source>@<sha>" (remote)

@@ -29,6 +29,7 @@ import (
 	"github.com/gustaborges/work/internal/work"
 	"github.com/gustaborges/work/internal/work/verify"
 	"github.com/gustaborges/work/seed"
+	fixtureplugins "github.com/gustaborges/work/tests/fixtures/plugins"
 )
 
 func TestMain(m *testing.M) {
@@ -64,6 +65,18 @@ func TestScripts(t *testing.T) {
 			return nil
 		},
 		Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
+			"package-enabled": func(ts *testscript.TestScript, neg bool, args []string) {
+				if neg || len(args) != 2 {
+					ts.Fatalf("usage: package-enabled <alias> <bool>")
+				}
+				enabled, err := strconv.ParseBool(args[1])
+				if err != nil {
+					ts.Fatalf("%v", err)
+				}
+				if err := fixtureplugins.SetPackageEnabled(filepath.Join(ts.Getenv("WORK_HOME"), "state", "registry.json"), args[0], enabled); err != nil {
+					ts.Fatalf("%v", err)
+				}
+			},
 			// provenance <section> <key> <component> <operation> asserts that the
 			// index holds that provenance row for some Work; negated, that it
 			// holds none. provenancecount <n> asserts the total number of rows.

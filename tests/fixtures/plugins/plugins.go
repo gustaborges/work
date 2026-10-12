@@ -9,11 +9,14 @@ package plugins
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/gustaborges/work/internal/registry"
 )
 
 // Prepare builds the fixture package at tests/fixtures/plugins/<fixture> and
@@ -83,4 +86,35 @@ func Prepare(t *testing.T, fixture string) string {
 		}
 	}
 	return dir
+}
+
+// SetPackageEnabled persists retained state without an administration command.
+func SetPackageEnabled(path, alias string, enabled bool) error {
+	r, err := registry.Load(path)
+	if err != nil {
+		return err
+	}
+	for i := range r.Packages {
+		if r.Packages[i].Alias == alias {
+			r.Packages[i].Enabled = &enabled
+			return registry.Save(path, r)
+		}
+	}
+	return fmt.Errorf("package %q is not installed", alias)
+}
+
+// StageInventory lists isolated import stages without modifying them.
+func StageInventory(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	return names, nil
 }

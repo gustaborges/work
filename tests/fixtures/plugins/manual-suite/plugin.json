@@ -1,0 +1,11 @@
+{
+  "name": "manual-suite",
+  "version": "1.0.0",
+  "components": [
+    {"name":"linker","role":"linker","key":"github.pull_request","entrypoint":"linker","manual":{"display_name":"Pull request","description":"Associate a saved PR reference"},"discover":{"automatic":true,"on":[{"event":"start:finalized","starters":["unrelated"]}],"inputs":["meta:plugin.manual-suite.absent"]}},
+    {"name":"importer","role":"importer","entrypoint":"importer","manual":{"display_name":"Context importer","description":"Import saved PR context"},"on":[{"event":"start:finalized","starters":["unrelated"]}],"inputs":["link:github.pull_request","work:start_mode:optional","meta:plugin.manual-suite.nullable:optional"]},
+    {"name":"needs-input","role":"importer","entrypoint":"needs-input","manual":{"display_name":"Issue importer"},"inputs":["link:github.issue"]},
+    {"name":"automatic-only","role":"importer","entrypoint":"automatic-only","on":[{"event":"start:finalized"}],"inputs":["work:branch"]}
+  ],
+  "conventions": []
+}
