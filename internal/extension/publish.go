@@ -124,7 +124,7 @@ func publicationContext(ctx context.Context, expected workcontext.Context) (work
 		workspace := filepath.Dir(filepath.Dir(expected.WorkDir))
 		found, lookupErr := workcontext.ByID(ctx, workspace, expected.State.Work.ID, nil)
 		if lookupErr == nil && found.State.Work.Status == work.StatusArchived {
-			return workcontext.Context{}, diag.New(diag.TargetArchived, "that Work was archived before link commitment")
+			return workcontext.Context{}, diag.New(diag.TargetArchived, "that Work was archived before enrichment commitment")
 		}
 		if lookupErr != nil && diag.ExitCode(lookupErr) != diag.TargetNotFound.Code {
 			return workcontext.Context{}, lookupErr
@@ -136,10 +136,10 @@ func publicationContext(ctx context.Context, expected workcontext.Context) (work
 		return workcontext.Context{}, err
 	}
 	if current.WorkDir != expected.WorkDir || current.State.Work.ID != expected.State.Work.ID {
-		return workcontext.Context{}, diag.New(diag.SnapshotUnreadable, "the Work directory or identity changed before link commitment")
+		return workcontext.Context{}, diag.New(diag.SnapshotUnreadable, "the Work directory or identity changed before enrichment commitment")
 	}
 	if current.State.Work.Status == work.StatusArchived {
-		return workcontext.Context{}, diag.New(diag.TargetArchived, "that Work was archived before link commitment")
+		return workcontext.Context{}, diag.New(diag.TargetArchived, "that Work was archived before enrichment commitment")
 	}
 	if filepath.Base(filepath.Dir(current.WorkDir)) != work.StatusInProgress {
 		return workcontext.Context{}, diag.New(diag.SnapshotUnreadable, "the Work is no longer in the active area")

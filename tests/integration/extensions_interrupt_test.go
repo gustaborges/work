@@ -4,10 +4,13 @@ package integration
 
 import (
 	"bufio"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 // launchedRoles returns the fixture components that started, in order, from
@@ -55,16 +58,38 @@ func TestInterruptDuringAutomaticPhasesKeepsTheWork(t *testing.T) {
 	env, homeDir, workHome := ptyEnv(t)
 	ws := contextSuiteWorkspace(t, bin, env, homeDir, workHome)
 
+	fifo := filepath.Join(homeDir, "ready")
+	if err := syscall.Mkfifo(fifo, 0600); err != nil {
+		t.Fatal(err)
+	}
+	ready := make(chan error, 1)
+	go func() {
+		f, err := os.Open(fifo)
+		if err == nil {
+			_, err = io.ReadAll(f)
+			f.Close()
+		}
+		ready <- err
+	}()
 	logPath := filepath.Join(homeDir, "launches.log")
 	cdFile := filepath.Join(homeDir, "cdfile")
 	env = append(env,
 		"WORK_FIXTURE_MODE=linker-hang,linker2-value,importer-ok",
 		"WORK_FIXTURE_LOG="+logPath,
+		"WORK_FIXTURE_READY="+fifo,
 		"WORK_CD_FILE="+cdFile)
 
 	c := newConsole(t, bin, env, "start", "demo-ctx-1",
 		"--workspace", ws, "--base", "main", "--slug", "hang", "--prefix", "{slug}", "--yes")
 	c.expect("work: running context-suite/linker (discover)")
+	select {
+	case err := <-ready:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Linker did not reach readiness barrier")
+	}
 	if err := c.cmd.Process.Signal(os.Interrupt); err != nil {
 		t.Fatal(err)
 	}

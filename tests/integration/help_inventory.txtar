@@ -55,3 +55,10 @@ work link --help
 stdout 'link \[LINKER\] \[VALUE\]'
 ! stdout '\-\-json'
 ! stdout '\-\-yes'
+
+work --help
+stdout -count=1 '(?m)^  import '
+work import --help
+stdout 'import \[IMPORTER\]'
+! stdout '\-\-json'
+! stdout '\-\-yes'

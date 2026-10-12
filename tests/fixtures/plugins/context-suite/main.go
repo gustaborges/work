@@ -139,6 +139,11 @@ func runLinker(role, mode string, stdout io.Writer) error {
 		_, err := io.WriteString(stdout, "this is not json")
 		return err
 	case "hang":
+		if path := os.Getenv("WORK_FIXTURE_READY"); path != "" {
+			if err := os.WriteFile(path, []byte("ready"), 0600); err != nil {
+				return err
+			}
+		}
 		time.Sleep(time.Hour)
 		return nil
 	case "":

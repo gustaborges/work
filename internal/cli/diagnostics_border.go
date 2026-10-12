@@ -35,6 +35,7 @@ func renderDiagnostic(ui io.Writer, in io.Reader, interactive bool, err error) i
 
 	if !interactive {
 		fmt.Fprintln(ui, diag.Format(err))
+		renderImportDebug(ui, err)
 		return diag.ExitCode(err)
 	}
 
@@ -61,7 +62,30 @@ func renderDiagnostic(ui io.Writer, in io.Reader, interactive bool, err error) i
 			fmt.Fprintf(ui, "\n%s\n", chain)
 		}
 	}
+	if os.Getenv("WORK_DEBUG") != "" {
+		var f *extension.Failure
+		if errors.As(err, &f) && f.Stderr != "" {
+			fmt.Fprintf(ui, "  stderr: %s\n", strings.TrimSpace(f.Stderr))
+		}
+	}
 	return diag.ExitCode(err)
+}
+
+func renderImportDebug(ui io.Writer, err error) {
+	if os.Getenv("WORK_DEBUG") == "" {
+		return
+	}
+	var d *diag.Error
+	if !errors.As(err, &d) || d.Category.Code < 44 || d.Category.Code > 49 {
+		return
+	}
+	if chain := causeChain(err, false); chain != "" {
+		fmt.Fprintln(ui, chain)
+	}
+	var f *extension.Failure
+	if errors.As(err, &f) && f.Stderr != "" {
+		fmt.Fprintf(ui, "  stderr: %s\n", strings.TrimSpace(f.Stderr))
+	}
 }
 
 // causeChain renders the wrapped error chain, innermost cause last, for the

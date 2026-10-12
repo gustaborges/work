@@ -224,3 +224,36 @@ func TestNewStageIgnoresPreexistingWorkParent(t *testing.T) {
 		})
 	}
 }
+
+func TestNativeCaseDistinctDirectories(t *testing.T) {
+	stage, dest := t.TempDir(), t.TempDir()
+	write(t, stage, "Notes/a", "a")
+	write(t, stage, "notes/b", "b")
+	entries, _ := os.ReadDir(stage)
+	p, err := Build(stage, dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := p.Incorporate()
+	if len(entries) == 2 {
+		if err != nil || n != 4 {
+			t.Fatal(n, err)
+		}
+	} else if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPreflightMixedCollisionIsReadOnly(t *testing.T) {
+	stage, dest := t.TempDir(), t.TempDir()
+	write(t, stage, "a/clean", "new")
+	write(t, stage, "z/collision", "new")
+	write(t, dest, "z/collision", "old")
+	before := treeHash(t, dest)
+	if _, err := Build(stage, dest); err == nil {
+		t.Fatal("mixed collision accepted")
+	}
+	if treeHash(t, dest) != before {
+		t.Fatal("preflight wrote output")
+	}
+}
