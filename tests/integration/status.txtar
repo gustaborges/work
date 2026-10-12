@@ -1,0 +1,43 @@
+# Current and explicit status remain canonical through the daily cycle.
+env WS=$WORK/workspace
+mkdir $WS
+gitrepo src
+exec work start $WORK/src --workspace $WS --base main --slug topic --prefix '{slug}' --yes
+workid $WS/in-progress/src_topic/work-state.json ID
+cd $WS/in-progress/src_topic
+exec work status
+stdout 'work: id '
+stdout 'work: status in-progress'
+stdout 'work: branch topic'
+stdout 'work: links none'
+! stderr .
+cd worktree
+exec work status --json
+stdout '"id":'
+stdout '"links":\{\}'
+! stderr .
+cd $WORK
+exec work status $ID --json
+stdout '"status":"in-progress"'
+! stderr .
+exec work archive $ID --yes
+today TODAY
+cd $WS/archived/$TODAY-src_topic
+mkdir notes
+cd notes
+exec work status
+stdout 'work: status archived'
+! stderr .
+cd $WORK
+exec work status $ID --json
+stdout '"status":"archived"'
+! stderr .
+! exec work status
+stderr 'target-not-found'
+! stdout .
+! exec work status unknown
+stderr 'target-not-found'
+! stdout .
+! exec work status one two
+stderr 'usage'
+! stdout .

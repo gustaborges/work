@@ -70,15 +70,15 @@ Keep Go 1.26.0 and existing dependencies. Preserve snapshot schema 3, reads of s
 
 ### Tests
 
-- [ ] T015 [P] [US1] Add status contract cases to `tests/contract/manual_context_test.go` for five required JSON fields, exact link round-trip, `{}` empty links, stable sorted human lines, archived/active location, successful empty stderr, and no partial stdout on failure.
-- [ ] T016 [P] [US1] Add `tests/integration/status.txtar` for root/checkout/artifact descendants, explicit target overriding another current Work, archive descendants, contribution mode, spaces/Unicode paths, missing checkout, and accepted legacy snapshots without rewrite.
-- [ ] T017 [P] [US1] Add `tests/integration/status_purity_test.go` to compare bytes/mtime/inventories and read-only operational observations across 20 repeated human/JSON reads per target form, missing/corrupt/stale/WAL/old indexes, nonexistent WORK_HOME, and old-workspace hint success/failure; detect any Git/plugin execution, bootstrap, locks, sidecars or handoff writes without writable verification helpers.
-- [ ] T018 [P] [US1] Add output and failure unit cases in `internal/cli/status_test.go` for exact fields, sorted links, untruncated values, safe one-line quoting of newline/tab/control text, JSON preservation, invalid enclosing/explicit data, duplicate IDs and cancellation before output.
+- [X] T015 [P] [US1] Add status contract cases to `tests/contract/manual_context_test.go` for five required JSON fields, exact link round-trip, `{}` empty links, stable sorted human lines, archived/active location, successful empty stderr, and no partial stdout on failure.
+- [X] T016 [P] [US1] Add `tests/integration/status.txtar` for root/checkout/artifact descendants, explicit target overriding another current Work, archive descendants, contribution mode, spaces/Unicode paths, missing checkout, and accepted legacy snapshots without rewrite.
+- [X] T017 [P] [US1] Add `tests/integration/status_purity_test.go` to compare bytes/mtime/inventories and read-only operational observations across 20 repeated human/JSON reads per target form, missing/corrupt/stale/WAL/old indexes, nonexistent WORK_HOME, and old-workspace hint success/failure; detect any Git/plugin execution, bootstrap, locks, sidecars or handoff writes without writable verification helpers.
+- [X] T018 [P] [US1] Add output and failure unit cases in `internal/cli/status_test.go` for exact fields, sorted links, untruncated values, safe one-line quoting of newline/tab/control text, JSON preservation, invalid enclosing/explicit data, duplicate IDs and cancellation before output.
 
 ### Implementation
 
-- [ ] T019 [US1] Implement `work status [WORK] [--json]` in `internal/cli/status.go`, using pure resolution, a transient five-field view, complete serialization before output, bytewise link sorting and escaped human control text; emit one canonical result with empty links represented explicitly, without probes/progress/prompts/receipts or mutable helpers; depends on T015–T018.
-- [ ] T020 [US1] Register status in `internal/cli/root.go` under `groupInWork` with a visible local `--json` flag, preserve the hidden inherited root flag, and update `internal/cli/help_test.go` and `tests/integration/help_inventory.txtar` for status grammar/discoverability without changing bare-work branding or unrelated help.
+- [X] T019 [US1] Implement `work status [WORK] [--json]` in `internal/cli/status.go`, using pure resolution, a transient five-field view, complete serialization before output, bytewise link sorting and escaped human control text; emit one canonical result with empty links represented explicitly, without probes/progress/prompts/receipts or mutable helpers; depends on T015–T018.
+- [X] T020 [US1] Register status in `internal/cli/root.go` under `groupInWork` with a visible local `--json` flag, preserve the hidden inherited root flag, and update `internal/cli/help_test.go` and `tests/integration/help_inventory.txtar` for status grammar/discoverability without changing bare-work branding or unrelated help.
 
 **Checkpoint**: US1 is independently useful and is the suggested MVP. Its acceptance tests pass before starting mutations.
 
@@ -287,3 +287,9 @@ Parallel-ready tasks: 30, grouped into foundation, story test and documentation/
 ### M1–M2 host verification (2026-10-11)
 
 M1: fixture unit tests and `TestScripts/manual_fixture` passed. M2: focused workcontext, projection, registry, diagnostics, install, bootstrap, plugin, starter, locator, convention, repoconfig, extension and CLI tests passed with `GOCACHE=/tmp/work-go-cache GIT_CONFIG_GLOBAL=/dev/null`. Bootstrap already retains package records during repair; the new tests verify this without changing its install pipeline. Other platforms remain for the existing CI matrix.
+
+### M3 host verification (2026-10-11)
+
+T015–T020 passed: five-field JSON and exact link round-trip, sorted safe human records, empty links, active/archive locations, explicit precedence, invalid/duplicate targets, cancellation, grouped help and the daily-cycle testscript. `TestStatusPurity` compares bytes, mtimes and directory inventories across 20 reads of each human/JSON current-root, artifact-descendant and explicit target form for active and archived Works. It covers missing/corrupt/stale/old/WAL indexes, nonexistent home and old-workspace hint success/failure, with native launch tripwires and an unchanged shell handoff. Legacy schemas and missing checkouts are accepted without rewrites.
+
+Host gates passed: `make seed`, `GIT_CONFIG_GLOBAL=/dev/null go test ./...`, `make lint`, and `make build` (sandbox caches under `/tmp`). After extending archived purity and failure cases, their focused tests and lint passed again. No M4–M7 implementation was attempted; macOS/Windows execution remains for CI. No before/after implementation hooks are registered in `.specify/extensions.yml`.

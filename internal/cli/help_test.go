@@ -154,3 +154,26 @@ func TestHelpCompletionGroupedHelpHidden(t *testing.T) {
 		t.Errorf("auto help command should be hidden: %+v", help)
 	}
 }
+
+func TestStatusHelpAndLocalJSON(t *testing.T) {
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"status", "--help"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "status [WORK]") || !strings.Contains(out.String(), "--json") {
+		t.Fatal(out.String())
+	}
+	status, _, err := root.Find([]string{"status"})
+	if err != nil || status.GroupID != groupInWork {
+		t.Fatal("wrong help group", err)
+	}
+	if status.Flags().Lookup("json").Hidden {
+		t.Fatal("status JSON flag hidden")
+	}
+	if !root.PersistentFlags().Lookup("json").Hidden {
+		t.Fatal("inherited JSON flag exposed")
+	}
+}
