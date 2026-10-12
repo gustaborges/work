@@ -193,7 +193,7 @@ func isAvailable(reg *registry.Registry, ref string) bool {
 
 func hasRepositoryLocator(reg *registry.Registry, alias, name string) bool {
 	for _, c := range reg.Components {
-		if c.Alias == alias && c.Name == name && c.Role == registry.RoleRepositoryLocator {
+		if c.Alias == alias && c.Name == name && c.Role == registry.RoleRepositoryLocator && reg.PackageEnabled(alias) {
 			return true
 		}
 	}
@@ -211,7 +211,7 @@ func resolveAgainstRegistry(reg *registry.Registry, ref string) (string, error) 
 		return "", diag.Newf(diag.Usage, "unknown repository locator %q", ref)
 	}
 	var matches []registry.Component
-	for _, c := range reg.ByRole(registry.RoleRepositoryLocator) {
+	for _, c := range reg.Effective().ByRole(registry.RoleRepositoryLocator) {
 		if c.Name == ref {
 			matches = append(matches, c)
 		}

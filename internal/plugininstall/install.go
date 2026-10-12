@@ -120,6 +120,7 @@ func Install(pluginsDir string, reg *registry.Registry, source string, opts Opti
 		conventionNames = append(conventionNames, cv.Name)
 	}
 	pkg := registry.Package{Alias: alias, Origin: origin, Reference: reference, Conventions: conventionNames, PluginName: manifest.Name}
+	pkg.Enabled = existing.Enabled
 	reg.RemoveAlias(alias)
 	reg.UpsertPackage(pkg)
 	for _, c := range manifest.Components {

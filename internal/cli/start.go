@@ -1052,7 +1052,7 @@ func starterLogicalName(reg *registry.Registry, c registry.Component) string {
 // registration order (the reference package's "freeform" first, then every
 // plugin-declared convention in install order).
 func conventionNames(reg *registry.Registry) []string {
-	convs := reg.ListConventions()
+	convs := reg.Effective().ListConventions()
 	names := make([]string, len(convs))
 	for i, c := range convs {
 		names[i] = c.Name

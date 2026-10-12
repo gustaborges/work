@@ -404,3 +404,20 @@ func equal(a, b []string) bool {
 	}
 	return true
 }
+
+func TestDisabledLocatorPolicyRetained(t *testing.T) {
+	off := false
+	r := &registry.Registry{Packages: []registry.Package{{Alias: "a", Enabled: &off}}, Components: []registry.Component{{Alias: "a", Name: "loc", Role: registry.RoleRepositoryLocator}}}
+	cfg := config.Default()
+	cfg.RepositoryResolution.Locators = []string{"a/loc"}
+	entries := ListPolicy(cfg, r)
+	if len(entries) != 1 || entries[0].Available || cfg.RepositoryResolution.Locators[0] != "a/loc" {
+		t.Fatalf("%+v", entries)
+	}
+	if err := AddPolicy(cfg, r, "a/loc", "", ""); err == nil {
+		t.Fatal("added disabled Locator")
+	}
+	if len(ListLocators(cfg, r)) != 1 {
+		t.Fatal("installed inventory lost")
+	}
+}

@@ -618,3 +618,27 @@ func TestReinstallReplacesDeclarations(t *testing.T) {
 		t.Errorf("kept importer missing after reinstall")
 	}
 }
+
+func TestReinstallRetainsDisablementAndRawCollisions(t *testing.T) {
+	src := fixtures.Prepare(t, "specific-starter")
+	dir := t.TempDir()
+	r := &registry.Registry{}
+	if _, err := Install(dir, r, src, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	off := false
+	p, _ := r.PackageByAlias("specific-starter")
+	p.Enabled = &off
+	r.UpsertPackage(p)
+	if _, err := Install(dir, r, src, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	p, _ = r.PackageByAlias("specific-starter")
+	if p.Enabled == nil || *p.Enabled {
+		t.Fatal("reinstall enabled package")
+	}
+	other := fixtures.Prepare(t, "specific-starter")
+	if _, err := Install(dir, r, other, Options{}); diag.ExitCode(err) != 32 {
+		t.Fatalf("disabled collision: %v", err)
+	}
+}

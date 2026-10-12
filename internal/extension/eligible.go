@@ -20,7 +20,7 @@ import (
 // reproducible, not a contract authors may rely on.
 func Eligible(reg *registry.Registry, role, event string, s Subject) []Decision {
 	var out []Decision
-	for _, c := range reg.Extensions(role) {
+	for _, c := range reg.Effective().Extensions(role) {
 		if !subscribed(c, event, s.Starter) {
 			continue
 		}

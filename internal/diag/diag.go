@@ -60,6 +60,18 @@ var (
 	StarterAmbiguous       = Category{Token: "starter-ambiguous", Code: 36}
 	StarterResponseInvalid = Category{Token: "starter-response-invalid", Code: 37}
 	ConventionUnknown      = Category{Token: "convention-unknown", Code: 38}
+	// F6 manual operations. Automatic extension failures remain warnings.
+	ManualComponentUnavailable = Category{Token: "manual-component-unavailable", Code: 39}
+	ManualComponentAmbiguous   = Category{Token: "manual-component-ambiguous", Code: 40}
+	NoEligibleComponent        = Category{Token: "no-eligible-component", Code: 41}
+	RequiredInputMissing       = Category{Token: "required-input-missing", Code: 42}
+	LinkFailed                 = Category{Token: "link-failed", Code: 43}
+	ExtensionStartFailed       = Category{Token: "extension-start-failed", Code: 44}
+	ExtensionFailed            = Category{Token: "extension-failed", Code: 45}
+	ExtensionResponseInvalid   = Category{Token: "extension-response-invalid", Code: 46}
+	ExtensionOutputRefused     = Category{Token: "extension-output-refused", Code: 47}
+	ExtensionPersistFailed     = Category{Token: "extension-persist-failed", Code: 48}
+	ExtensionCleanupFailed     = Category{Token: "extension-cleanup-failed", Code: 49}
 )
 
 // All lists every category including OK, ordered by exit code. Tests assert the
@@ -72,6 +84,7 @@ var All = []Category{
 	LocatorFailed, RepositoryAmbiguous,
 	PluginInvalid, PluginAliasConflict, PluginFallbackConflict, PluginInstallFailed,
 	StarterNotMatched, StarterAmbiguous, StarterResponseInvalid, ConventionUnknown,
+	ManualComponentUnavailable, ManualComponentAmbiguous, NoEligibleComponent, RequiredInputMissing, LinkFailed, ExtensionStartFailed, ExtensionFailed, ExtensionResponseInvalid, ExtensionOutputRefused, ExtensionPersistFailed, ExtensionCleanupFailed,
 }
 
 // Error is a failure tagged with a Category. Msg is shown to the user; Err, when

@@ -27,7 +27,7 @@ const LogicalName = "local-path-starter"
 // Select returns the Starter that will handle this run. In F1 that is always
 // the single fallback-layer Starter registered by bootstrap.
 func Select(reg *registry.Registry) (registry.Component, error) {
-	c, ok := reg.StarterFallback()
+	c, ok := reg.Effective().StarterFallback()
 	if !ok {
 		return registry.Component{}, diag.New(diag.BootstrapFailed,
 			"no Starter is registered; the reference package is not installed")
@@ -58,7 +58,7 @@ type Outcome struct {
 // them.
 func Match(reg *registry.Registry, arg string) (registry.Component, Outcome, error) {
 	var matches []registry.Component
-	for _, c := range reg.ByRole(registry.RoleStarter) {
+	for _, c := range reg.Effective().ByRole(registry.RoleStarter) {
 		pattern := strings.TrimSpace(c.Pattern)
 		if pattern == "" {
 			continue // the fallback layer is never pattern-matched
@@ -77,7 +77,7 @@ func Match(reg *registry.Registry, arg string) (registry.Component, Outcome, err
 
 	switch len(matches) {
 	case 0:
-		fb, ok := reg.StarterFallback()
+		fb, ok := reg.Effective().StarterFallback()
 		if !ok {
 			return registry.Component{}, Outcome{}, diag.New(diag.StarterNotMatched,
 				"no Starter matches this argument, and none is registered as a fallback").

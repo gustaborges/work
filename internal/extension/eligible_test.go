@@ -175,3 +175,18 @@ func TestEligibleIsPure(t *testing.T) {
 		t.Errorf("Eligible mutated its arguments")
 	}
 }
+
+func TestDisabledExtensionsExcluded(t *testing.T) {
+	off := false
+	r := &registry.Registry{Packages: []registry.Package{{Alias: "acme", Enabled: &off}}, Components: []registry.Component{importer("one", startFinalized), linker("two", true, startFinalized)}}
+	for _, role := range []string{plugin.RoleImporter, plugin.RoleLinker} {
+		if got := Eligible(r, role, plugin.EventStartFinalized, subject("new", nil, nil)); len(got) != 0 {
+			t.Fatalf("%+v", got)
+		}
+		r.Packages = nil
+		if got := Eligible(r, role, plugin.EventStartFinalized, subject("new", nil, nil)); len(got) != 1 {
+			t.Fatal("ownerless default")
+		}
+		r.Packages = []registry.Package{{Alias: "acme", Enabled: &off}}
+	}
+}
