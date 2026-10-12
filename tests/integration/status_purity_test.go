@@ -29,7 +29,9 @@ func statusInventory(t *testing.T, root string) map[string]string {
 		if err != nil {
 			return err
 		}
-		info, err := d.Info()
+		// Read current metadata rather than the directory enumeration's cached
+		// timestamps, which can lag behind fixture writes on Windows.
+		info, err := os.Lstat(path)
 		if err != nil {
 			return err
 		}
@@ -168,6 +170,16 @@ func TestStatusPurity(t *testing.T) {
 				}
 			}
 			if after := statusInventory(t, root); !reflect.DeepEqual(before, after) {
+				for path, value := range before {
+					if after[path] != value {
+						t.Errorf("%s: before %q, after %q", path, value, after[path])
+					}
+				}
+				for path := range after {
+					if _, ok := before[path]; !ok {
+						t.Errorf("new path: %s", path)
+					}
+				}
 				t.Fatal("status changed application files, times or inventory")
 			}
 		})

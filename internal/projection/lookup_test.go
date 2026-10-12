@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -39,7 +40,11 @@ func TestLookupPathHintPure(t *testing.T) {
 				os.WriteFile(path, []byte("broken"), 0o600)
 			case "missing":
 			default:
-				db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: filepath.ToSlash(path)}).String())
+				uriPath := filepath.ToSlash(path)
+				if !strings.HasPrefix(uriPath, "/") {
+					uriPath = "/" + uriPath
+				}
+				db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: uriPath}).String())
 				if err != nil {
 					t.Fatal(err)
 				}

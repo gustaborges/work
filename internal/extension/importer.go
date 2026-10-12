@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/ipc"
@@ -36,7 +37,17 @@ func (r *runner) runImporter(ctx context.Context, d Decision) bool {
 	}
 	r.emit(Event{Kind: Running, Component: name, Operation: OpImport})
 
-	result, err := ImportOne(ctx, ImportParams{Home: r.c.Home, Expected: workcontext.Context{State: r.state, WorkDir: r.c.WorkDir, SnapshotPath: r.c.SnapshotPath, WorktreePath: r.c.WorktreePath}, Component: d.Component, Automatic: true, Starter: r.c.Starter, Reload: func() (*registry.Registry, error) { return r.c.Registry, nil }})
+	// Capture the real destination before invocation, just as automatic link
+	// publication does. Temp directories can contain symlinks or short names.
+	dir := r.c.WorkDir
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = real
+	}
+	snapshot := r.c.SnapshotPath
+	if real, err := filepath.EvalSymlinks(filepath.Dir(snapshot)); err == nil {
+		snapshot = filepath.Join(real, filepath.Base(snapshot))
+	}
+	result, err := ImportOne(ctx, ImportParams{Home: r.c.Home, Expected: workcontext.Context{State: r.state, WorkDir: dir, SnapshotPath: snapshot, WorktreePath: r.c.WorktreePath}, Component: d.Component, Automatic: true, Starter: r.c.Starter, Reload: func() (*registry.Registry, error) { return r.c.Registry, nil }})
 	if result.Ran {
 		r.report.Ran++
 	}

@@ -21,6 +21,15 @@ func ByID(ctx context.Context, workspace, id string, hints PathHint) (Context, e
 	}
 	var found Context
 	if workspace != "" {
+		// Validate the root itself: Windows can report a child of a regular
+		// file as nonexistent, hiding an invalid root as an empty workspace.
+		info, err := os.Stat(workspace)
+		if err != nil && !os.IsNotExist(err) {
+			return Context{}, unreadable(err)
+		}
+		if err == nil && !info.IsDir() {
+			return Context{}, unreadable(&os.PathError{Op: "readdir", Path: workspace, Err: os.ErrInvalid})
+		}
 		for _, area := range []string{work.StatusInProgress, work.StatusArchived} {
 			entries, err := os.ReadDir(filepath.Join(workspace, area))
 			if os.IsNotExist(err) {

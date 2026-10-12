@@ -73,6 +73,25 @@ func TestImporterOutputLandsBesideTheWorktreeNotInIt(t *testing.T) {
 	}
 }
 
+func TestAutomaticImporterThroughDirectoryAlias(t *testing.T) {
+	h := newHarness(t, "linker-value,importer-ok,importer2-empty")
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(h.ctx.WorkDir, alias); err != nil {
+		t.Skipf("directory symlinks unavailable: %v", err)
+	}
+	h.ctx.WorkDir = alias
+	h.ctx.SnapshotPath = filepath.Join(alias, "work-state.json")
+	h.ctx.WorktreePath = filepath.Join(alias, "worktree")
+	rep := Run(context.Background(), h.ctx)
+	if len(rep.Warnings) != 0 {
+		t.Fatalf("warnings = %+v", rep.Warnings)
+	}
+	got, err := os.ReadFile(filepath.Join(alias, "notes", "context.md"))
+	if err != nil || string(got) != "imported context\n" {
+		t.Fatalf("imported context = %q, %v", got, err)
+	}
+}
+
 func TestImporterWithAbsentRequiredInputNeitherRunsNorWarns(t *testing.T) {
 	h := newHarness(t, "linker-none,linker2-none,importer-ok")
 	rep := Run(context.Background(), h.ctx)
