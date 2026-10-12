@@ -223,3 +223,29 @@ func TestProgressObserverNoControlSequencesWhenNotATerminal(t *testing.T) {
 		t.Errorf("output = %q", b.String())
 	}
 }
+
+func TestManualRecoveryDebugPreservesJoinedCauses(t *testing.T) {
+	for _, interactive := range []bool{false, true} {
+		for _, debug := range []string{"", "1"} {
+			t.Setenv("WORK_DEBUG", debug)
+			cause := errors.Join(&extension.Failure{ExitCode: 1, Stderr: "private stderr", Err: errors.New("execution cause")}, errors.New("rollback unresolved path"))
+			err := diag.Wrap(diag.ExtensionCleanupFailed, cause, "manual/importer (import) for Work opaque-id: cleanup needs recovery")
+			var out bytes.Buffer
+			if code := renderDiagnostic(&out, strings.NewReader(""), interactive, err); code != 49 {
+				t.Fatal(code)
+			}
+			s := out.String()
+			if !strings.Contains(s, "manual/importer (import) for Work opaque-id") {
+				t.Fatal(s)
+			}
+			for _, detail := range []string{"private stderr", "execution cause", "rollback unresolved path"} {
+				if strings.Contains(s, detail) != (debug != "") {
+					t.Fatal(debug, s)
+				}
+			}
+			if strings.Count(s, "cleanup needs recovery") != 1 {
+				t.Fatal("duplicate final diagnostic", s)
+			}
+		}
+	}
+}

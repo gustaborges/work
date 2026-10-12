@@ -14,6 +14,9 @@ func newImportCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "import [IMPORTER]", Short: "Import artifacts into the current Work", SilenceErrors: true, SilenceUsage: true,
 		Args: func(_ *cobra.Command, args []string) error {
+			if len(args) > 0 && args[0] == "" {
+				return diag.New(diag.Usage, "supply a non-empty Importer name")
+			}
 			if len(args) > 1 {
 				return diag.New(diag.Usage, "run `work import [IMPORTER]` with at most one argument")
 			}
@@ -43,15 +46,11 @@ func newImportCmd() *cobra.Command {
 			} else {
 				choices := extension.ManualCandidates(reg, plugin.RoleImporter, extension.Subject{State: current.State, WorktreePath: current.WorktreePath})
 				if len(choices) == 0 {
-					return diag.New(diag.NoEligibleComponent, "no manual Importer has its required inputs; associate the required links or install an eligible provider")
+					return noManualCandidates(reg, plugin.RoleImporter)
 				}
 				answers, err := present.Wizard(cmd.Context(), contextIO(cmd), present.WizardSpec{Title: "Import into a Work", Steps: []present.Step{
 					present.SelectStep("provider", func(present.Answers) (present.SelectSpec[registry.Component], error) {
-						options := make([]present.Option[registry.Component], len(choices))
-						for i, d := range choices {
-							c := d.Component
-							options[i] = present.Option[registry.Component]{Value: c, Primary: c.QualifiedName(), Secondary: c.Manual.DisplayName + " — " + c.Manual.Description}
-						}
+						options := manualOptions(choices)
 						return present.SelectSpec[registry.Component]{Title: "Choose an Importer", Options: options, Filterable: true, Receipt: func(o present.Option[registry.Component]) string { return o.Value.QualifiedName() }}, nil
 					}),
 				}})

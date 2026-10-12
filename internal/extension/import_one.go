@@ -94,7 +94,7 @@ func ImportOne(ctx context.Context, p ImportParams) (result ImportResult, err er
 		return result, failure(diag.RequiredInputMissing, err)
 	}
 	if len(missing) > 0 {
-		return result, diag.Newf(diag.RequiredInputMissing, "%s (import) for Work %s: required inputs missing: %s", c.QualifiedName(), current.State.Work.ID, strings.Join(missing, ", "))
+		return result, diag.Newf(diag.RequiredInputMissing, "%s (import) for Work %s: required inputs missing: %s; associate required links with `work link LINKER VALUE` or supply declared metadata", c.QualifiedName(), current.State.Work.ID, strings.Join(missing, ", ")).WithHint("Only declared present inputs are sent to the Importer; no discovery runs automatically.")
 	}
 	stage, err := staging.NewStage()
 	if err != nil {

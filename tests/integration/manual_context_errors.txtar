@@ -1,0 +1,110 @@
+# Validate grammar before context, and context before catalog collection.
+! exec work link
+stderr '^error: usage:'
+! stdout .
+! exec work import
+stderr '^error: usage:'
+! stdout .
+! exec work link manual/linker secret
+stderr '^error: target-not-found:.*enter a Work'
+! stdout .
+! exec work import manual/importer
+stderr '^error: target-not-found:'
+! stdout .
+! exec work status
+stderr '^error: target-not-found:'
+! stdout .
+! exec work status unknown
+stderr '^error: target-not-found:'
+! stdout .
+env WS=$WORK/workspace
+mkdir $WS
+gitrepo src
+exec work start $WORK/src --workspace $WS --base main --slug topic --prefix '{slug}' --yes
+preparepluginfixture manual-suite PKG
+exec work plugin install $PKG --as manual
+exec work plugin install $PKG --as alternate
+env WORK_FIXTURE_LOG=$WORK/launches.jsonl
+workid $WS/in-progress/src_topic/work-state.json ID
+cd $WS/in-progress/src_topic/worktree
+cp ../work-state.json $WORK/before.json
+! exec work link '' secret
+stderr '^error: usage:'
+! stdout .
+! exec work import ''
+stderr '^error: usage:'
+! stdout .
+! exec work link manual/linker ''
+stderr '^error: usage:'
+! exec work link manual/linker secret extra
+stderr '^error: usage:'
+! exec work import manual/importer extra
+stderr '^error: usage:'
+! exec work status one two
+stderr '^error: usage:'
+! exec work link manual/linker secret --json
+stderr '^error: usage:'
+! exec work link manual/linker secret --json=false
+stderr '^error: usage:'
+! exec work import manual/importer --json
+stderr '^error: usage:'
+! exec work import manual/importer --json=false
+stderr '^error: usage:'
+! exec work import manual/importer --yes
+stderr '^error: usage:'
+! exec work status --unknown
+stderr '^error: usage:'
+! exec work link unknown secret
+stderr '^error: manual-component-unavailable:'
+! exec work link manual/importer secret
+stderr '^error: manual-component-unavailable:'
+! exec work import manual/linker
+stderr '^error: manual-component-unavailable:'
+! exec work import manual/automatic-only
+stderr '^error: manual-component-unavailable:'
+! exec work import importer
+stderr '^error: manual-component-ambiguous:.*alternate/importer, manual/importer'
+! exec work import manual/needs-input
+stderr '^error: required-input-missing:.*link:github.issue'
+! stderr 'secret'
+package-enabled manual false
+! exec work link manual/linker secret
+stderr '^error: manual-component-unavailable:'
+! exec work import manual/importer
+stderr '^error: manual-component-unavailable:'
+! stdout .
+cmp ../work-state.json $WORK/before.json
+! exists $WORK/launches.jsonl
+package-enabled manual true
+exec work link manual/linker secret
+! exists $WORK/launches.jsonl
+# Bare-name ambiguity is checked before required-input eligibility.
+! exec work import importer
+stderr '^error: manual-component-ambiguous:'
+! stdout .
+! exists $WORK/launches.jsonl
+env WORK_FIXTURE_MODE=importer-empty
+exec work import manual/importer
+stdout '^work: imported .* manual/importer 0\n$'
+cd $WORK
+exec work archive $ID --yes
+today TODAY
+cd $WS/archived/$TODAY-src_topic
+cp work-state.json $WORK/archive.json
+! exec work link manual/linker secret
+stderr '^error: target-archived:'
+! stdout .
+! exec work import manual/importer
+stderr '^error: target-archived:'
+! stdout .
+cmp work-state.json $WORK/archive.json
+# Malformed enclosing data is never bypassed.
+cp $WORK/broken.json work-state.json
+! exec work status
+stderr '^error: snapshot-unreadable:'
+! stdout .
+! exec work import manual/importer
+stderr '^error: snapshot-unreadable:'
+! stdout .
+-- broken.json --
+{invalid

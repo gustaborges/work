@@ -20,6 +20,9 @@ func newLinkCmd() *cobra.Command {
 		Use: "link [LINKER] [VALUE]", Short: "Associate a link with the current Work",
 		SilenceErrors: true, SilenceUsage: true,
 		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 && args[0] == "" {
+				return diag.New(diag.Usage, "supply a non-empty Linker name")
+			}
 			if len(args) > 2 {
 				return diag.New(diag.Usage, "run `work link [LINKER] [VALUE]` with at most two arguments")
 			}
@@ -56,18 +59,14 @@ func newLinkCmd() *cobra.Command {
 			} else {
 				choices := extension.ManualCandidates(reg, plugin.RoleLinker, extension.Subject{State: current.State, WorktreePath: current.WorktreePath})
 				if len(choices) == 0 {
-					return diag.New(diag.NoEligibleComponent, "no manual Linker is available; install or enable a package with a manual Linker")
+					return noManualCandidates(reg, plugin.RoleLinker)
 				}
 				answers, err := present.Wizard(cmd.Context(), contextIO(cmd), present.WizardSpec{Title: "Link a Work", Steps: []present.Step{
 					present.SelectStep("provider", func(present.Answers) (present.SelectSpec[registry.Component], error) {
 						if len(args) > 0 {
 							return present.SelectSpec[registry.Component]{}, present.StepResolved(selected)
 						}
-						options := make([]present.Option[registry.Component], len(choices))
-						for i, d := range choices {
-							c := d.Component
-							options[i] = present.Option[registry.Component]{Value: c, Primary: c.QualifiedName(), Secondary: c.Manual.DisplayName + " — " + c.Manual.Description}
-						}
+						options := manualOptions(choices)
 						return present.SelectSpec[registry.Component]{Title: "Choose a Linker", Options: options, Filterable: true, Receipt: func(o present.Option[registry.Component]) string { return o.Value.QualifiedName() }}, nil
 					}),
 					present.InputStep("value", func(a present.Answers) (present.InputSpec, error) {

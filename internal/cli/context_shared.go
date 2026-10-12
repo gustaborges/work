@@ -6,6 +6,8 @@ import (
 
 	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/diag"
+	"github.com/gustaborges/work/internal/extension"
+	"github.com/gustaborges/work/internal/plugin"
 	"github.com/gustaborges/work/internal/present"
 	"github.com/gustaborges/work/internal/projection"
 	"github.com/gustaborges/work/internal/reconcile"
@@ -70,7 +72,7 @@ func requireActiveContext(ctx context.Context) (workcontext.Context, error) {
 		return c, err
 	}
 	if c.State.Work.Status != work.StatusInProgress {
-		return workcontext.Context{}, diag.New(diag.TargetArchived, "that Work is archived; enrich an active Work instead")
+		return workcontext.Context{}, diag.New(diag.TargetArchived, "that Work is archived; enter an active Work to link or import, or use `work status` to inspect this archive").WithHint("Enter an in-progress Work directory before retrying.")
 	}
 	return c, nil
 }
@@ -102,4 +104,25 @@ func recordContextLink(home workhome.Home, c workcontext.Context, entry projecti
 		return err
 	}
 	return db.UpsertWithProvenance(reconcile.SnapshotRow(c.State, c.WorkDir), []projection.Provenance{entry})
+}
+
+// noManualCandidates distinguishes unavailable providers from missing data,
+// before any selector is opened.
+func noManualCandidates(reg *registry.Registry, role string) error {
+	for _, c := range reg.Effective().Extensions(role) {
+		if c.Manual != nil && role == plugin.RoleImporter {
+			return diag.New(diag.NoEligibleComponent, "no manual Importer has its required inputs; use `work link LINKER VALUE` to associate required links, or supply the provider's declared metadata").WithHint("Check the installed provider's required input declarations before retrying.")
+		}
+	}
+	return diag.Newf(diag.NoEligibleComponent, "no manual %s is available; install or enable a package declaring a manual %s", role, role).WithHint("Inspect installed packages with `work plugin list`.")
+}
+
+// manualOptions keeps qualified identities in the primary visible column.
+func manualOptions(choices []extension.Decision) []present.Option[registry.Component] {
+	options := make([]present.Option[registry.Component], len(choices))
+	for i, d := range choices {
+		c := d.Component
+		options[i] = present.Option[registry.Component]{Value: c, Primary: c.QualifiedName(), Secondary: c.Manual.DisplayName + " — " + c.Manual.Description}
+	}
+	return options
 }

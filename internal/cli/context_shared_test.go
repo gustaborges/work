@@ -69,3 +69,48 @@ func TestSharedProviderReloadAndStreams(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestNoManualCandidateGuidance(t *testing.T) {
+	for _, role := range []string{plugin.RoleLinker, plugin.RoleImporter} {
+		err := noManualCandidates(&registry.Registry{}, role)
+		if diag.ExitCode(err) != 41 || !strings.Contains(err.Error(), "install or enable") {
+			t.Fatal(err)
+		}
+	}
+	r := &registry.Registry{Components: []registry.Component{{Alias: "manual", Name: "importer", Role: plugin.RoleImporter, Manual: &plugin.Manual{DisplayName: "Import"}, Inputs: []string{"link:github.issue"}}}}
+	err := noManualCandidates(r, plugin.RoleImporter)
+	if diag.ExitCode(err) != 41 || !strings.Contains(err.Error(), "required inputs") || !strings.Contains(err.Error(), "work link") {
+		t.Fatal(err)
+	}
+}
+
+func TestContextValidationPrecedesCatalog(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	t.Setenv("WORK_HOME", home)
+	registryPath := filepath.Join(home, "state", "registry.json")
+	os.MkdirAll(filepath.Dir(registryPath), 0755)
+	os.WriteFile(registryPath, []byte("invalid registry"), 0600)
+	t.Chdir(t.TempDir())
+	for _, tc := range []struct {
+		args []string
+		code int
+	}{
+		{[]string{"link"}, 2}, {[]string{"import"}, 2},
+		{[]string{"link", "", "secret"}, 2}, {[]string{"import", ""}, 2},
+		{[]string{"link", "manual/linker", "secret"}, 21}, {[]string{"import", "manual/importer"}, 21},
+	} {
+		cmd := newRootCmd()
+		var out, ui bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetErr(&ui)
+		cmd.SetArgs(tc.args)
+		err := cmd.Execute()
+		if diag.ExitCode(err) != tc.code || out.Len() != 0 {
+			t.Fatal(tc.args, err, out.String())
+		}
+	}
+	b, _ := os.ReadFile(registryPath)
+	if string(b) != "invalid registry" {
+		t.Fatal("catalog repaired")
+	}
+}

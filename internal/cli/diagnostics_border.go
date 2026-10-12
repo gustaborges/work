@@ -58,7 +58,13 @@ func renderDiagnostic(ui io.Writer, in io.Reader, interactive bool, err error) i
 		// A non-diag error's message is hidden from the human line, so a
 		// single-entry chain is still new information; a *diag.Error's message
 		// is already printed above and would only be duplicated.
-		if chain := causeChain(err, d == nil); chain != "" {
+		debugErr := err
+		keepSingle := d == nil
+		if d != nil && d.Category.Code >= 39 && d.Category.Code <= 49 {
+			debugErr = d.Err
+			keepSingle = true
+		}
+		if chain := causeChain(debugErr, keepSingle); chain != "" {
 			fmt.Fprintf(ui, "\n%s\n", chain)
 		}
 	}
@@ -79,7 +85,7 @@ func renderImportDebug(ui io.Writer, err error) {
 	if !errors.As(err, &d) || d.Category.Code < 44 || d.Category.Code > 49 {
 		return
 	}
-	if chain := causeChain(err, false); chain != "" {
+	if chain := causeChain(d.Err, true); chain != "" {
 		fmt.Fprintln(ui, chain)
 	}
 	var f *extension.Failure

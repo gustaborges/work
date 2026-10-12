@@ -3,6 +3,8 @@
 package integration
 
 import (
+	"fmt"
+	fixtures "github.com/gustaborges/work/tests/fixtures/plugins"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -91,6 +93,118 @@ func TestManualLinkJourney(t *testing.T) {
 				if err != nil || !strings.HasPrefix(st.Links["github.pull_request"], "private-") {
 					t.Fatal(st, err)
 				}
+			}
+		})
+	}
+}
+
+// Colliding manual labels remain distinguishable by identity at every supported
+// size. Filtering and resize use the same controls as the existing selectors.
+func TestManualContextGeometry(t *testing.T) {
+	h := newF6Harness(t)
+	h.run(t, h.root, 0, "plugin", "install", fixtures.Prepare(t, "manual-suite"), "--as", "alternate")
+	for _, size := range []pty.Winsize{{Rows: 10, Cols: 40}, {Rows: 24, Cols: 80}, {Rows: 50, Cols: 160}} {
+		t.Run(fmt.Sprintf("%dx%d", size.Cols, size.Rows), func(t *testing.T) {
+			cmd := exec.Command(h.bin, "link")
+			cmd.Env = h.env
+			cmd.Dir = h.dir
+			c := startConsole(t, size, cmd)
+			c.expect("Choose a Linker")
+			c.expect("alternate/linker")
+			c.expect("manual/linker")
+			assertNoLineExceeds(t, c.screen(), int(size.Cols))
+			c.send("\x1b[B\x1b[A")
+			if err := pty.Setsize(c.f, &pty.Winsize{Rows: 24, Cols: 80}); err != nil {
+				t.Fatal(err)
+			}
+			c.send("/manual")
+			c.expect("manual")
+			c.send("\r")
+			c.expect("Link value")
+			c.send("\r")
+			c.expect("enter a non-empty value")
+			c.send("private-geometry-value\r")
+			if code := c.wait(); code != 0 {
+				t.Fatal(code, c.screen())
+			}
+			// Replay the final screen at the resized dimensions.
+			c.rows, c.cols = 24, 80
+			screen := c.screen()
+			if !strings.Contains(screen, "value supplied") || !strings.Contains(screen, "manual/linker") || strings.Contains(screen, "private-geometry-value") || strings.Contains(screen, "enter a non-empty value") {
+				t.Fatal(screen)
+			}
+		})
+	}
+}
+
+func TestManualEmptySelectors(t *testing.T) {
+	h := newF6Harness(t)
+	for _, tc := range []struct {
+		command  string
+		disabled bool
+		guidance string
+	}{
+		{"import", false, "required inputs"}, {"import", true, "install or enable"}, {"link", true, "install or enable"},
+	} {
+		t.Run(fmt.Sprint(tc.command, tc.disabled), func(t *testing.T) {
+			if err := fixtures.SetPackageEnabled(filepath.Join(h.root, "home", "state", "registry.json"), "manual", !tc.disabled); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command(h.bin, tc.command)
+			cmd.Env = h.env
+			cmd.Dir = h.dir
+			c := startConsole(t, pty.Winsize{Rows: 24, Cols: 80}, cmd)
+			if code := c.wait(); code != 41 {
+				t.Fatal(code, c.screen())
+			}
+			if !strings.Contains(c.screen(), tc.guidance) || strings.Contains(c.snapshot(), "Choose a") {
+				t.Fatal(c.screen())
+			}
+		})
+	}
+}
+
+func TestManualSelectionRevalidated(t *testing.T) {
+	h := newF6Harness(t)
+	for _, command := range []string{"link", "import"} {
+		t.Run(command, func(t *testing.T) {
+			path := filepath.Join(h.root, "home", "state", "registry.json")
+			if err := fixtures.SetPackageEnabled(path, "manual", true); err != nil {
+				t.Fatal(err)
+			}
+			h.run(t, h.dir, 0, "link", "manual/linker", "original")
+			before, err := os.ReadFile(filepath.Join(h.dir, "work-state.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command(h.bin, command)
+			cmd.Env = h.env
+			cmd.Dir = h.dir
+			c := startConsole(t, pty.Winsize{Rows: 24, Cols: 80}, cmd)
+			if command == "link" {
+				c.expect("Choose a Linker")
+				c.send("\r")
+				c.expect("Link value")
+			} else {
+				c.expect("Choose an Importer")
+			}
+			if err := fixtures.SetPackageEnabled(path, "manual", false); err != nil {
+				t.Fatal(err)
+			}
+			if command == "link" {
+				c.send("private-stale-value\r")
+			} else {
+				c.send("\r")
+			}
+			if code := c.wait(); code != 39 {
+				t.Fatal(code, c.screen())
+			}
+			after, err := os.ReadFile(filepath.Join(h.dir, "work-state.json"))
+			if err != nil || string(before) != string(after) {
+				t.Fatal("stale selection mutated snapshot", err)
+			}
+			if _, err := os.Stat(h.log); !os.IsNotExist(err) {
+				t.Fatal("stale selection ran a process", err)
 			}
 		})
 	}
