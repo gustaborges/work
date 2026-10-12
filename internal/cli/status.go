@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -44,6 +45,9 @@ func newStatusCmd() *cobra.Command {
 			}
 			c, err := resolveContext(cmd.Context(), target)
 			if err != nil {
+				if d, ok := errors.AsType[*diag.Error](err); ok && d.Category == diag.TargetNotFound {
+					return diag.Wrap(diag.TargetNotFound, err, "no Work found; enter a Work directory or pass its complete id to `work status`").WithHint("For a Work in an old workspace, enter its directory and retry.")
+				}
 				return err
 			}
 			jsonOutput := machine

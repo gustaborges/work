@@ -87,5 +87,5 @@ func unreadable(err error) error {
 	return diag.Wrap(diag.SnapshotUnreadable, err, "cannot read a valid canonical Work snapshot").WithHint("Check the Work's work-state.json; status never repairs saved state.")
 }
 func notFound() error {
-	return diag.New(diag.TargetNotFound, "no Work found; enter a Work directory or pass its complete id to `work status`").WithHint("For a Work in an old workspace, enter its directory and run `work status`.")
+	return diag.New(diag.TargetNotFound, "no Work found; enter a Work directory and retry").WithHint("Enter the Work directory or its worktree, including for a Work in an old workspace.")
 }

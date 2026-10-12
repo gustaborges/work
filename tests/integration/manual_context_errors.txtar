@@ -7,12 +7,14 @@ stderr '^error: usage:'
 ! stdout .
 ! exec work link manual/linker secret
 stderr '^error: target-not-found:.*enter a Work'
+! stderr 'work status'
 ! stdout .
 ! exec work import manual/importer
-stderr '^error: target-not-found:'
+stderr '^error: target-not-found:.*enter a Work'
+! stderr 'work status'
 ! stdout .
 ! exec work status
-stderr '^error: target-not-found:'
+stderr '^error: target-not-found:.*work status'
 ! stdout .
 ! exec work status unknown
 stderr '^error: target-not-found:'
