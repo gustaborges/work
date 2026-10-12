@@ -126,6 +126,41 @@ func TestBuildCleanPathListsDirectoriesBeforeFiles(t *testing.T) {
 	}
 }
 
+func TestBuildResolvesSymlinkedWorkDirForDestinations(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink privileges vary on Windows")
+	}
+
+	base := t.TempDir()
+	work := filepath.Join(base, "real-work")
+	if err := os.Mkdir(work, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	workLink := filepath.Join(base, "work-link")
+	if err := os.Symlink(work, workLink); err != nil {
+		t.Fatal(err)
+	}
+	stage := t.TempDir()
+	write(t, stage, "notes/context.md", "c")
+
+	plan, err := Build(stage, workLink)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if len(plan.Items) == 0 {
+		t.Fatal("Build produced an empty plan")
+	}
+	wantRoot, err := filepath.EvalSymlinks(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range plan.Items {
+		if !strings.HasPrefix(it.Dest, wantRoot+string(filepath.Separator)) {
+			t.Fatalf("dest %q is not rooted at resolved work dir %q", it.Dest, wantRoot)
+		}
+	}
+}
+
 func TestBuildEmptyStageIsAnEmptyPlan(t *testing.T) {
 	plan, err := Build(t.TempDir(), t.TempDir())
 	if err != nil || len(plan.Items) != 0 {

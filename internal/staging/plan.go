@@ -93,7 +93,7 @@ func Build(stageDir, workDir string) (Plan, error) {
 		if err != nil {
 			return err
 		}
-		item := Item{Rel: filepath.ToSlash(rel), Src: path, Dest: filepath.Join(workDir, rel), IsDir: d.IsDir()}
+		item := Item{Rel: filepath.ToSlash(rel), Src: path, Dest: filepath.Join(root, rel), IsDir: d.IsDir()}
 		if reason, ok := refuse(item, d, root); ok {
 			return &Refusal{Rel: item.Rel, Reason: reason}
 		}
