@@ -35,6 +35,15 @@ func renderDiagnostic(ui io.Writer, in io.Reader, interactive bool, err error) i
 
 	if !interactive {
 		fmt.Fprintln(ui, diag.Format(err))
+		if os.Getenv("WORK_DEBUG") != "" {
+			var d *diag.Error
+			if errors.As(err, &d) && d.Category.IsManualOperation() {
+				if chain := causeChain(d.Err, true); chain != "" {
+					fmt.Fprintln(ui, chain)
+				}
+				renderRetainedStderr(ui, err)
+			}
+		}
 		return diag.ExitCode(err)
 	}
 
@@ -57,11 +66,28 @@ func renderDiagnostic(ui io.Writer, in io.Reader, interactive bool, err error) i
 		// A non-diag error's message is hidden from the human line, so a
 		// single-entry chain is still new information; a *diag.Error's message
 		// is already printed above and would only be duplicated.
-		if chain := causeChain(err, d == nil); chain != "" {
+		debugErr := err
+		keepSingle := d == nil
+		if d != nil && d.Category.IsManualOperation() {
+			debugErr = d.Err
+			keepSingle = true
+		}
+		if chain := causeChain(debugErr, keepSingle); chain != "" {
 			fmt.Fprintf(ui, "\n%s\n", chain)
 		}
 	}
+	if os.Getenv("WORK_DEBUG") != "" {
+		renderRetainedStderr(ui, err)
+	}
 	return diag.ExitCode(err)
+}
+
+// renderRetainedStderr prints the provider stderr retained on err, if any.
+func renderRetainedStderr(ui io.Writer, err error) {
+	var f *extension.Failure
+	if errors.As(err, &f) && f.Stderr != "" {
+		fmt.Fprintf(ui, "  stderr: %s\n", strings.TrimSpace(f.Stderr))
+	}
 }
 
 // causeChain renders the wrapped error chain, innermost cause last, for the

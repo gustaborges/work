@@ -24,6 +24,8 @@ func loadRepositoryContext() (workhome.Home, *config.Config, *registry.Registry,
 	if err != nil {
 		return workhome.Home{}, nil, nil, err
 	}
+	// Keep the installed catalog raw for locator inventory. Policy and
+	// execution queries apply the shared effective-state predicate.
 	reg, err := registry.Load(home.RegistryFile())
 	if err != nil {
 		return workhome.Home{}, nil, nil, diag.Wrap(diag.BootstrapFailed, err, "cannot read the component registry")

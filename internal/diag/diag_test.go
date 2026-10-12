@@ -43,6 +43,17 @@ func TestCategoryTable(t *testing.T) {
 		{StarterAmbiguous, "starter-ambiguous", 36},
 		{StarterResponseInvalid, "starter-response-invalid", 37},
 		{ConventionUnknown, "convention-unknown", 38},
+		{ManualComponentUnavailable, "manual-component-unavailable", 39},
+		{ManualComponentAmbiguous, "manual-component-ambiguous", 40},
+		{NoEligibleComponent, "no-eligible-component", 41},
+		{RequiredInputMissing, "required-input-missing", 42},
+		{LinkFailed, "link-failed", 43},
+		{ExtensionStartFailed, "extension-start-failed", 44},
+		{ExtensionFailed, "extension-failed", 45},
+		{ExtensionResponseInvalid, "extension-response-invalid", 46},
+		{ExtensionOutputRefused, "extension-output-refused", 47},
+		{ExtensionPersistFailed, "extension-persist-failed", 48},
+		{ExtensionCleanupFailed, "extension-cleanup-failed", 49},
 	}
 
 	if len(want) != len(All) {
@@ -168,9 +179,9 @@ func TestWarningTokensAreTheSixStableOnes(t *testing.T) {
 	}
 }
 
-func TestWarningsAreNotCategories(t *testing.T) {
+func TestAutomaticOnlyFailuresHaveNoExitCategory(t *testing.T) {
 	for _, c := range All {
-		if strings.HasPrefix(c.Token, "extension-") {
+		if c.Token == WarnExtensionInterrupted {
 			t.Errorf("category %q must not exist: extension failures are warnings without an exit code", c.Token)
 		}
 	}
@@ -183,5 +194,14 @@ func TestFormatWarning(t *testing.T) {
 	want := "warning: extension-failed: gh/linker (discover) for Work 01WORK: exited with status 1"
 	if got := FormatWarning(w); got != want {
 		t.Errorf("FormatWarning = %q, want %q", got, want)
+	}
+}
+
+func TestIsManualOperationCoversExactlyTheManualCategories(t *testing.T) {
+	for _, c := range All {
+		want := c.Code >= ManualComponentUnavailable.Code && c.Code <= ExtensionCleanupFailed.Code
+		if c.IsManualOperation() != want {
+			t.Errorf("%s (%d): IsManualOperation = %v, want %v", c.Token, c.Code, !want, want)
+		}
 	}
 }

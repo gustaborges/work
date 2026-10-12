@@ -287,3 +287,10 @@ func TestParseInput(t *testing.T) {
 		}
 	}
 }
+
+func TestManifestCannotSupplyRetainedEnablement(t *testing.T) {
+	_, err := Parse([]byte(`{"name":"demo","version":"1.0.0","enabled":false,"components":[],"conventions":[]}`))
+	if err == nil {
+		t.Fatal("manifest accepted retained state")
+	}
+}

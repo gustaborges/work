@@ -28,7 +28,7 @@ func loadConventionContext() (workhome.Home, *registry.Registry, error) {
 	if err != nil {
 		return workhome.Home{}, nil, diag.Wrap(diag.BootstrapFailed, err, "cannot read the component registry")
 	}
-	return home, reg, nil
+	return home, reg.Effective(), nil
 }
 
 // resolveConventionIdentity discovers the git repository rooted at or above

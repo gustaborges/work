@@ -3,14 +3,14 @@ package extension
 import (
 	"context"
 	"errors"
-	"fmt"
-	"time"
+	"path/filepath"
 
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/ipc"
 	"github.com/gustaborges/work/internal/lockfile"
 	"github.com/gustaborges/work/internal/projection"
-	"github.com/gustaborges/work/internal/work"
+	"github.com/gustaborges/work/internal/registry"
+	"github.com/gustaborges/work/internal/workcontext"
 )
 
 // runLinker starts one Linker and persists the value it returns. It reports
@@ -37,10 +37,17 @@ func (r *runner) runLinker(ctx context.Context, d Decision) bool {
 		return true
 	}
 
-	if err := r.persistLink(c.Key, resp.Value, name); err != nil {
+	if err := r.persistLink(ctx, c, resp.Value); err != nil {
+		if r.interrupted(ctx, name, OpDiscover) {
+			return false
+		}
+		hint := "Check that the Work's directory is writable, then start again."
+		if errors.Is(err, lockfile.ErrTimeout) {
+			hint = "Another work operation was using this Work; start again in a moment."
+		}
 		w := r.warning(diag.WarnExtensionPersistFailed, name, OpDiscover,
 			"Work could not save the link it found; no link was recorded").
-			WithHint("Check that the Work's directory is writable, then start again.").
+			WithHint(hint).
 			WithCause(err)
 		r.warn(w)
 		return true
@@ -53,34 +60,27 @@ func (r *runner) runLinker(ctx context.Context, d Decision) bool {
 // concurrent resume or archive cannot interleave with the read-modify-write,
 // then records where it came from. The snapshot is authoritative: a
 // provenance failure is noted for WORK_DEBUG and does not undo the link.
-func (r *runner) persistLink(key, value, component string) error {
-	release, err := lockfile.Acquire(r.c.Home.WorkLockPath(r.state.Work.ID))
-	if err != nil {
-		return fmt.Errorf("locking the Work: %w", err)
+func (r *runner) persistLink(ctx context.Context, component registry.Component, value string) error {
+	dir := r.c.WorkDir
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = real
 	}
-	defer release()
-
-	st, err := work.Read(r.c.SnapshotPath)
-	if err != nil {
-		return fmt.Errorf("reading the snapshot: %w", err)
+	snapshot := r.c.SnapshotPath
+	if real, err := filepath.EvalSymlinks(filepath.Dir(snapshot)); err == nil {
+		snapshot = filepath.Join(real, filepath.Base(snapshot))
 	}
-	st.Links[key] = value
-	if err := work.Write(r.c.SnapshotPath, st); err != nil {
-		return fmt.Errorf("writing the snapshot: %w", err)
-	}
-	r.state = st
-
+	p := PublishParams{Home: r.c.Home, Expected: workcontext.Context{State: r.state, WorkDir: dir, SnapshotPath: snapshot}, Component: component, Value: value, Operation: OpDiscover, Now: r.now, Reload: func() (*registry.Registry, error) { return r.c.Registry, nil }}
 	if r.c.Index != nil {
-		err := r.c.Index.RecordProvenance(projection.Provenance{
-			WorkID: st.Work.ID, Section: "links", Key: key,
-			SourceComponent: component, SourceOperation: "discover",
-			RecordedAt: r.now().UTC().Format(time.RFC3339),
-		})
-		if err != nil {
-			r.report.Diagnostics = append(r.report.Diagnostics,
-				fmt.Sprintf("%s: provenance for link %q was not recorded: %v", component, key, err))
+		p.Record = func(_ workcontext.Context, entry projection.Provenance) error {
+			return r.c.Index.RecordProvenance(entry)
 		}
 	}
+	result, err := PublishLink(ctx, p)
+	if err != nil {
+		return err
+	}
+	r.state = result.State
+	r.report.Diagnostics = append(r.report.Diagnostics, result.Diagnostics...)
 	return nil
 }
 

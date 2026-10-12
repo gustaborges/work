@@ -307,7 +307,7 @@ type Provenance struct {
 	// SourceComponent is the component's "<alias>/<name>".
 	SourceComponent string
 	// SourceOperation is "start" for a Starter's publication and "discover"
-	// for a Linker's.
+	// for automatic discovery, or "link" for manual association.
 	SourceOperation string
 	// RecordedAt is RFC 3339 UTC.
 	RecordedAt string

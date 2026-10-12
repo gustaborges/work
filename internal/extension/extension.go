@@ -26,6 +26,7 @@ const StartFinalized = plugin.EventStartFinalized
 
 // Operations named in events and warnings.
 const (
+	OpLink     = "link"
 	OpDiscover = "discover"
 	OpImport   = "import"
 )

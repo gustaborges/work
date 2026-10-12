@@ -283,3 +283,18 @@ func TestAvailableComponentRejectsMalformedRef(t *testing.T) {
 		t.Fatal("want unavailable: malformed ref")
 	}
 }
+
+func TestDisabledLocatorUnavailable(t *testing.T) {
+	off := false
+	r := &registry.Registry{Packages: []registry.Package{{Alias: "a", Enabled: &off}}, Components: []registry.Component{{Alias: "a", Name: "locator", Role: registry.RoleRepositoryLocator}}}
+	if _, ok := availableComponent(r, "a/locator"); ok {
+		t.Fatal("disabled Locator available")
+	}
+	if len(r.Components) != 1 {
+		t.Fatal("raw inventory changed")
+	}
+	r.Packages = nil
+	if _, ok := availableComponent(r, "a/locator"); !ok {
+		t.Fatal("ownerless Locator unavailable")
+	}
+}

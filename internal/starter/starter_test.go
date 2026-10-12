@@ -335,3 +335,25 @@ func TestValidateResponsePublishedKeys(t *testing.T) {
 		})
 	}
 }
+
+func TestDisabledStartersExcluded(t *testing.T) {
+	off := false
+	r := &registry.Registry{Packages: []registry.Package{{Alias: "disabled", Enabled: &off}}, Components: []registry.Component{
+		{Alias: "disabled", Name: "specific", Role: registry.RoleStarter, Pattern: ".*"},
+		{Alias: "legacy", Name: "fallback", Role: registry.RoleStarter, StarterLayer: registry.LayerFallback},
+	}}
+	c, _, err := Match(r, "anything")
+	if err != nil || c.Alias != "legacy" {
+		t.Fatalf("%+v %v", c, err)
+	}
+	r.Packages = append(r.Packages, registry.Package{Alias: "legacy", Enabled: &off})
+	if _, _, err := Match(r, "anything"); diag.ExitCode(err) != 35 {
+		t.Fatal(err)
+	}
+	if _, err := Select(r); err == nil {
+		t.Fatal("selected disabled fallback")
+	}
+	if len(r.ByRole(registry.RoleStarter)) != 2 {
+		t.Fatal("raw inventory filtered")
+	}
+}

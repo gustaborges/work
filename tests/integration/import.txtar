@@ -1,0 +1,50 @@
+env WS=$WORK/workspace
+mkdir $WS
+gitrepo src
+exec work start $WORK/src --workspace $WS --base main --slug topic --prefix '{slug}' --yes
+preparepluginfixture manual-suite PKG
+exec work plugin install $PKG --as manual
+env WORK_FIXTURE_LOG=$WORK/launches.jsonl
+cd $WS/in-progress/src_topic/worktree
+! exec work import manual/needs-input
+stderr 'required-input-missing'
+! exists $WORK/launches.jsonl
+exec work link manual/linker 'saved reference'
+exec work import manual/importer
+stdout '^work: imported .* manual/importer 4\n$'
+exists ../notes/context.md
+exists ../refs/source.txt
+! exists notes
+! exec work import manual/importer
+stderr 'extension-output-refused'
+! stdout .
+! exec work import
+stderr 'usage'
+! exec work import manual/importer --json=false
+stderr 'usage'
+! exec work import manual/automatic-only
+stderr 'manual-component-unavailable'
+env WORK_FIXTURE_MODE=importer-empty
+exec work import manual/importer
+stdout 'manual/importer 0'
+env WORK_FIXTURE_MODE=importer-exit1
+! exec work import manual/importer
+stderr 'extension-failed'
+! stdout .
+env WORK_FIXTURE_MODE=importer-garbage
+! exec work import manual/importer
+stderr 'extension-response-invalid'
+env WORK_FIXTURE_MODE=importer-overflow
+! exec work import manual/importer
+stderr 'extension-response-invalid'
+env WORK_FIXTURE_MODE=importer-mixed
+! exec work import manual/importer
+stderr 'extension-output-refused'
+! exists ../notes/clean.md
+env WORK_FIXTURE_MODE=importer-worktree
+! exec work import manual/importer
+stderr 'extension-output-refused'
+! exists injected.md
+env WORK_FIXTURE_MODE=importer-snapshot
+! exec work import manual/importer
+stderr 'extension-output-refused'
