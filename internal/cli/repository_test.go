@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"context"
+	"github.com/gustaborges/work/internal/adminstate"
+	"github.com/gustaborges/work/internal/diag"
 	"os"
 	"path/filepath"
 	"strings"
@@ -314,4 +317,24 @@ func runSeededWorkHome(t *testing.T, home string, args ...string) (string, strin
 		t.Fatal(err)
 	}
 	return runWorkHome(t, home, args...)
+}
+
+func TestAdminRepositoryReviewedEditMergesAndConflicts(t *testing.T) {
+	h := workhome.At(filepath.Join(t.TempDir(), "home"))
+	ctx := context.Background()
+	if err := adminstate.WithWrite(ctx, h, "fixture", func(s *adminstate.Session) error {
+		s.Config.RepositoryResolution.Locators = []string{"missing/old"}
+		s.Config.Workspace = "/other"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	edit := repositoryEdit{Kind: "policy-remove", Values: []string{"missing/old"}, Reviewed: []string{"missing/old"}}
+	cfg, err := applyRepositoryEdit(ctx, h, edit)
+	if err != nil || cfg.Workspace != "/other" || len(cfg.RepositoryResolution.Locators) != 0 {
+		t.Fatal(cfg, err)
+	}
+	if _, err = applyRepositoryEdit(ctx, h, edit); diag.ExitCode(err) != 53 {
+		t.Fatal(err)
+	}
 }

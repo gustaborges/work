@@ -5,11 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/gustaborges/work/internal/adminstate"
-	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/pluginadmin"
-	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/repoconfig"
 	"github.com/gustaborges/work/internal/workhome"
 )
@@ -58,6 +55,8 @@ func newRepositoryLocatorCmd() *cobra.Command {
 					Description       string   `json:"description"`
 					Accepts           []string `json:"accepts"`
 					InPolicy          bool     `json:"in_policy"`
+					Installed         bool     `json:"installed"`
+					Available         bool     `json:"available"`
 					Enabled           bool     `json:"enabled"`
 					State             string   `json:"state"`
 					UnavailableReason *string  `json:"unavailable_reason"`
@@ -66,7 +65,7 @@ func newRepositoryLocatorCmd() *cobra.Command {
 				for i, l := range locators {
 					out[i] = jsonLocator{
 						Ref: l.Ref, DisplayName: l.DisplayName, Description: l.Description,
-						Accepts: nonNil(l.Accepts), InPolicy: l.InPolicy, Enabled: l.Enabled, State: l.State, UnavailableReason: l.UnavailableReason,
+						Accepts: nonNil(l.Accepts), InPolicy: l.InPolicy, Installed: true, Available: l.State == "available", Enabled: l.Enabled, State: l.State, UnavailableReason: l.UnavailableReason,
 					}
 				}
 				return printJSON(cmd, map[string]any{"locators": out})
@@ -108,6 +107,8 @@ func newRepositoryPolicyListCmd() *cobra.Command {
 					Ref               string  `json:"ref"`
 					Position          int     `json:"position"`
 					Available         bool    `json:"available"`
+					Installed         bool    `json:"installed"`
+					Enabled           bool    `json:"enabled"`
 					State             string  `json:"state"`
 					UnavailableReason *string `json:"unavailable_reason"`
 				}
@@ -117,7 +118,7 @@ func newRepositoryPolicyListCmd() *cobra.Command {
 					if !e.Available {
 						state = "unavailable"
 					}
-					out[i] = jsonEntry{Ref: e.Ref, Position: e.Position, Available: e.Available, State: state, UnavailableReason: e.UnavailableReason}
+					out[i] = jsonEntry{Ref: e.Ref, Position: e.Position, Available: e.Available, Installed: e.Installed, Enabled: e.Enabled, State: state, UnavailableReason: e.UnavailableReason}
 				}
 				return printJSON(cmd, map[string]any{"policy": out})
 			}
@@ -151,9 +152,7 @@ func newRepositoryPolicyAddCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return mutatePolicy(cmd, func(cfg *config.Config, reg *registry.Registry) error {
-				return repoconfig.AddPolicy(cfg, reg, args[0], before, after)
-			})
+			return mutatePolicy(cmd, repositoryEdit{Kind: "policy-add", Values: args, Before: before, After: after})
 		},
 	}
 	cmd.Flags().StringVar(&before, "before", "", "position the locator immediately before this one")
@@ -169,9 +168,7 @@ func newRepositoryPolicyRemoveCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return mutatePolicy(cmd, func(cfg *config.Config, reg *registry.Registry) error {
-				return repoconfig.RemovePolicy(cfg, args)
-			})
+			return mutatePolicy(cmd, repositoryEdit{Kind: "policy-remove", Values: args})
 		},
 	}
 }
@@ -185,9 +182,7 @@ func newRepositoryPolicyMoveCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return mutatePolicy(cmd, func(cfg *config.Config, reg *registry.Registry) error {
-				return repoconfig.MovePolicy(cfg, args[0], before, after)
-			})
+			return mutatePolicy(cmd, repositoryEdit{Kind: "policy-move", Values: args, Before: before, After: after})
 		},
 	}
 	cmd.Flags().StringVar(&before, "before", "", "move immediately before this locator")
@@ -203,9 +198,7 @@ func newRepositoryPolicyReplaceCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return mutatePolicy(cmd, func(cfg *config.Config, reg *registry.Registry) error {
-				return repoconfig.ReplacePolicy(cfg, reg, args)
-			})
+			return mutatePolicy(cmd, repositoryEdit{Kind: "policy-replace", Values: args})
 		},
 	}
 }
@@ -213,7 +206,7 @@ func newRepositoryPolicyReplaceCmd() *cobra.Command {
 // mutatePolicy runs op against the loaded config/registry and, on success,
 // saves the config and prints the one stable `work: policy now …` line
 // (resolution-policy.md §Mutation output). A rejected mutation writes nothing.
-func mutatePolicy(cmd *cobra.Command, op func(*config.Config, *registry.Registry) error) error {
+func mutatePolicy(cmd *cobra.Command, edit repositoryEdit) error {
 	if cmd.Flags().Changed("json") {
 		return diag.New(diag.Usage, "--json is not accepted on a `work repository policy` mutation")
 	}
@@ -224,14 +217,7 @@ func mutatePolicy(cmd *cobra.Command, op func(*config.Config, *registry.Registry
 	if err = mutationPreflight(cmd, home); err != nil {
 		return err
 	}
-	var cfg *config.Config
-	err = adminstate.WithWrite(cmd.Context(), home, "work repository policy", func(s *adminstate.Session) error {
-		if err := op(s.Config, s.Registry); err != nil {
-			return err
-		}
-		cfg = s.Config
-		return nil
-	})
+	cfg, err := applyRepositoryEdit(cmd.Context(), home, edit)
 	if err != nil {
 		return err
 	}

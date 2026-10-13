@@ -52,3 +52,9 @@ stdout '(?m)^1  work-reference/filesystem-repository-locator  \(available\)$'
 # --json is rejected on every mutation.
 ! work repository policy add acme/corp-index --json
 stderr 'error: usage:'
+
+# Canonical duplicates fail rather than collapsing; preserve the previous order.
+! work repository policy replace acme/corp-index corp-index
+stderr 'error: usage:'
+work repository policy list
+stdout '(?m)^1  work-reference/filesystem-repository-locator'

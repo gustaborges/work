@@ -7,8 +7,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/gustaborges/work/internal/adminstate"
-	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/repoconfig"
 	"github.com/gustaborges/work/internal/workhome"
@@ -68,7 +66,7 @@ func newRepositoryRootAddCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return mutateRoots(cmd, args, repoconfig.AddRoots)
+			return mutateRoots(cmd, repositoryEdit{Kind: "root-add", Values: args})
 		},
 	}
 }
@@ -81,7 +79,7 @@ func newRepositoryRootRemoveCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return mutateRoots(cmd, args, repoconfig.RemoveRoots)
+			return mutateRoots(cmd, repositoryEdit{Kind: "root-remove", Values: args})
 		},
 	}
 }
@@ -94,7 +92,7 @@ func newRepositoryRootReplaceCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return mutateRoots(cmd, args, repoconfig.ReplaceRoots)
+			return mutateRoots(cmd, repositoryEdit{Kind: "root-replace", Values: args})
 		},
 	}
 }
@@ -102,7 +100,7 @@ func newRepositoryRootReplaceCmd() *cobra.Command {
 // mutateRoots runs op against the loaded config and, on success, saves it and
 // prints the one stable `work: roots now …` line (resolution-policy.md
 // §Mutation output). A rejected mutation writes nothing.
-func mutateRoots(cmd *cobra.Command, paths []string, op func(*config.Config, []string) error) error {
+func mutateRoots(cmd *cobra.Command, edit repositoryEdit) error {
 	if cmd.Flags().Changed("json") {
 		return diag.New(diag.Usage, "--json is not accepted on a `work repository root` mutation")
 	}
@@ -113,14 +111,7 @@ func mutateRoots(cmd *cobra.Command, paths []string, op func(*config.Config, []s
 	if err = mutationPreflight(cmd, home); err != nil {
 		return err
 	}
-	var cfg *config.Config
-	err = adminstate.WithWrite(cmd.Context(), home, "work repository root", func(s *adminstate.Session) error {
-		if err := op(s.Config, paths); err != nil {
-			return err
-		}
-		cfg = s.Config
-		return nil
-	})
+	cfg, err := applyRepositoryEdit(cmd.Context(), home, edit)
 	if err != nil {
 		return err
 	}

@@ -8,6 +8,7 @@
 package repoconfig
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -21,7 +22,7 @@ import (
 // ListRoots returns the configured search roots in their stored order. An
 // empty configuration yields an empty slice, never an error.
 func ListRoots(cfg *config.Config) []string {
-	return slices.Clone(cfg.RepositoryRoots)
+	return append([]string{}, cfg.RepositoryRoots...)
 }
 
 // AddRoots validates and appends each path to cfg.RepositoryRoots. Nothing is
@@ -121,6 +122,9 @@ func NeedsSetup(cfg *config.Config) (wantWorkspace, wantRoot bool) {
 // symlinks — mirrors workspace.absPath / reporef.expandHome so the stored
 // value stays close to what the user typed.
 func absExpand(raw string) (string, error) {
+	if strings.TrimSpace(raw) == "" || strings.ContainsRune(raw, 0) {
+		return "", fmt.Errorf("invalid path")
+	}
 	p := raw
 	if p == "~" || strings.HasPrefix(p, "~/") || strings.HasPrefix(p, `~\`) {
 		home, err := os.UserHomeDir()

@@ -29,3 +29,7 @@ stdout '"in_policy": false'
 cp $WORK_HOME/config/work.json before.json
 work repository locator list --json
 cmp $WORK_HOME/config/work.json before.json
+
+stdout '"installed": true'
+stdout '"available": true'
+stdout '"unavailable_reason": null'
