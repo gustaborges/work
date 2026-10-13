@@ -1,6 +1,6 @@
 # Quickstart Validation: Sustainable Platform Operation
 
-This guide describes validation **after F7 implementation**. New commands, packages, fixtures and named test groups below are planned outputs, not claims that they exist or pass today. Run from the repository root using a disposable Work home; never use personal plugin state for fault tests. All scenarios can run without external accounts or public network access.
+This guide exercises the implemented F7 workflows. Results and platform limits are recorded in [validation.md](validation.md). Run from the repository root using a disposable Work home; never use personal plugin state for fault tests. All scenarios can run without external accounts or public network access.
 
 ## Prerequisites and disposable fixtures
 
@@ -20,7 +20,7 @@ git -C "$F7_TMP/repos/demo" -c user.name=Fixture -c user.email=fixture@example.t
 export WORK_ADMIN_FIXTURE_REPOSITORY="$F7_TMP/repos/demo"
 ```
 
-Planned `admin-suite` fixture: package admin-suite, version release-blue, Locator clone accepting name and returning the path from WORK_ADMIN_FIXTURE_REPOSITORY, convention admin-team with prefix admin/{slug}. Its native executable also supplies test-only blocked/failure/invocation-log modes via the Go harness; it requires no runtime beyond the executable. It declares no fallback Starter, avoiding conflict with the seed. These fixture controls are not production CLI mutation controls.
+The `admin-suite` fixture: package admin-suite, version release-blue, Locator clone accepting name and returning the path from WORK_ADMIN_FIXTURE_REPOSITORY, convention admin-team with prefix admin/{slug}. Its native executable also supplies test-only blocked/failure/invocation-log modes via the Go harness; it requires no runtime beyond the executable. It declares no fallback Starter, avoiding conflict with the seed. These fixture controls are not production CLI mutation controls.
 
 Fixture source commits are local setup only. For remote-pinned checks use file:// transport:
 
@@ -45,7 +45,7 @@ Before any install:
 "$F7_WORK" plugin update --check --json
 ```
 
-Expect empty inventory/collections and updates=[], exit 0; WORK_HOME still does not exist. From the demo repository, convention show --json gives no remembered choice without creating home state. Repeat each read/check 20 times before and after installation. Verify complete home-tree bytes/existence, installed content, convention memory, Works and temporary retrieval cleanup remain unchanged. Legacy cases cover unknown version, linked live-manifest drift, ownerless seed projection, disabled packages, missing files and malformed state. Tests: `go test ./internal/adminstate ./internal/pluginadmin ./tests/integration -run 'TestAdmin(Read|Purity|Legacy)'`.
+Expect empty inventory/collections and updates=[], exit 0; WORK_HOME still does not exist. From the demo repository, convention show --json gives no remembered choice without creating home state. Repeat each read/check 20 times before and after installation. Verify complete home-tree bytes/existence, installed content, convention memory, Works and temporary retrieval cleanup remain unchanged. Legacy cases cover unknown version, linked live-manifest drift, ownerless seed projection, disabled packages, missing files and malformed state. Tests: `go test ./internal/adminstate ./internal/pluginadmin ./tests/integration -run 'TestAdmin(Read|Pure|Inventory|LinkedBaseline|Legacy)'`.
 
 ## Q2 — Enablement without policy rewrites
 
@@ -87,7 +87,7 @@ mkdir -p "$F7_TMP/repos-second"
 "$F7_WORK" repository root remove "$F7_TMP/repos-second" "$F7_TMP/repos"
 ```
 
-Compare direct and hub state. Root set can become empty; workspace root/Works do not move. Add/replace with a final missing/non-directory/workspace-overlapping path fail wholly. Verify repeated canonical paths deduplicate and failed multi-operand removal does not mutate the prior slice. Test: `go test ./internal/repoconfig ./tests/integration -run 'TestAdminRoot'`.
+Compare direct and hub state. Root set can become empty; workspace root/Works do not move. Add/replace with a final missing/non-directory/workspace-overlapping path fail wholly. Verify repeated canonical paths deduplicate and failed multi-operand removal does not mutate the prior slice. Test: `go test ./internal/repoconfig ./tests/integration -run 'TestAdminRoot|TestAdminPolicyAndRoots|Test(Add|Remove|Replace)Roots'`.
 
 ## Q5 — Check versions and apply exact candidates
 
@@ -203,6 +203,6 @@ go test ./...
 make build
 ```
 
-Run the existing three-OS CI matrix. Add the complete F7 demonstration and retain every F1–F6 demonstration. Native release fixtures cover clean offline first bootstrap (default policy seeded once), explicit embedded install (no insertion), supported upgrade, interruption/restart, real repositories with ambiguous local/remote branches, and index loss/rebuild from canonical snapshots using the existing reconcile test helper. No public reindex command is invented here. Validate host build and existing release platform asset coverage.
+Run the existing three-OS CI matrix. Run `TestF7RoadmapJourney` and `TestReleaseCandidateLocalRemoteBranches` alongside every retained F1–F6 demonstration. Native release fixtures cover clean offline first bootstrap (default policy seeded once), explicit embedded install (no insertion), supported upgrade, interruption/restart, real repositories with ambiguous local/remote branches, and index loss/rebuild from canonical snapshots using the existing reconcile test helper. No public reindex command is invented here. Validate host build and existing release platform asset coverage.
 
-Success means SC-001–SC-009 and the acceptance matrix pass with no manual state editing. Save test results in the implementation-phase validation record; this planning guide does not itself certify the release candidate.
+Success means SC-001–SC-009 and the acceptance matrix pass with no manual state editing. Save test results in the implementation-phase validation record; this guide does not itself certify the release candidate.

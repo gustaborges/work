@@ -1,6 +1,6 @@
-# Validation: M1–M5
+# Validation: Sustainable Platform Operation (F7)
 
-Validation date: 2026-10-12. Original scope: M1–M3, T001–T037; extended in this session to M4–M5, T038–T061. M6–M8 remain pending in `tasks.md`; this record does not certify the full F7 release candidate.
+Validation dates: 2026-10-12–2026-10-13. This record retains milestone evidence chronologically; the M8 section is the current release-candidate status and requirement matrix. Earlier pending-scope statements describe their historical delivery boundaries.
 
 ## Delivered behavior
 
@@ -189,3 +189,103 @@ FR-036 and the hub contract distinguish top-level navigation focus from form edi
 Model tests and actual reconstructed PTY screens cover forward/backward wrap through Install, Enter/Tab editing, cursor movement, Esc and retained drafts, plus all plugin-manager operation/source/Back regressions. Focused model/native-PTY suite: PASS (integration 13.940 seconds). Presentation race suite: PASS (1.850 seconds). `make lint`, `make build`, and `git diff --check`: PASS. T099 complete; M8 remains pending.
 
 Terminology correction: the source hint reads `Local path or git URL`; the spec, contract, plan and README use the same name without a GitHub-only implication. Existing source transports are unchanged. Visible-source PTY checks: PASS (1.763 seconds); `make build` and `git diff --check`: PASS.
+
+## M8 — Release candidate (2026-10-13)
+
+T086–T091 are complete; all 99 tasks in `tasks.md` are checked. Final release gates below are recorded separately
+from earlier milestone results. Runtime verification uses Linux amd64 and Go
+1.26.4 (module minimum 1.26.0), isolated homes, native offline fixtures and local
+`file://` Git transport. Git fixture configuration is isolated; production commit
+signing remains enabled. No new dependencies, plugin IPC, Work snapshot schema or
+SQLite migration were introduced.
+
+### Final verification
+
+| Gate | Actual result |
+| --- | --- |
+| `GOCACHE=/tmp/work-f7-go-cache make seed-all` | PASS; seed assets for Linux amd64/arm64, macOS amd64/arm64 and Windows amd64. |
+| `GOCACHE=/tmp/work-f7-go-cache XDG_CACHE_HOME=/tmp/work-f7-xdg-cache make lint` | PASS; formatting, vet and staticcheck. |
+| `GOCACHE=/tmp/work-f7-go-cache GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null go test ./...` | PASS; full unit, contract, testscript, native and Unix PTY regression; integration 286.586 seconds. The full-matrix seed embed test ran before host assets were trimmed. |
+| Focused M8 contract/native acceptance | PASS; cumulative lifecycle writers, fourteen interruption checkpoints, mixed-batch output, committed cleanup, F7 journey and divergent local/remote branch fixtures; integration 15.197 seconds. |
+| Focused `go test -race` for adminstate, pluginadmin, bootstrap and native integration | PASS; integration 90.648 seconds. Includes new cumulative writer/recovery/output/release tests, update/removal recovery, invocation guards, seed lifecycle and repeated checks. |
+| `GOCACHE=/tmp/work-f7-go-cache make release` | PASS; actual CLI binaries built for all five targets; `file` confirms Linux x86-64/AArch64, macOS x86_64/arm64 and Windows x86-64 formats. Each target was built with its own seed pair. |
+| `GOCACHE=/tmp/work-f7-go-cache make build` | PASS; host seed and CLI built; `bin/work plugin --help` exposes install/list/enable/disable/update/uninstall. |
+| Q1–Q7, Q9, Q11 and Q12 direct CLI quickstart | PASS in `/tmp/work-f7-quickstart-7eyh19u7`; 120 fresh reads preserve absent home, twenty checks preserve installed bytes, both managed origins update, invalid batches/refusals preserve state, linked sources survive, bundled reinstall stays outside policy, and remembered unavailable choices/replacements are shared across real clones. Help/redirected hubs contain no ANSI. |
+| Q8, Q10 and interactive Q12 | PASS through deterministic checkpoint/native/PTY suites in the full run and focused race run; no production failure environment controls. |
+| Documentation links and `git diff --check` | PASS; changed README, ADD and quickstart local links resolve. |
+| Ubuntu/macOS/Windows remote CI | Not executed locally; `.github/workflows/ci.yml` retains all three runtime runners. Windows symlink tests probe capability and report a skip when unavailable. |
+
+The focused race command was:
+
+```sh
+GOCACHE=/tmp/work-f7-go-cache GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null \
+  go test -race ./internal/adminstate ./internal/pluginadmin ./internal/bootstrap ./tests/integration \
+  -run 'TestAdmin(Read|Epoch|Interrupt|Recovery|Rollback|Latest|Committed|Failed|Stable|Unsafe|Invocation|Enable|Update|Uninstall|Seed|ConcurrentLifecycleWriters|Output)|TestF7RoadmapJourney|TestReleaseCandidateLocalRemoteBranches'
+```
+
+### Requirement and acceptance evidence
+
+All PASS results below describe local execution. Cross-platform runtime acceptance
+remains a remote CI gate rather than an inferred consequence of cross-compilation.
+
+| Spec coverage | Acceptance | Passing evidence |
+| --- | --- | --- |
+| FR-001–FR-007; SC-001–SC-002 | Q1–Q3: complete inventory, whole-package enablement, atomic alias sets, no policy insertion | `TestAdminInventoryRepeatedReads`, `TestAdminLinkedBaselineNeverRefreshes`, `TestAdminDisableAllRolesAndRetention`, `TestAdminEnableAtomicNoop`, `plugin_management.txtar`, and the cumulative F7 journey. |
+| FR-008–FR-010; SC-001–SC-002 | Q3–Q4: retained unavailable policy, deterministic order and complete root validation | `TestAdminLocatorReasonPrecedence`, `TestAdminPolicyDisabledAndRetainedReplacement`, `TestAdminPolicyAndRoots`, root mutation unit tests, Locator chain tests and repository hub PTY parity. |
+| FR-011–FR-019; SC-003–SC-004 | Q5–Q6: origin matrix, opaque versions, reviewed fixed content, exhaustive outcomes | `TestAdminUpdateFixedLocalAndRemote`, `TestAdminUpdateFrozenAndDependencies`, `TestAdminUpdateOriginsUnknownAndConflict`, `TestAdminUpdateValidationAndCleanup`, batch authorization/cancellation tests and `TestAdminOutputMixedBatchAndReceipts`. |
+| FR-020–FR-024; SC-005 | Q7–Q9: exact approved removal set, linked ownership and durable bundled history | `TestAdminUninstallLinkedAndWorkRetention`, `TestAdminLinkedUninstallAliasSymlink`, `TestAdminUninstallWholeSetAndSharedOwners`, seed removal/repair/legacy tests and `TestF7RoadmapJourney`. |
+| FR-025–FR-026; SC-007 | Q11: inspect unavailable memory, explicit replacement and shared clone identity | `TestAdminConventionUnavailableAcrossClones`, convention service drift tests, `TestAdminConventionStartExplicitSoleReplacement`, direct quickstart across actual clones; Work bytes unchanged in F7/uninstall tests. |
+| FR-027, FR-029–FR-030, FR-033; SC-006 | Q6/Q11–Q12: complete hubs, keyboard navigation, help, confirmation and streams | All `TestAdminHub*`, `TestAdminRepositoryHub*`, `TestAdminHubsRejectRedirectedStreams`, convention hub tests, command inventory/grammar contracts and retained stream/color/resize suites. |
+| FR-028; SC-003 | Q1/Q5/Q8: pure inspection, bounded coherent epochs and owned temporary cleanup | `TestAdminPureFreshReads`, `TestAdminUpdateRepeatedCheckPurity`, inventory/linked legacy tests, `TestAdminEpochDriftAndLoadError`, `TestAdminRecoveryReadAndStatus`, plus 120 direct fresh reads. |
+| FR-031; SC-004–SC-005 | Q6/Q8/Q12: one terminal diagnostic, safe text/JSON, stable receipts and truthful committed cleanup | `TestAdminCredentialsUpdateAndGitFailure`, identity credential tests, `TestAdminOutputMixedBatchAndReceipts`, `TestAdminOutputCommittedCleanup`, exact diagnostic category table and existing output contracts. |
+| FR-032; SC-004–SC-005 | Q8/Q10: consistent publication, latest-state writes, fail-closed recovery and invocation safety | `TestAdminConcurrentLifecycleWriters`, `TestAdminRecoveryCumulativeInterruptions`, rollback/recovery/unsafe-evidence tests, fixed update/removal interruption suites and invocation/post-run provider guards; focused race run passes. |
+| FR-034; SC-008 | Q13: cumulative F7, previous demos, clean setup, upgrade, branch refs and index rebuild | `TestF7RoadmapJourney`, `TestReleaseCandidateLocalRemoteBranches`, supported seed/legacy fixtures, `TestF5RoadmapJourney`, `TestF6RoadmapJourney`, F1 output regression, all retained F1–F6 testscript/PTY journeys including `create_base_branch` and `rebuild_after_db_delete`. |
+| FR-035–FR-039; SC-009 | Q12: inventory manager, visible sources, exact review, continued navigation and one terminal lifecycle | Catalog model tests and all plugin hub/manager PTY journeys, including long inventory, resize/color modes, source editing, tab/form focus, frozen updates, authorization and normal exit. Full regression retains the M7 correction. |
+
+### New cumulative checks and compatibility
+
+`TestAdminConcurrentLifecycleWriters` holds a config/memory transaction at pending
+publication, verifies a pure reader refuses the intermediate state, then releases
+bootstrap, installation, a frozen update, whole-set removal and enablement writers.
+Every independent narrow edit survives, and the test uses channels and a bounded
+context rather than timing-only synchronization.
+
+`TestAdminRecoveryCumulativeInterruptions` terminates real helper processes at
+prepared, pending, both moves for each of two packages, config/registry/memory/
+lifecycle publication, before-commit, committed, stable and cleanup. Pure reads and
+missing confirmation never recover. A valid mutating command reaches recovery
+before resolving an unknown new target; recovered package trees and all four JSON
+files match exact before/after bytes and existence, and owned journals/stages are
+collected. Existing unsafe-journal tests retain evidence and fail closed.
+
+The F7 demonstration uses product commands for setup, policy, enablement,
+conventions, both pinned origins, update checks/application, dependency refusal/
+approval, durable bundled removal and offline reinstall. It compares complete
+existing Work bytes before/after administration and after deleting/rebuilding the
+index through the existing `resume` reconciliation path. Snapshot schema and
+SQLite user_version remain 3. The branch fixture uses divergent real local `main`
+and remote-tracking `origin/main`, verifies each explicit base's exact commit and
+rejects a collision without altering existing Works.
+
+Categories 0–49 and old direct receipts/grammar remain covered by the retained
+exact tables and regression suite; categories 50–56 are additive. Intentional F7
+expectation changes remain canonical policy duplicate rejection, pure reads that
+do not bootstrap, contained pinned symlink validation, and working bare hubs.
+The corrected plugin manager supersedes its original action interview and receipt
+history; repository/convention and Start retain their accepted receipt behavior.
+The transitive dependency check additionally proves administrative services do
+not reach presentation or the writable Work projection/SQLite driver.
+
+### Limits and hook audit
+
+Historical embedded upgrades are exercised with old registry/install metadata,
+ownerless legacy fixtures and deliberately removed/disabled state. No separate
+historical release executable or mixed-version concurrent writer guarantee is
+claimed. Linux runtime checks do not establish macOS/Windows runtime success;
+those runners and Windows symlink capability results belong to remote CI.
+No power-loss/storage-loss guarantee is added beyond the tested recoverable
+failures and process interruptions. No numerical coverage threshold is defined;
+acceptance coverage is mapped above rather than inferred from line coverage.
+
+`.specify/extensions.yml` parses successfully and contains no `before_implement`
+or `after_implement` hooks, so both implementation hook phases are skipped.

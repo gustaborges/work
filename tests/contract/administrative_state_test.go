@@ -77,3 +77,15 @@ func TestAdministrationPresentationBoundary(t *testing.T) {
 		}
 	}
 }
+
+// Administrative inspection has no path to a writable Work projection, and
+// shared services stay below presentation even through indirect dependencies.
+func TestAdministrationTransitiveBoundaries(t *testing.T) {
+	for _, pkg := range []string{"adminstate", "pluginadmin", "plugininstall"} {
+		for _, dep := range deps(t, "./internal/"+pkg) {
+			if strings.HasPrefix(dep, modulePrefix+"internal/present") || strings.HasPrefix(dep, modulePrefix+"internal/projection") || strings.HasPrefix(dep, "modernc.org/sqlite") {
+				t.Errorf("administrative service %s depends on %s", pkg, dep)
+			}
+		}
+	}
+}
