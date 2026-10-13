@@ -32,7 +32,7 @@ Foundation checks additionally cover coherent-read retry bounds and intermediate
 
 Runtime verification was performed on Linux amd64 with Go 1.26.4 (module minimum 1.26.0). Seed cross-compilation passed for all five release targets; macOS/Windows runtime and the remote CI matrix have not run in this session. Windows symlink coverage explicitly checks capability before proceeding.
 
-Full Q1–Q13 acceptance remains work for later milestones. Uninstall and explicit embedded reinstall (M6), complete administrative hubs and unavailable-convention presentation (M7), and release-candidate acceptance (M8) are outside this delivery. Existing install/bootstrap provide the embedded inventory fixture for the MVP; `plugin install --embedded` is not implemented here.
+This section records the M3 delivery boundary; M4–M6 evidence follows below. Full Q1–Q13 release acceptance, complete administrative hubs and unavailable-convention presentation remain scheduled for M7–M8. Explicit embedded reinstall is implemented in M6.
 
 ## M4 — Explicit repository resolution
 
@@ -65,3 +65,34 @@ Final verification:
 - `GOCACHE=/tmp/work-go-cache make build`: PASS, including host seed generation. Final `go build -trimpath -o bin/work ./cmd/work` and `bin/work plugin update --help`: PASS with all four update flags exposed.
 
  Runtime evidence remains Linux amd64 only; no remote CI or macOS/Windows runtime is claimed. M6–M8 are intentionally left unchecked. No before/after implementation extension hooks are registered.
+
+
+## M6 — Dependency-aware removal and offline bundled reinstall
+
+T062–T072 completed on 2026-10-12. `work plugin uninstall <PLUGIN...>` resolves exact aliases, deduplicates/sorts the complete set and reviews every alias-owned policy reference, including stale declarations. `--yes` confirms removal independently of `--remove-policy-references`; interactive dependency refusal and final refusal leave the home unchanged. Sorted receipts appear only after whole-set commitment, including an explicit committed-cleanup outcome.
+
+Removal uses the shared journal with explicit removal moves and retained owned backups. Reviewed package registrations/enablement, owned-root digests, exact policy impact, convention-provider facts and seed lifecycle are rechecked against latest locked state. Unrelated current config merges, retained policy entries preserve relative order, shared convention ownership survives, and repository convention memory is never deleted. Wrapper source symlinks and legacy alias-root symlinks are unlinked without traversing their external sources. Missing owned roots can still be unregistered safely.
+
+Bundled removal publishes lifecycle `removed=true` in the same transaction as content/registry/policy removal. Ordinary bootstrap/start respects it. `work plugin install --embedded` restores the bundled package offline through the already-locked seed path, rejects SOURCE/--link/--as, retains existing disablement on reinstall, marks initialization handled, and never inserts policy even on a fresh home. Existing fallback ownership is validated before staging. Missing Starter/Locator/convention diagnostics give explicit install/enable/configure guidance.
+
+| Acceptance / evidence | Result |
+| --- | --- |
+| Q7 complete-set validation, dependencies and preservation | PASS; `TestAdminUninstallWholeSetAndSharedOwners`, contract diagnostics and native `TestAdminUninstallLinkedAndWorkRetention` cover unknown aliases before changes, exact stale/current dependencies, duplicate sorting, disabled removal, unchanged linked sources, existing Work trees and convention-memory bytes. |
+| Q7 linked ownership shapes | PASS; native wrapper-directory/source-link and legacy alias-root-symlink removal preserve external source trees. Windows cases check symlink capability explicitly. |
+| Q8 recoverable failures and cancellation | PASS; service checkpoints at prepared/pending, each of two package backup/removal moves, config/registry saves and before-commit restore the entire set. Cancellation preserves absent roots and all registrations; no partial receipts appear. |
+| Q8 process interruption and committed cleanup | PASS; real child-process exits at every removal boundary recover before-state before commitment and after-state after the commit marker. Committed/stable/cleanup errors return 55 with committed results; recovery cleans owned stages/backups and retains memory bytes. Unsafe removal journals fail closed. |
+| Q8 reachable direct recovery | PASS; `TestAdminUninstallNativeRecovery` proves pure reads and invalid grammar do not recover pending state; valid uninstall reaches preflight before alias lookup, reports prior recovery separately, and does not repeat receipts for an already committed set. |
+| Q9 bundled history and offline reinstall | PASS; fresh explicit install without default policy, default bootstrap history, ownerless/install-meta legacy adoption, deliberately empty policy, disabled reinstall/repair, historical-release digest refresh, durable removed history and explicit reinstall. Seed lifecycle/config/registry publication failures compensate together. A committed seed removal remains absent after recovery and bootstrap. |
+| Q10 reviewed facts and activation | PASS; dependency/provider/content/enablement drift requires a fresh review; unrelated roots merge; stale component selections cannot execute after uninstall. |
+| Q12 interactive review/automation | PASS on Unix PTY; dependency refusal, final refusal and acceptance use shared services and print accepted receipts once. CLI grammar requires aliases/automation confirmation, rejects mutation JSON and invalid flags with usage/2, and exposes both uninstall flags in help. |
+
+Final verification:
+
+- Focused M6 service, CLI, contract, native and Unix PTY suites: PASS, including the final invalid-flag and direct-recovery checks.
+- `GOCACHE=/tmp/work-go-cache GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null go test ./...`: PASS on the final tree; full integration/testscript/PTY regression completed in 237.025 seconds. Existing custom-fallback bootstrap journeys remain compatible; fallback-owner rejection applies to explicit embedded installation.
+- `GOCACHE=/tmp/work-go-cache go test -race ./internal/adminstate ./internal/pluginadmin ./internal/bootstrap`: PASS.
+- `GOCACHE=/tmp/work-go-cache XDG_CACHE_HOME=/tmp/work-xdg-cache make lint`: PASS after final production changes.
+- `GOCACHE=/tmp/work-go-cache make build`: PASS; final host `go build -trimpath -o bin/work ./cmd/work` also PASS after the compatibility correction.
+- Q9 host CLI journey in a disposable home: PASS for offline install, disabled reinstall, dependency refusal/removal, durable lifecycle and explicit reinstall without policy.
+
+A historical embedded release is simulated with old registered version/install metadata to exercise the supported repair path; no separate newer release binary or remote CI was executed. Runtime evidence is Linux amd64 with Go 1.26.4 only. M7–M8 remain unchecked. No before/after implementation extension hooks are registered.

@@ -63,7 +63,11 @@ func loadJournal(h workhome.Home, id string) (*Journal, error) {
 	}
 	names = map[string]bool{}
 	for _, m := range j.Moves {
-		if plugin.ValidateAlias(m.Alias) != nil || names[m.Alias] || filepath.Base(m.Stage) != m.Stage || !strings.HasPrefix(m.Stage, ".admin-stage-") || m.AfterDigest == "" || (m.BeforeExists && m.BeforeDigest == "") {
+		validStage := filepath.Base(m.Stage) == m.Stage && strings.HasPrefix(m.Stage, ".admin-stage-") && m.AfterDigest != ""
+		if m.Remove {
+			validStage = m.Stage == "" && m.AfterDigest == ""
+		}
+		if plugin.ValidateAlias(m.Alias) != nil || names[m.Alias] || !validStage || (m.BeforeExists != (m.BeforeDigest != "")) {
 			return nil, recoveryError(errors.New("unsafe package journal"))
 		}
 		names[m.Alias] = true
@@ -206,6 +210,12 @@ func restoreAfterContext(ctx context.Context, h workhome.Home, j *Journal) error
 			return err
 		}
 		dest := filepath.Join(h.PluginsDir(), m.Alias)
+		if m.Remove {
+			if _, err := os.Lstat(dest); !errors.Is(err, os.ErrNotExist) {
+				return errors.New("committed removal has unexpected package evidence")
+			}
+			continue
+		}
 		if err := verifyTree(dest, m.AfterDigest); err != nil {
 			return fmt.Errorf("committed package evidence missing: %w", err)
 		}
@@ -222,7 +232,11 @@ func restoreAfterContext(ctx context.Context, h workhome.Home, j *Journal) error
 }
 func cleanup(h workhome.Home, j *Journal) error {
 	for _, m := range j.Moves {
-		for _, p := range []string{backupPath(h, j.ID, m.Alias), filepath.Join(h.PluginsDir(), m.Stage)} {
+		paths := []string{backupPath(h, j.ID, m.Alias)}
+		if !m.Remove {
+			paths = append(paths, filepath.Join(h.PluginsDir(), m.Stage))
+		}
+		for _, p := range paths {
 			if err := os.RemoveAll(p); err != nil {
 				return err
 			}
@@ -277,7 +291,7 @@ func pendingReadError(h workhome.Home, c Control) error {
 	command := "the interrupted administrative command"
 	if len(words) >= 3 && words[0] == "work" {
 		switch words[1] + " " + words[2] {
-		case "plugin install", "plugin enable", "plugin disable", "repository policy", "repository root", "convention set":
+		case "plugin install", "plugin enable", "plugin disable", "plugin update", "plugin uninstall", "repository policy", "repository root", "convention set":
 			command = "work " + words[1] + " " + words[2]
 		}
 	}

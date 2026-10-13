@@ -91,3 +91,10 @@ func loadLifecycle(h workhome.Home, reg *registry.Registry) (*Lifecycle, error) 
 
 	return &Lifecycle{Schema: 1, Initialized: true, PolicySeeded: old.PolicySeeded}, nil
 }
+
+// MarkRemoved retains proven initialization/policy history outside the package
+// root. Enablement stays solely in registry records.
+func (l *Lifecycle) MarkRemoved() {
+	l.Initialized = true
+	l.Removed = true
+}

@@ -33,11 +33,44 @@ type FileChange struct {
 }
 type Move struct {
 	Alias        string `json:"alias"`
+	Remove       bool   `json:"remove,omitempty"`
 	Stage        string `json:"stage"`
 	BeforeExists bool   `json:"before_exists"`
 	BeforeDigest string `json:"before_digest"`
 	AfterDigest  string `json:"after_digest"`
 }
+
+// OwnedPackageDigest inspects only the owned alias root; symlinks are hashed
+// as link text and never followed. Missing roots have an empty digest.
+func OwnedPackageDigest(h workhome.Home, alias string) (string, error) {
+	if plugin.ValidateAlias(alias) != nil {
+		return "", diag.New(diag.Usage, "supply exact installed plugin aliases")
+	}
+	root := filepath.Join(h.PluginsDir(), alias)
+	if _, err := os.Lstat(root); errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	} else if err != nil {
+		return "", err
+	}
+	return treeDigest(root)
+}
+
+// Remove transfers only the owned root to the journal backup. Cleanup unlinks
+// linked roots without traversing their external sources.
+func (s *Session) Remove(alias string) error {
+	for _, m := range s.moves {
+		if m.Alias == alias {
+			return errors.New("duplicate package move")
+		}
+	}
+	digest, err := OwnedPackageDigest(s.home, alias)
+	if err != nil {
+		return err
+	}
+	s.moves = append(s.moves, Move{Alias: alias, Remove: true, BeforeExists: digest != "", BeforeDigest: digest})
+	return nil
+}
+
 type Journal struct {
 	Schema    int          `json:"schema"`
 	ID        string       `json:"id"`
@@ -151,7 +184,9 @@ func withWrite(ctx context.Context, h workhome.Home, operation string, fn func(*
 			return
 		}
 		for _, m := range s.moves {
-			_ = os.RemoveAll(filepath.Join(h.PluginsDir(), m.Stage))
+			if !m.Remove {
+				_ = os.RemoveAll(filepath.Join(h.PluginsDir(), m.Stage))
+			}
 		}
 	}()
 	if err = fn(s); err != nil {
@@ -235,8 +270,10 @@ func withWrite(ctx context.Context, h workhome.Home, operation string, fn func(*
 		if err = point("move-backup:" + m.Alias); err != nil {
 			return rollback(err)
 		}
-		if err = os.Rename(filepath.Join(h.PluginsDir(), m.Stage), dest); err != nil {
-			return rollback(err)
+		if !m.Remove {
+			if err = os.Rename(filepath.Join(h.PluginsDir(), m.Stage), dest); err != nil {
+				return rollback(err)
+			}
 		}
 		if err = point("move-publish:" + m.Alias); err != nil {
 			return rollback(err)

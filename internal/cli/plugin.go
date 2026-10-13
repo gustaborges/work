@@ -11,7 +11,7 @@ import (
 func newPluginCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "plugin",
-		Short:         "Install, inspect, enable, disable and update plugin packages",
+		Short:         "Install, inspect, enable, disable, update and uninstall plugins",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Args:          cobra.NoArgs,
@@ -22,6 +22,6 @@ func newPluginCmd() *cobra.Command {
 			return cmd.Help()
 		},
 	}
-	cmd.AddCommand(newPluginInstallCmd(), newPluginListCmd(), newPluginEnableCmd(), newPluginDisableCmd(), newPluginUpdateCmd())
+	cmd.AddCommand(newPluginInstallCmd(), newPluginListCmd(), newPluginEnableCmd(), newPluginDisableCmd(), newPluginUpdateCmd(), newPluginUninstallCmd())
 	return cmd
 }

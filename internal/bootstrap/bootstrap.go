@@ -136,6 +136,28 @@ func EnsureSeedLocked(h workhome.Home, s *adminstate.Session) error {
 	genuinelyFresh := !s.Lifecycle.Initialized && os.IsNotExist(configErr) && len(s.Registry.Components) == 0 && !existsSeed(h)
 	return installLocked(h, s, digest, genuinelyFresh)
 }
+
+// InstallEmbeddedLocked is explicit offline installation, including after a
+// deliberate removal. It marks initialization handled without seeding policy.
+// Existing registry enablement survives a reinstall.
+func InstallEmbeddedLocked(h workhome.Home, s *adminstate.Session) (plugininstall.Result, error) {
+	if fallback, ok := s.Registry.StarterFallback(); ok && fallback.Alias != Alias {
+		return plugininstall.Result{}, diag.Newf(diag.PluginFallbackConflict, "a fallback Starter is already registered by %q", fallback.Alias)
+	}
+	digest, err := seed.ContentDigest()
+	if err != nil {
+		return plugininstall.Result{}, diag.Wrap(diag.BootstrapFailed, err, "no embedded reference package for this platform")
+	}
+	if err = installLocked(h, s, digest, false); err != nil {
+		return plugininstall.Result{}, err
+	}
+	m, err := plugin.Parse(seed.ManifestJSON())
+	if err != nil {
+		return plugininstall.Result{}, err
+	}
+	p, _ := s.Registry.PackageByAlias(Alias)
+	return plugininstall.Result{Package: p, Components: m.Components}, nil
+}
 func existsSeed(h workhome.Home) bool {
 	_, err := os.Lstat(filepath.Join(h.PluginsDir(), Alias))
 	return err == nil

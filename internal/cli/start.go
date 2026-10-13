@@ -468,6 +468,9 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			return nil
 		}
 		names := conventionNames(reg)
+		if len(names) == 0 {
+			return diag.New(diag.ConventionUnknown, "no branch convention is available; run `work plugin install --embedded` or install and enable a convention provider, then use `work convention set <name>`")
+		}
 		if len(names) != 1 {
 			return nil
 		}

@@ -156,3 +156,32 @@ func TestAdminInterruptPackageMoves(t *testing.T) {
 		})
 	}
 }
+
+func TestAdminRecoveryUnsafeRemovalJournal(t *testing.T) {
+	for _, m := range []Move{
+		{Alias: "../outside", Remove: true},
+		{Alias: "a", Remove: true, Stage: ".admin-stage-owned"},
+		{Alias: "a", Remove: true, AfterDigest: "unexpected"},
+		{Alias: "a", Remove: true, BeforeExists: true},
+		{Alias: "a", Remove: true, BeforeDigest: "unexpected"},
+	} {
+		t.Run(m.Alias+m.Stage+m.AfterDigest+m.BeforeDigest, func(t *testing.T) {
+			h := workhome.At(t.TempDir())
+			id := "0123456789abcdef0123456789abcdef"
+			dir, err := h.TransactionDir(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			j := Journal{Schema: 1, ID: id, Operation: "work plugin uninstall a --yes", Phase: "prepared", Moves: []Move{m}}
+			if err := saveJSON(filepath.Join(dir, "journal.json"), j); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := loadJournal(h, id); diag.ExitCode(err) != 54 {
+				t.Fatal(m, err)
+			}
+		})
+	}
+}
