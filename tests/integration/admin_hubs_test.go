@@ -29,7 +29,7 @@ func expectHubRefresh(c *console, from int, text string) {
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		s := c.snapshot()
-		if len(s) > from && strings.Contains(s[from:], text) {
+		if len(s) > from && strings.Contains(c.screen(), text) {
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -41,10 +41,14 @@ func hubExit(c *console, menu string) {
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		screen := c.screen()
-		if strings.Contains(screen, menu) && strings.Contains(screen, "Leave unchanged") && strings.Contains(screen, "↑/↓ move") {
+		lines := strings.Split(screen, "\n")
+		if len(lines) > 1 && lines[1] == menu && strings.Contains(screen, "↑/↓ move") {
 			break
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+	if time.Now().After(deadline) {
+		c.t.Fatalf("hub menu did not return:\n%s", c.screen())
 	}
 	c.send("/Leave unchanged\r")
 	if code := c.wait(); code != 0 {
@@ -53,8 +57,8 @@ func hubExit(c *console, menu string) {
 	c.mu.Lock()
 	raw := string(c.raw)
 	c.mu.Unlock()
-	if !strings.Contains(raw, "\x1b[?1049l") {
-		c.t.Fatal("alternate screen was not restored")
+	if enters, leaves := strings.Count(raw, "\x1b[?1049h"), strings.Count(raw, "\x1b[?1049l"); enters != 1 || leaves != 1 {
+		c.t.Fatalf("hub restarted its terminal session: %d enters, %d leaves", enters, leaves)
 	}
 }
 
@@ -274,6 +278,8 @@ func TestAdminPluginHubInstallCheckAndEnable(t *testing.T) {
 	offset := len(c.snapshot())
 	c.send(" \r")
 	c.expect("unchanged")
+	c.expect("enter Back")
+	c.send("\r")
 	expectHubRefresh(c, offset, "Plugins")
 	hubExit(c, "Plugins")
 	if !reflect.DeepEqual(before, adminTree(t, home)) {
@@ -383,5 +389,58 @@ func TestAdminHubEmptyBackAndIdentitySafety(t *testing.T) {
 	}
 	if !reflect.DeepEqual(before, adminTree(t, home)) {
 		t.Fatal("Back/Leave unchanged initialized home")
+	}
+}
+
+func TestAdminHubReadResultsRemainVisibleUntilBack(t *testing.T) {
+	bin := buildWorkBin(t)
+	env, dir, home := ptyEnv(t)
+	repo := filepath.Join(dir, "repo")
+	makeRepo(t, repo)
+	hubRun(t, bin, env, dir, "plugin", "install", fixtures.Prepare(t, "admin-suite"), "--as", "visible")
+	hubRun(t, bin, env, dir, "repository", "policy", "add", "visible/clone")
+	hubRun(t, bin, env, repo, "convention", "set", "admin-team")
+	before := adminTree(t, home)
+	for _, tc := range []struct{ hub, action, title, result string }{
+		{"plugin", "List plugins", "Installed plugins", "clone (repository-locator)"},
+		{"repository", "List policy", "Repository policy", "visible/clone  (available)"},
+		{"repository", "List installed Locators", "Installed Locators", "visible/clone"},
+		{"repository", "List search roots", "Repository search roots", "no repository search roots"},
+		{"convention", "Inspect remembered convention", "Remembered convention", "work: convention admin-team"},
+	} {
+		t.Run(tc.hub+"/"+tc.action, func(t *testing.T) {
+			c := newConsoleIn(t, repo, bin, env, tc.hub)
+			c.expect("Leave unchanged")
+			c.send("/" + tc.action + "\r")
+			c.expect("enter Back")
+			screen := c.screen()
+			if !strings.Contains(screen, tc.title) || !strings.Contains(screen, tc.result) || strings.Contains(screen, "Leave unchanged") {
+				t.Fatalf("read result was covered by the menu:\n%s", screen)
+			}
+			c.send("\r")
+			hubExit(c, map[string]string{"plugin": "Plugins", "repository": "Repositories", "convention": "Convention"}[tc.hub])
+		})
+	}
+	if !reflect.DeepEqual(before, adminTree(t, home)) {
+		t.Fatal("read navigation changed state")
+	}
+}
+
+func TestAdminHubInstallBackKeepsOneTerminalSession(t *testing.T) {
+	bin := buildWorkBin(t)
+	env, dir, home := ptyEnv(t)
+	before := adminTree(t, home)
+	c := newConsoleIn(t, dir, bin, env, "plugin")
+	c.expect("No plugins installed")
+	c.send("/Install from source\r")
+	c.expect("Plugin source")
+	c.send("/unused-source\r")
+	c.expect("Plugin alias")
+	c.send("\r")
+	c.expect("Installation mode")
+	c.send("/Back\r")
+	hubExit(c, "Plugins")
+	if !reflect.DeepEqual(before, adminTree(t, home)) {
+		t.Fatal("Back from installation changed state")
 	}
 }

@@ -16,7 +16,7 @@ func newPluginCmd() *cobra.Command {
 			if err := hubGuard(cmd, "run `work plugin list`, `work plugin install <source>` or `work plugin --help`"); err != nil {
 				return err
 			}
-			return runPluginHub(cmd)
+			return runHub(cmd, runPluginHub)
 		},
 	}
 	cmd.AddCommand(newPluginInstallCmd(), newPluginListCmd(), newPluginEnableCmd(), newPluginDisableCmd(), newPluginUpdateCmd(), newPluginUninstallCmd())

@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 
@@ -70,11 +72,23 @@ func hubTargets(cmd *cobra.Command, title string, values []string) ([]string, er
 func hubDirect(cmd *cobra.Command, args ...string) error {
 	root := newRootCmd()
 	root.SetIn(cmd.InOrStdin())
-	root.SetOut(cmd.OutOrStdout())
-	root.SetErr(cmd.ErrOrStderr())
+	title := hubReadTitle(args)
+	var result bytes.Buffer
+	if title != "" {
+		root.SetOut(io.MultiWriter(cmd.OutOrStdout(), &result))
+		root.SetErr(io.MultiWriter(cmd.ErrOrStderr(), &result))
+	} else {
+		root.SetOut(cmd.OutOrStdout())
+		root.SetErr(cmd.ErrOrStderr())
+	}
 	root.SetArgs(args)
 	executed, err := root.ExecuteContextC(cmd.Context())
 	if err != nil {
+		if title != "" && result.Len() > 0 {
+			if viewErr := hubReadResult(cmd, title, result.String(), args); viewErr != nil {
+				return viewErr
+			}
+		}
 		return err
 	}
 	equivalent := slices.Clone(args)
@@ -89,7 +103,45 @@ func hubDirect(cmd *cobra.Command, args ...string) error {
 		}
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "work: (equivalent: %s)\n", safeCommand(equivalent))
+	if title != "" {
+		return hubReadResult(cmd, title, result.String(), equivalent)
+	}
 	return nil
+}
+func hubReadTitle(args []string) string {
+	if len(args) < 2 {
+		return ""
+	}
+	switch {
+	case args[0] == "plugin" && args[1] == "list":
+		return "Installed plugins"
+	case args[0] == "plugin" && args[1] == "update" && slices.Contains(args, "--check"):
+		return "Plugin update check"
+	case args[0] == "convention" && args[1] == "show":
+		return "Remembered convention"
+	case args[0] == "repository" && len(args) == 3 && args[2] == "list":
+		switch args[1] {
+		case "locator":
+			return "Installed Locators"
+		case "policy":
+			return "Repository policy"
+		case "root":
+			return "Repository search roots"
+		}
+	}
+	return ""
+}
+func hubReadResult(cmd *cobra.Command, title, content string, args []string) error {
+	if strings.TrimSpace(content) == "" {
+		content = "No entries."
+	}
+	content = strings.TrimSpace(content) + "\n\nEquivalent: " + safeCommand(args)
+	_, err := present.Wizard(cmd.Context(), present.IO{In: cmd.InOrStdin(), UI: cmd.ErrOrStderr()}, present.WizardSpec{Title: title, Steps: []present.Step{
+		present.TextStep("result", func(present.Answers) (present.TextSpec, error) {
+			return present.TextSpec{Title: title, Content: content}, nil
+		}),
+	}})
+	return err
 }
 func safeCommand(args []string) string {
 	parts := []string{"work"}
@@ -114,4 +166,34 @@ func hubGuard(cmd *cobra.Command, guidance string) error {
 		return diag.New(diag.Usage, guidance)
 	}
 	return nil
+}
+
+// A hub publishes stable output only after leaving its one full-screen session.
+// Live notices keep accepted operation results visible during navigation.
+type hubSessionWriter struct {
+	ctx    context.Context
+	output io.Writer
+}
+
+func (w hubSessionWriter) Write(data []byte) (int, error) {
+	n, err := w.output.Write(data)
+	if n > 0 {
+		present.SessionNotice(w.ctx, string(data[:n]))
+	}
+	return n, err
+}
+func runHub(cmd *cobra.Command, run func(*cobra.Command) error) error {
+	originalCtx := cmd.Context()
+	out, ui := cmd.OutOrStdout(), cmd.ErrOrStderr()
+	var results, notices bytes.Buffer
+	err := present.WithSession(originalCtx, present.IO{In: cmd.InOrStdin(), UI: ui}, func(ctx context.Context) error {
+		cmd.SetContext(ctx)
+		cmd.SetOut(hubSessionWriter{ctx: ctx, output: &results})
+		cmd.SetErr(hubSessionWriter{ctx: ctx, output: &notices})
+		defer func() { cmd.SetContext(originalCtx); cmd.SetOut(out); cmd.SetErr(ui) }()
+		return run(cmd)
+	})
+	_, _ = io.Copy(ui, &notices)
+	_, _ = io.Copy(out, &results)
+	return err
 }

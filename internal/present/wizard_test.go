@@ -122,6 +122,27 @@ func TestWizardCancelPropagates(t *testing.T) {
 	}
 }
 
+func TestWizardHistoryDoesNotHideTheLastOption(t *testing.T) {
+	options := make([]Option[string], 8)
+	for i := range options {
+		options[i] = Option[string]{Primary: "Action", Secondary: "Equivalent command"}
+	}
+	options = append(options, Option[string]{Primary: "Leave unchanged"})
+	w := testWizard(WizardSpec{Title: "Plugins", Steps: []Step{
+		SelectStep("choice", func(Answers) (SelectSpec[string], error) {
+			return SelectSpec[string]{Title: "Plugins", Description: "Installed plugins", Options: options, Filterable: true}, nil
+		}),
+	}})
+	w = send(w, tea.WindowSizeMsg{Width: 120, Height: 40})
+	for range 20 {
+		w.receipts = append(w.receipts, "Accepted field\n  ✔ value\n\n")
+	}
+	view := w.View().Content
+	if !strings.Contains(view, "Leave unchanged") || !strings.Contains(view, "↑/↓ move") {
+		t.Fatal(view)
+	}
+}
+
 func TestWizardViewIsAltScreenBoundedWithRuleAndTitle(t *testing.T) {
 	w := testWizard(WizardSpec{
 		Title: "Start a Work",

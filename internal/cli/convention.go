@@ -12,7 +12,7 @@ func newConventionCmd() *cobra.Command {
 		if err := hubGuard(cmd, "run `work convention show` or `work convention set <convention>`; see `work --help`"); err != nil {
 			return err
 		}
-		return runConventionHub(cmd)
+		return runHub(cmd, runConventionHub)
 	}}
 	cmd.AddCommand(newConventionShowCmd(), newConventionSetCmd())
 	return cmd

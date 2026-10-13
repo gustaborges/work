@@ -125,3 +125,20 @@ Final verification:
 - `GOCACHE=/tmp/work-go-cache XDG_CACHE_HOME=/tmp/work-xdg-cache make lint`: PASS after final source changes (formatting, vet and staticcheck).
 - `GOCACHE=/tmp/work-go-cache make build`: PASS, including host seed generation and the host CLI binary.
 - The initial full run identified intentional help-only expectations plus a testscript matcher syntax issue; updated bare-hub/help/stream expectations and their focused rerun pass. No unresolved failures remain.
+
+### M7 follow-up — Persistent hub navigation and read results
+
+The reported list action reproduced a presentation defect: the direct read printed its result and immediately reopened the menu, covering it. Each successive hub prompt also started and stopped a separate full-screen program. Administration hubs now retain one terminal session across their prompts and service calls. Plugin lists/update checks, repository lists, and remembered-convention inspection remain in a scrollable result view until Back. Accepted output is visible within the session and published to its original streams after terminal restoration. Receipt history yields space to the active menu, and long result paths wrap without losing content.
+
+PTY regression assertions now inspect the reconstructed screen as well as emitted text; the test terminal supports the renderer's scrolling regions and line insertion/deletion. Successful hub journeys assert exactly one alternate-screen entry and one restoration, covering source/alias/mode navigation, Back, mutations, and read views. Read navigation and installation Back preserve administrative state. Unit checks cover scrolling, resize, long paths, prompt transitions without an empty frame, receipt publication once, and cancellation between prompts.
+
+Verification:
+
+- Focused presentation, hub and terminal-emulator suites: PASS; integration completed in 9.481 seconds.
+- `GOCACHE=/tmp/work-go-cache GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null go test ./...`: PASS; full integration/testscript/PTY regression completed in 226.937 seconds.
+- Presentation and CLI race suites: PASS (1.853 and 64.607 seconds respectively).
+- Actual hub process race coverage with `GOFLAGS=-race`: PASS; read views and source-install Back completed in 21.236 seconds.
+- After the final long-path wrapping refinement, focused result/viewer tests: PASS (2.021 seconds for integration), presentation race suite: PASS, and final `make lint`: PASS.
+- `GOCACHE=/tmp/work-go-cache make build`: PASS, including host seed generation and CLI compilation.
+
+Evidence remains local Linux amd64. M8 remains unchecked; no implementation extension hooks are registered.

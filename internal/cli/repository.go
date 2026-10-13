@@ -16,7 +16,7 @@ func newRepositoryCmd() *cobra.Command {
 			if err := hubGuard(cmd, "run `work repository locator list`, `work repository policy list`, `work repository root list` or `work repository --help`"); err != nil {
 				return err
 			}
-			return runRepositoryHub(cmd)
+			return runHub(cmd, runRepositoryHub)
 		},
 	}
 	// locator/policy/root are children of this command, not of the root `work`

@@ -386,6 +386,8 @@ active --cancelled----------> status "cancelled"; wizard exits
 
 In controls with confirmation, the sequence is `selection → confirmation → completed`; going back from confirmation returns to selection without mutating domain state, and cancellation ends the step. On exit, the primary buffer is restored automatically and the compact receipt trail is reprinted to the UI channel, ahead of the stable stdout lines — this reprint is what enters terminal history.
 
+For looping administration hubs, the presentation session hosts successive wizards inside the same full-screen program, following ADR-0021's one-program-per-journey lifecycle. The CLI performs service work between prompts; the session retains terminal dimensions, theme, and accepted receipts across screens. Read results use a scrollable view that waits for Back before returning to the menu. Operation output is shown within the session and published to its configured streams after terminal restoration; retained history yields space to the active control.
+
 ### 12.3 Geometry, theme, and capacity
 
 The theme is semantic and injected into all renderers. `Primary` (`#11A8CD`) and `Secondary` (`#8B7CF6`) express branding and focus; `Success`, `Warning`, and `Danger` remain their own tokens; body text uses the terminal foreground; light variants and constrained palettes preserve contrast. A non-empty `NO_COLOR`, `TERM=dumb`, and non-TTY writers disable color. Bold and textual markers preserve meaning without color.
