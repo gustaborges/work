@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/gustaborges/work/internal/diag"
+	"github.com/gustaborges/work/internal/pluginadmin"
 	"github.com/gustaborges/work/internal/workhome"
 )
 
@@ -46,7 +47,7 @@ func newConventionSetCmd() *cobra.Command {
 				return err
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "work: convention set to %s\n", name)
+			fmt.Fprintf(cmd.OutOrStdout(), "work: convention set to %s\n", pluginadmin.SafeText(name))
 			return nil
 		},
 	}

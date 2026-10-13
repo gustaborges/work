@@ -96,3 +96,32 @@ Final verification:
 - Q9 host CLI journey in a disposable home: PASS for offline install, disabled reinstall, dependency refusal/removal, durable lifecycle and explicit reinstall without policy.
 
 A historical embedded release is simulated with old registered version/install metadata to exercise the supported repair path; no separate newer release binary or remote CI was executed. Runtime evidence is Linux amd64 with Go 1.26.4 only. M7–M8 remain unchecked. No before/after implementation extension hooks are registered.
+
+## M7 — Administrative hubs and convention availability
+
+The three bare administration commands now open full-screen keyboard hubs with pure initial inspection, direct equivalents, explicit setup actions and refreshed state after accepted actions. Plugin install (source or bundled), enable/disable, check/apply and uninstall reuse the direct command handlers and their typed transaction services. Updates retain frozen candidates through review; dependency removal remains a separate explicit authorization. Reviews include exact safe automation equivalents and owned uninstall paths.
+
+Repository navigation exposes installed/disabled Locators, ordered unavailable policy entries, all membership/order operations and all search-root operations. Replacements are assembled through ordered selections and validated directory fields, then previewed before the shared reviewed edit commits. Clearing the last entry has a concrete direct remove equivalent. Empty inventories provide guidance and Back, and redirected bare hubs return usage/2 without terminal controls. Explicit --help retains the complete direct command inventory.
+
+Convention views preserve remembered values independently of availability, add available/unavailable_reason, and redact identity credentials without changing private matching keys. Shared enabled providers keep a choice available. The common setter compares the reviewed identity's memory and selected convention/provider revisions under the write lock, while merging unrelated memory. Start requires explicit replacement of unavailable memory even with one alternative, fails noninteractively with convention-unknown/38, retains fresh sole-choice defaults and contribution bypass, and rechecks convention facts before Work materialization. Existing Work state is unchanged.
+
+| Acceptance / evidence | Result |
+| --- | --- |
+| Q6 plugin hub/direct behavior | PASS; Unix PTY journeys install from source and embedded content, correct an invalid alias, enable/disable, perform pure checks, apply reviewed updates, refuse dependencies and uninstall with exact approval. Direct idempotent equivalents preserve the resulting state. Existing fixed-candidate and direct dependency suites remain applicable. |
+| Q11 availability and identity | PASS; unit projection checks cover no choice, unavailable memory and shared enabled owners. Native tests inspect the same remembered unavailable choice across two repositories with the same credential-bearing origin, twenty reads per clone, without changing the home. |
+| Q11 explicit replacement and drift | PASS; Unix PTY start asks for the sole available replacement, cancellation preserves memory/home, acceptance creates a Work with that choice, and provider drift after review fails with conflict/53. Setter tests reject memory/provider revision drift and retain unrelated upserts. Existing contribution/fresh-default journeys remain regression coverage. |
+| Q12 repository and convention hubs | PASS; PTY journeys add disabled policy entries, move/reorder/remove the complete set, correct invalid directory input, add/replace/clear roots and replace remembered conventions. Direct equivalents produce the same effective collections; root operands with spaces, quotes and URL-like punctuation retain their exact text. |
+| Q12 terminal/output safety | PASS; Back/Leave unchanged and empty navigation preserve fresh-home absence. Cancellation and resize cover 80×24 through 120×50 viewports with NO_COLOR and TERM=dumb, restore the primary buffer and render one final error. Corrected invalid fields do not remain in terminal history. Credential-bearing identity/source projections and equivalent commands omit credentials/query/fragment. |
+| Q12 discovery and boundaries | PASS; direct command/flag inventory, updated help-only expectations, redirected-stream checks, pure convention show, and application-service/presentation import boundaries pass. |
+
+Local runtime evidence is Linux amd64 with Go 1.26.4. No macOS/Windows runtime or remote CI result is claimed. M8 remains outside this delivery boundary. No before/after implementation extension hooks are registered.
+
+Final verification:
+
+- T073–T085 completed and verified; the requested next milestone stops at M7.
+- `GOCACHE=/tmp/work-go-cache GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null go test ./...`: PASS; full integration/testscript/PTY regression completed in 246.407 seconds.
+- After the final command-quoting refinement, focused convention, hub, equivalent-command and contract suites: PASS (12.489 seconds for integration).
+- `GOCACHE=/tmp/work-go-cache GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null go test -race ./internal/repoconv ./internal/adminstate ./internal/pluginadmin ./internal/cli`: PASS. CLI race suite completed in 62.219 seconds; the final quoting refinement is covered by the focused suite above.
+- `GOCACHE=/tmp/work-go-cache XDG_CACHE_HOME=/tmp/work-xdg-cache make lint`: PASS after final source changes (formatting, vet and staticcheck).
+- `GOCACHE=/tmp/work-go-cache make build`: PASS, including host seed generation and the host CLI binary.
+- The initial full run identified intentional help-only expectations plus a testscript matcher syntax issue; updated bare-hub/help/stream expectations and their focused rerun pass. No unresolved failures remain.

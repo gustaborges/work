@@ -2,12 +2,9 @@ package cli
 
 import (
 	"github.com/spf13/cobra"
-
-	"github.com/gustaborges/work/internal/diag"
 )
 
-// newPluginCmd exposes the direct M3 package controls. The full interactive
-// lifecycle hub is delivered by the later hub milestone.
+// Bare administration commands open pure, discoverable interactive hubs.
 func newPluginCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "plugin",
@@ -16,10 +13,10 @@ func newPluginCmd() *cobra.Command {
 		SilenceUsage:  true,
 		Args:          cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if cmd.Flags().Changed("json") {
-				return diag.New(diag.Usage, "--json is not accepted on `work plugin` (it prints help)")
+			if err := hubGuard(cmd, "run `work plugin list`, `work plugin install <source>` or `work plugin --help`"); err != nil {
+				return err
 			}
-			return cmd.Help()
+			return runPluginHub(cmd)
 		},
 	}
 	cmd.AddCommand(newPluginInstallCmd(), newPluginListCmd(), newPluginEnableCmd(), newPluginDisableCmd(), newPluginUpdateCmd(), newPluginUninstallCmd())

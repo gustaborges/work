@@ -38,13 +38,15 @@ func TestConventionHubShowsCurrentChangesAndReceiptsTheEquivalentCommand(t *test
 	// First run: nothing memoized yet.
 	c := newConsoleIn(t, repo, bin, env, "convention")
 	c.expect("Convention")
-	c.expect("current: not set")
-	c.expect("(leave unchanged)")
-	c.expect("gitflow")
-	c.send("\x1b[B") // down from "(leave unchanged)" to the first named option
-	c.send("\r")
+	c.expect("Current: not set")
+	c.expect("Leave unchanged")
+	c.send("/Set available\r")
+	c.expect("Available conventions")
+	c.send("/gitflow\r")
 	c.expect("work: convention set to gitflow")
-	c.expect("work: (equivalent: `work convention set gitflow`)")
+	c.expect("work: (equivalent: work convention set gitflow)")
+	c.expect("Current: gitflow")
+	c.send("/Leave unchanged\r")
 	if code := c.wait(); code != 0 {
 		t.Fatalf("hub exited %d, want 0\n%s", code, c.screen())
 	}
@@ -56,9 +58,8 @@ func TestConventionHubShowsCurrentChangesAndReceiptsTheEquivalentCommand(t *test
 	// nothing and prints no receipt.
 	c = newConsoleIn(t, repo, bin, env, "convention")
 	c.expect("Convention")
-	c.expect("current: gitflow")
-	c.expect("gitflow (current)")
-	c.send("\r") // "(leave unchanged)" is focused by default
+	c.expect("Current: gitflow")
+	c.send("/Leave unchanged\r")
 	if code := c.wait(); code != 0 {
 		t.Fatalf("hub exited %d, want 0\n%s", code, c.screen())
 	}
@@ -71,12 +72,13 @@ func TestConventionHubShowsCurrentChangesAndReceiptsTheEquivalentCommand(t *test
 	// Third run: change to "freeform" (the second named option).
 	c = newConsoleIn(t, repo, bin, env, "convention")
 	c.expect("Convention")
-	c.send("\x1b[B")
-	c.send("\x1b[B")
-	c.expect("freeform")
-	c.send("\r")
+	c.send("/Set available\r")
+	c.expect("Available conventions")
+	c.send("/freeform\r")
 	c.expect("work: convention set to freeform")
-	c.expect("work: (equivalent: `work convention set freeform`)")
+	c.expect("work: (equivalent: work convention set freeform)")
+	c.expect("Current: freeform")
+	c.send("/Leave unchanged\r")
 	if code := c.wait(); code != 0 {
 		t.Fatalf("hub exited %d, want 0\n%s", code, c.screen())
 	}

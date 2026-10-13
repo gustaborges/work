@@ -119,6 +119,15 @@ func newPluginUpdateCmd() *cobra.Command {
 				if len(dependencies) > 0 {
 					fmt.Fprintf(&impact, "Policy references removed:\n%s\n", strings.Join(dependencies, "\n"))
 				}
+				equivalent := []string{"plugin", "update"}
+				for _, result := range plan.Results {
+					equivalent = append(equivalent, result.Alias)
+				}
+				equivalent = append(equivalent, "--yes")
+				if remove {
+					equivalent = append(equivalent, "--remove-policy-references")
+				}
+				fmt.Fprintf(&impact, "Equivalent: %s\n", safeCommand(equivalent))
 				accepted, err := present.Confirm(cmd.Context(), pio, present.ConfirmSpec{Title: "Apply plugin updates", Impact: impact.String(), Accept: "Apply", Reject: "Cancel"})
 				if err != nil {
 					return err

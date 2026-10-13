@@ -15,9 +15,9 @@ import (
 	"github.com/gustaborges/work/internal/workhome"
 )
 
-func TestRepositoryNoSubcommandPrintsHelpExitZero(t *testing.T) {
+func TestRepositoryExplicitHelpExitZero(t *testing.T) {
 	needSeed(t)
-	out, _, code := runSeededWork(t, "repository")
+	out, _, code := runSeededWork(t, "repository", "--help")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
 	}

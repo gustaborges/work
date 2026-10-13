@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/gustaborges/work/internal/diag"
@@ -68,6 +69,15 @@ func newPluginUninstallCmd() *cobra.Command {
 				for _, effect := range plan.ConventionEffects() {
 					fmt.Fprintf(&impact, "Convention %s: available %t → %t; enabled owners: %s → %s\n", effect.Name, effect.AvailableBefore, effect.AvailableAfter, joinOrNone(effect.OwnersBefore), joinOrNone(effect.OwnersAfter))
 				}
+				for _, alias := range plan.Aliases() {
+					fmt.Fprintf(&impact, "Owned content removed: %s\n", pluginadmin.SafeText(filepath.Join(home.PluginsDir(), alias)))
+				}
+				equivalent := append([]string{"plugin", "uninstall"}, plan.Aliases()...)
+				equivalent = append(equivalent, "--yes")
+				if remove {
+					equivalent = append(equivalent, "--remove-policy-references")
+				}
+				fmt.Fprintf(&impact, "Equivalent: %s\n", safeCommand(equivalent))
 				impact.WriteString("Remembered conventions and existing Works are retained. Linked sources are retained.")
 				accepted, err := present.Confirm(cmd.Context(), pio, present.ConfirmSpec{Title: "Uninstall plugins", Impact: impact.String(), Accept: "Uninstall", Reject: "Cancel"})
 				if err != nil {

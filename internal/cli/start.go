@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/gustaborges/work/internal/extension"
 	"github.com/gustaborges/work/internal/gitx"
 	"github.com/gustaborges/work/internal/locator"
+	"github.com/gustaborges/work/internal/pluginadmin"
 	"github.com/gustaborges/work/internal/present"
 	"github.com/gustaborges/work/internal/projection"
 	"github.com/gustaborges/work/internal/registry"
@@ -464,8 +466,17 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		}
 		repoIdentityKey = id
 		if v, ok := convStore.Get(id); ok {
-			conventionValue = v
-			return nil
+			if _, available := reg.Effective().ConventionByName(v); available {
+				conventionValue = v
+				return nil
+			}
+			if !interactive {
+				return diag.New(diag.ConventionUnknown, "remembered branch convention is unavailable; enable or install its provider, or run `work convention set <name>`")
+			}
+			if len(conventionNames(reg)) == 0 {
+				return diag.New(diag.ConventionUnknown, "no branch convention is available; install or enable a provider, then run `work convention set <name>`")
+			}
+			return nil // An unavailable remembered choice always needs explicit replacement.
 		}
 		names := conventionNames(reg)
 		if len(names) == 0 {
@@ -475,8 +486,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			return nil
 		}
 		conventionValue = names[0]
-		convStore.Set(id, conventionValue)
-		return setConvention(ctx, home, id, conventionValue)
+		return setReviewedConvention(ctx, home, id, conventionValue, snapshot)
 	}
 
 	// Resolve every value an explicit flag or the SOURCE argument already
@@ -646,9 +656,12 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			if conventionValue != "" {
 				return present.SelectSpec[string]{}, present.StepResolved(conventionValue)
 			}
+			description := ""
+			if remembered, ok := convStore.Get(repoIdentityKey); ok {
+				description = "Remembered convention " + pluginadmin.SafeText(remembered) + " is unavailable. Choose an explicit replacement."
+			}
 			return present.SelectSpec[string]{
-				Title:   "Convention",
-				Options: stringOptions(conventionNames(reg)),
+				Title: "Convention", Description: description, Options: stringOptions(conventionNames(reg)),
 			}, nil
 		}))
 
@@ -665,8 +678,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			}
 			if conventionValue == "" {
 				conventionValue = a.String("convention")
-				convStore.Set(repoIdentityKey, conventionValue)
-				if err := setConvention(ctx, home, repoIdentityKey, conventionValue); err != nil {
+				if err := setReviewedConvention(ctx, home, repoIdentityKey, conventionValue, snapshot); err != nil {
 					return present.SelectSpec[string]{}, present.Fatal(err)
 				}
 			}
@@ -844,6 +856,14 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	latest, err := adminstate.Read(ctx, home)
 	if err != nil {
 		return err
+	}
+	if conventionValue != "" {
+		current, has := latest.Memory.Get(repoIdentityKey)
+		before, bok := snapshot.Registry.Effective().ConventionByName(conventionValue)
+		after, aok := latest.Registry.Effective().ConventionByName(conventionValue)
+		if !has || current != conventionValue || !bok || !aok || !reflect.DeepEqual(before, after) || !reflect.DeepEqual(conventionProviders(snapshot.Registry, conventionValue), conventionProviders(latest.Registry, conventionValue)) {
+			return diag.New(diag.AdministrationConflict, "selected convention choice or provider changed; retry the command")
+		}
 	}
 	for _, provider := range usedProviders {
 		if err = adminstate.CheckComponent(latest.Registry, provider); err != nil {
@@ -1090,7 +1110,7 @@ func conventionNames(reg *registry.Registry) []string {
 func stringOptions(vals []string) []present.Option[string] {
 	opts := make([]present.Option[string], len(vals))
 	for i, v := range vals {
-		opts[i] = present.Option[string]{Value: v, Primary: v}
+		opts[i] = present.Option[string]{Value: v, Primary: pluginadmin.SafeText(v)}
 	}
 	return opts
 }
