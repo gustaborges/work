@@ -7,9 +7,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/gustaborges/work/internal/adminstate"
 	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/repoconfig"
+	"github.com/gustaborges/work/internal/workhome"
 )
 
 // newRepositoryRootCmd registers `work repository root list|add|remove|replace`
@@ -104,16 +106,25 @@ func mutateRoots(cmd *cobra.Command, paths []string, op func(*config.Config, []s
 	if cmd.Flags().Changed("json") {
 		return diag.New(diag.Usage, "--json is not accepted on a `work repository root` mutation")
 	}
-	home, cfg, _, err := loadRepositoryContext()
+	home, err := workhome.Resolve()
 	if err != nil {
 		return err
 	}
-	if err := op(cfg, paths); err != nil {
+	if err = mutationPreflight(cmd, home); err != nil {
 		return err
 	}
-	if err := saveRepositoryConfig(home, cfg); err != nil {
+	var cfg *config.Config
+	err = adminstate.WithWrite(cmd.Context(), home, "work repository root", func(s *adminstate.Session) error {
+		if err := op(s.Config, paths); err != nil {
+			return err
+		}
+		cfg = s.Config
+		return nil
+	})
+	if err != nil {
 		return err
 	}
+
 	fmt.Fprintf(cmd.OutOrStdout(), "work: roots now %s\n", joinOrNone(cfg.RepositoryRoots))
 	return nil
 }

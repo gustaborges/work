@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 )
 
 // Home is a resolved Work home root. The zero value is not usable; obtain one
@@ -90,4 +91,21 @@ func (h Home) EnsureLayout() error {
 		}
 	}
 	return nil
+}
+
+// AdministrationFile is the stable/pending epoch control; absent means epoch 0.
+func (h Home) AdministrationFile() string { return filepath.Join(h.StateDir(), "administration.json") }
+func (h Home) ReferencePackageFile() string {
+	return filepath.Join(h.StateDir(), "reference-package.json")
+}
+func (h Home) AdministrationDir() string  { return filepath.Join(h.StateDir(), "administration") }
+func (h Home) AdministrationLock() string { return h.LockPath("administration") }
+
+var transactionID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$`)
+
+func (h Home) TransactionDir(id string) (string, error) {
+	if !transactionID.MatchString(id) {
+		return "", fmt.Errorf("invalid administrative transaction id")
+	}
+	return filepath.Join(h.AdministrationDir(), id), nil
 }

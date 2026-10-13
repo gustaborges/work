@@ -1,6 +1,7 @@
 package plugininstall
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -48,90 +49,23 @@ type Result struct {
 // into reg, replacing whatever the alias registered before. On any failure reg is left completely untouched and nothing is
 // written under pluginsDir (SC-005).
 func Install(pluginsDir string, reg *registry.Registry, source string, opts Options) (Result, error) {
-	local := isLocalSource(source)
-	if opts.Link && !local {
-		return Result{}, diag.New(diag.Usage, "--link requires a local SOURCE (a remote SOURCE is always pinned by content)")
-	}
-
-	if a := strings.TrimSpace(opts.Alias); a != "" {
-		if err := plugin.ValidateAlias(a); err != nil {
-			return Result{}, diag.Wrap(diag.PluginInvalid, err, "--as is not a valid alias")
-		}
-	}
-
-	contentDir, origin, identity, reference, cleanup, err := obtainContent(source, local, opts.Link)
-	if cleanup != nil {
-		defer cleanup()
-	}
+	p, err := Prepare(context.Background(), source, opts)
 	if err != nil {
 		return Result{}, err
 	}
-
-	manifestBytes, err := os.ReadFile(filepath.Join(contentDir, "plugin.json"))
-	if err != nil {
-		return Result{}, diag.Wrapf(diag.PluginInvalid, err, "cannot read plugin.json at %s", source)
-	}
-	manifest, err := plugin.Parse(manifestBytes)
-	if err != nil {
-		return Result{}, diag.Wrap(diag.PluginInvalid, err, "plugin.json is invalid")
-	}
-
-	alias := strings.TrimSpace(opts.Alias)
-	if alias == "" {
-		alias = manifest.Name
-	}
-
-	explicitAlias := strings.TrimSpace(opts.Alias) != ""
-	existing, installed := reg.PackageByAlias(alias)
-	switch {
-	case alias == ReferenceAlias:
-		return Result{}, aliasConflict(manifest.Name, alias, explicitAlias, "the reference package", source)
-	case installed && existingIdentity(existing) != identity:
-		return Result{}, aliasConflict(manifest.Name, alias, explicitAlias, existing.Reference, source)
-	}
-
-	for _, c := range manifest.Components {
-		if c.IsFallbackStarter() {
-			if fb, ok := reg.StarterFallback(); ok && fb.Alias != alias {
-				return Result{}, diag.Newf(diag.PluginFallbackConflict,
-					"a fallback Starter is already registered by %q", fb.Alias).
-					WithSummary("Only one fallback Starter may be registered at a time.").
-					WithHint("Uninstall the existing fallback Starter first, or give this component a pattern.")
-			}
-		}
-	}
-
-	if err := preflightRuntimes(manifest); err != nil {
+	defer p.Close()
+	if err = p.ValidateCatalog(reg); err != nil {
 		return Result{}, err
 	}
-
-	err = StageThenSwap(pluginsDir, alias, func(staging string) error {
-		if opts.Link {
-			return linkSource(staging, contentDir)
+	if err = StageThenSwap(pluginsDir, p.Alias, func(stage string) error {
+		if p.link {
+			return linkSource(stage, p.ContentDir)
 		}
-		return copyTree(contentDir, sourceDir(staging))
-	})
-	if err != nil {
+		return copyTree(p.ContentDir, sourceDir(stage))
+	}); err != nil {
 		return Result{}, diag.Wrap(diag.PluginInstallFailed, err, "cannot install the plugin package")
 	}
-
-	var conventionNames []string
-	for _, cv := range manifest.Conventions {
-		conventionNames = append(conventionNames, cv.Name)
-	}
-	pkg := registry.Package{Alias: alias, Origin: origin, Reference: reference, Conventions: conventionNames, PluginName: manifest.Name}
-	pkg.Enabled = existing.Enabled
-	reg.RemoveAlias(alias)
-	reg.UpsertPackage(pkg)
-	for _, c := range manifest.Components {
-		entry := ComponentEntry(alias, c)
-		reg.UpsertComponent(entry)
-	}
-	for _, cv := range manifest.Conventions {
-		reg.UpsertConvention(registry.Convention{Name: cv.Name, Prefixes: cv.Prefixes})
-	}
-
-	return Result{Package: pkg, Components: manifest.Components}, nil
+	return p.Register(reg), nil
 }
 
 // ComponentEntry is the one place a manifest component becomes a registry

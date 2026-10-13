@@ -9,6 +9,9 @@
 package starter
 
 import (
+	"context"
+	"github.com/gustaborges/work/internal/adminstate"
+	"github.com/gustaborges/work/internal/workhome"
 	"maps"
 	"regexp"
 	"slices"
@@ -196,4 +199,11 @@ func validatePublished(ref Reference, owner string) error {
 		}
 	}
 	return nil
+}
+
+// InvokeGuarded protects the selected package revision through IPC completion.
+func InvokeGuarded(ctx context.Context, h workhome.Home, c registry.Component, arg string) (Reference, error) {
+	var ref Reference
+	err := adminstate.WithInvocation(ctx, h, c, func() error { var err error; ref, err = Invoke(h.PluginsDir(), c, arg); return err })
+	return ref, err
 }

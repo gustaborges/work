@@ -3,6 +3,9 @@
 # FR-023, FR-024, FR-025.
 
 # S1: fresh WORK_HOME, one row for the seed Locator.
+# Explicit seed fixture setup; list commands are pure.
+bootstrapseed
+
 work repository policy list
 stdout '(?m)^1  work-reference/filesystem-repository-locator  \(available\)$'
 

@@ -1,24 +1,21 @@
-// Package bootstrap installs the embedded reference package into the Work home
-// on first use, through the same pipeline any plugin would take: its own
-// install() stages and swaps the package in via internal/plugininstall's
-// shared staging/swap primitives (ADR-0003, research R1), the same ones
-// `work plugin install` uses. It is idempotent and self-repairing: identity
-// is the logical component name plus a content digest, never a "seeded"
-// flag, so any number of concurrent or interrupted runs converge to exactly
-// one usable record of each component.
+// Package bootstrap installs and repairs the offline reference package through
+// the shared administrative journal. Lifecycle history preserves explicit
+// policy edits and removal; the registry alone owns package enablement.
 package bootstrap
 
 import (
+	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"time"
 
-	"github.com/gustaborges/work/internal/config"
+	"github.com/gustaborges/work/internal/adminstate"
 	"github.com/gustaborges/work/internal/diag"
-	"github.com/gustaborges/work/internal/lockfile"
 	"github.com/gustaborges/work/internal/plugin"
 	"github.com/gustaborges/work/internal/plugininstall"
 	"github.com/gustaborges/work/internal/registry"
@@ -79,217 +76,194 @@ type installMeta struct {
 
 // EnsureSeed makes the reference package present and registered. It is safe to
 // call on every command; when the install is already current it does nothing
-// but take and release the bootstrap lock.
+// but take and release the common administration lock.
 func EnsureSeed(h workhome.Home) error {
-	if err := h.EnsureLayout(); err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "cannot create the Work home layout")
-	}
-
-	release, err := lockfile.Acquire(h.LockPath("bootstrap"))
-	if err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "cannot acquire the bootstrap lock")
-	}
-	defer release()
-
-	digest, err := seed.ContentDigest()
-	if err != nil {
-		return diag.Wrapf(diag.BootstrapFailed, err,
-			"no embedded reference package for %s/%s", runtime.GOOS, runtime.GOARCH)
-	}
-
-	reg, err := registry.Load(h.RegistryFile())
-	if err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "cannot read the component registry")
-	}
-
-	if err := plugininstall.RecoverInterruptedSwap(h.PluginsDir(), Alias); err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "cannot recover the previous reference package")
-	}
-
-	metaPath := filepath.Join(h.PluginsDir(), Alias, ".install-meta.json")
-	oldMeta, _ := readInstallMeta(metaPath) // zero value (PolicySeeded: false) if unreadable
-
-	isCurrent, err := current(h, reg, digest, oldMeta)
-	if err != nil {
-		return err // already a diag error
-	}
-	if isCurrent {
+	return EnsureSeedContext(context.Background(), h)
+}
+func EnsureSeedContext(ctx context.Context, h workhome.Home) error {
+	err := adminstate.WithWriteOptions(ctx, h, "work plugin enable work-reference", func(s *adminstate.Session) error { return EnsureSeedLocked(h, s) }, adminstate.WriteOptions{Checkpoint: func(point string) error {
+		switch point {
+		case "move-backup:" + Alias:
+			return checkpoint("dest-backed-up")
+		case "move-publish:" + Alias:
+			return checkpoint("renamed")
+		case "before-commit":
+			return checkpoint("registered")
+		}
 		return nil
+	}})
+	var typed *diag.Error
+	if err != nil && !errors.As(err, &typed) {
+		return diag.Wrap(diag.BootstrapFailed, err, "cannot prepare the embedded reference package")
 	}
-	return install(h, digest, !oldMeta.PolicySeeded)
+	return err
 }
 
-// current reports whether every seed record is registered, the installed
-// digest matches the embedded one, the one-time policy-seed action has
-// completed, and the plugin directory is intact. Deliberately not part of
-// this check: whether the seed Locator is still *in* the live policy — that
-// is user-editable state past the first install (`work repository policy
-// remove`), not an installation-integrity signal (FR-027, ADR-0015).
+// EnsureSeedLocked is the non-recursive bootstrap path. User input and source
+// retrieval never call the common-lock public entry point while holding it.
+func EnsureSeedLocked(h workhome.Home, s *adminstate.Session) error {
+	if s.Lifecycle.Removed {
+		return nil
+	}
+	digest, err := seed.ContentDigest()
+	if err != nil {
+		return diag.Wrap(diag.BootstrapFailed, err, "no embedded reference package for this platform")
+	}
+	oldMeta, _ := readInstallMeta(filepath.Join(h.PluginsDir(), Alias, ".install-meta.json"))
+	isCurrent, err := current(h, s.Registry, digest, oldMeta)
+	if err != nil {
+		return err
+	}
+	_, lifeErr := os.Stat(h.ReferencePackageFile())
+	raw, err := registry.Load(h.RegistryFile())
+	if err != nil {
+		return err
+	}
+	_, owned := raw.PackageByAlias(Alias)
+	if isCurrent {
+		if !owned {
+			s.Persist("registry")
+		}
+		if os.IsNotExist(lifeErr) {
+			s.Lifecycle.Initialized = true
+			s.Lifecycle.PolicySeeded = true
+			s.Persist("lifecycle")
+		}
+		return nil
+	}
+	// A pre-existing config is explicit user state, including an empty policy.
+	_, configErr := os.Stat(h.ConfigFile())
+	genuinelyFresh := !s.Lifecycle.Initialized && os.IsNotExist(configErr) && len(s.Registry.Components) == 0 && !existsSeed(h)
+	return installLocked(h, s, digest, genuinelyFresh)
+}
+func existsSeed(h workhome.Home) bool {
+	_, err := os.Lstat(filepath.Join(h.PluginsDir(), Alias))
+	return err == nil
+}
 func current(h workhome.Home, reg *registry.Registry, digest string, meta installMeta) (bool, error) {
-	if !reg.HasComponent(Alias, componentStarter) ||
-		!reg.HasComponent(Alias, componentLocator) {
+	if !reg.HasComponent(Alias, componentStarter) || !reg.HasComponent(Alias, componentLocator) {
 		return false, nil
 	}
 	if _, ok := reg.ConventionByName(conventionName); !ok {
 		return false, nil
 	}
-	if meta.ContentDigest != digest || !meta.PolicySeeded {
+	if meta.ContentDigest != digest {
 		return false, nil
 	}
-
-	src := filepath.Join(h.PluginsDir(), Alias, "source")
-	for _, name := range binaryNames() {
-		if _, err := os.Stat(filepath.Join(src, name)); err != nil {
+	starter, locator, err := seed.HostAssets()
+	if err != nil {
+		return false, err
+	}
+	for i, name := range binaryNames() {
+		path := filepath.Join(h.PluginsDir(), Alias, "source", name)
+		info, err := os.Lstat(path)
+		if err != nil || !info.Mode().IsRegular() {
+			return false, nil
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return false, nil
+		}
+		expected := starter
+		if i == 1 {
+			expected = locator
+		}
+		if sha256.Sum256(b) != sha256.Sum256(expected) {
 			return false, nil
 		}
 	}
+	path := filepath.Join(h.PluginsDir(), Alias, "plugin.json")
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return false, nil
+	}
+	b, err := os.ReadFile(path)
+	if err != nil || sha256.Sum256(b) != sha256.Sum256(seed.ManifestJSON()) {
+		return false, nil
+	}
+
 	return true, nil
 }
-
-// install stages and swaps in the embedded reference package and registers
-// its components. seedPolicy is true unless the policy-seed action already
-// completed in a prior install of this package (research: install-meta
-// PolicySeeded) — only then does it also append the seed Locator to the
-// resolution policy; either way the completed fact is (re)recorded in the
-// swapped-in install-meta so a later repair does not re-seed it.
-func install(h workhome.Home, digest string, seedPolicy bool) error {
+func installLocked(h workhome.Home, s *adminstate.Session, digest string, seedPolicy bool) error {
 	manifestBytes := seed.ManifestJSON()
 	manifest, err := plugin.Parse(manifestBytes)
 	if err != nil {
-		return diag.Wrapf(diag.BootstrapFailed, err, "the embedded plugin.json is invalid")
-	}
-
-	starterBin, locatorBin, err := seed.HostAssets()
-	if err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "cannot read the embedded reference binaries")
-	}
-
-	// Sweep any staging dir a previously-killed install left behind, so an
-	// interrupted run never accumulates partial directories (SC-007, FR-005).
-	plugininstall.SweepStaleStaging(h.PluginsDir(), Alias)
-
-	// Stage the whole package in a temp dir, then replace the destination through
-	// a recoverable rename sequence.
-	staging, err := os.MkdirTemp(h.PluginsDir(), stagePrefix+"*")
-	if err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "cannot stage the reference package")
-	}
-	defer os.RemoveAll(staging)
-	if err := checkpoint("staged"); err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "interrupted while staging the reference package")
-	}
-
-	srcDir := filepath.Join(staging, "source")
-	if err := os.MkdirAll(srcDir, 0o755); err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "cannot stage the reference package")
-	}
-	names := binaryNames()
-	for i, blob := range [][]byte{starterBin, locatorBin} {
-		if err := os.WriteFile(filepath.Join(srcDir, names[i]), blob, 0o755); err != nil {
-			return diag.Wrap(diag.BootstrapFailed, err, "cannot write a reference binary")
-		}
-	}
-	if err := os.WriteFile(filepath.Join(staging, "plugin.json"), manifestBytes, 0o644); err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "cannot write plugin.json")
-	}
-	meta := installMeta{Origin: installOrigin, ContentDigest: digest, InstalledAt: time.Now().UTC().Format(time.RFC3339)}
-	metaBytes, _ := json.MarshalIndent(meta, "", "  ")
-	if err := os.WriteFile(filepath.Join(staging, ".install-meta.json"), metaBytes, 0o644); err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "cannot write install metadata")
-	}
-
-	if err := checkpoint("staged-complete"); err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "interrupted before installing the reference package")
-	}
-
-	dest := filepath.Join(h.PluginsDir(), Alias)
-	backup := dest + backupSuffix
-	if err := plugininstall.MoveDestinationAside(dest, backup); err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "cannot prepare the existing reference package for replacement")
-	}
-	if err := checkpoint("dest-backed-up"); err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "interrupted while replacing the reference package")
-	}
-	if err := os.Rename(staging, dest); err != nil {
-		if restoreErr := plugininstall.RestoreDestination(backup, dest); restoreErr != nil {
-			return diag.Wrapf(diag.BootstrapFailed, err,
-				"cannot install the reference package (and cannot restore the previous package: %v)", restoreErr)
-		}
-		return diag.Wrap(diag.BootstrapFailed, err, "cannot install the reference package")
-	}
-	if err := os.RemoveAll(backup); err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "cannot remove the replaced reference package")
-	}
-	if err := checkpoint("renamed"); err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "interrupted before registering the reference package")
-	}
-
-	if err := registerComponents(h, manifest); err != nil {
 		return err
 	}
-	if err := checkpoint("registered"); err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "interrupted before updating the resolution policy")
+	starterBin, locatorBin, err := seed.HostAssets()
+	if err != nil {
+		return err
 	}
-	if seedPolicy {
-		if err := addLocatorToPolicy(h); err != nil {
+	if err = os.MkdirAll(h.PluginsDir(), 0700); err != nil {
+		return err
+	}
+	// Recover the old pre-journal swap format only while already holding the
+	// shared lock, before staging new journal-owned content.
+	if err = plugininstall.RecoverInterruptedSwap(h.PluginsDir(), Alias); err != nil {
+		return err
+	}
+	plugininstall.SweepStaleStaging(h.PluginsDir(), Alias)
+	stage, err := os.MkdirTemp(h.PluginsDir(), ".admin-stage-")
+	if err != nil {
+		return err
+	}
+	transferred := false
+	defer func() {
+		if !transferred {
+			_ = os.RemoveAll(stage)
+		}
+	}()
+	if err = checkpoint("staged"); err != nil {
+		return err
+	}
+	src := filepath.Join(stage, "source")
+	if err = os.MkdirAll(src, 0755); err != nil {
+		return err
+	}
+	for i, blob := range [][]byte{starterBin, locatorBin} {
+		if err = os.WriteFile(filepath.Join(src, binaryNames()[i]), blob, 0755); err != nil {
 			return err
 		}
 	}
-	// Record the policy-seed action as done, whether it just ran or had
-	// already completed in a prior install of this package — the meta file
-	// this install just swapped in otherwise reads PolicySeeded: false, which
-	// would look like an interrupted install and re-trigger addLocatorToPolicy
-	// on the very next command, undoing an explicit `policy remove`.
-	if err := setPolicySeeded(filepath.Join(dest, ".install-meta.json")); err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "cannot record the resolution policy as seeded")
-	}
-	return nil
-}
-
-// setPolicySeeded marks the install-meta file at path as PolicySeeded: true.
-func setPolicySeeded(path string) error {
-	meta, err := readInstallMeta(path)
-	if err != nil {
+	if err = os.WriteFile(filepath.Join(stage, "plugin.json"), manifestBytes, 0644); err != nil {
 		return err
 	}
-	meta.PolicySeeded = true
+	meta := installMeta{Origin: installOrigin, ContentDigest: digest, InstalledAt: time.Now().UTC().Format(time.RFC3339), PolicySeeded: true}
 	data, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
-}
-
-func registerComponents(h workhome.Home, manifest *plugin.Manifest) error {
-	reg, err := registry.Load(h.RegistryFile())
-	if err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "cannot read the component registry")
+	if err = os.WriteFile(filepath.Join(stage, ".install-meta.json"), data, 0644); err != nil {
+		return err
 	}
+	if err = checkpoint("staged-complete"); err != nil {
+		return err
+	}
+
+	if err = s.Replace(Alias, stage); err != nil {
+		return err
+	}
+	transferred = true
+	old, _ := s.Registry.PackageByAlias(Alias)
+	names := []string{}
+	for _, cv := range manifest.Conventions {
+		names = append(names, cv.Name)
+	}
+	s.Registry.RemoveAlias(Alias)
+	s.Registry.UpsertPackage(registry.Package{Alias: Alias, PluginName: manifest.Name, Origin: registry.OriginEmbedded, Reference: "embedded", Version: manifest.Version, ContentDigest: digest, Conventions: names, Enabled: old.Enabled})
 	for _, c := range manifest.Components {
-		entry := plugininstall.ComponentEntry(Alias, c)
-		reg.UpsertComponent(entry)
+		s.Registry.UpsertComponent(plugininstall.ComponentEntry(Alias, c))
 	}
 	for _, cv := range manifest.Conventions {
-		reg.UpsertConvention(registry.Convention{Name: cv.Name, Prefixes: cv.Prefixes})
+		s.Registry.UpsertConvention(registry.Convention{Name: cv.Name, Prefixes: cv.Prefixes})
 	}
-	if err := registry.Save(h.RegistryFile(), reg); err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "cannot write the component registry")
+	if seedPolicy && !slices.Contains(s.Config.RepositoryResolution.Locators, LocatorPolicyEntry) {
+		s.Config.RepositoryResolution.Locators = append(s.Config.RepositoryResolution.Locators, LocatorPolicyEntry)
 	}
-	return nil
-}
-
-func addLocatorToPolicy(h workhome.Home) error {
-	cfg, err := config.Load(h.ConfigFile())
-	if err != nil {
-		return err // already a diag error
-	}
-	if slices.Contains(cfg.RepositoryResolution.Locators, LocatorPolicyEntry) {
-		return nil
-	}
-	cfg.RepositoryResolution.Locators = append(cfg.RepositoryResolution.Locators, LocatorPolicyEntry)
-	if err := config.Save(h.ConfigFile(), cfg); err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "cannot update the repository resolution policy")
-	}
+	s.Lifecycle.Initialized = true
+	s.Lifecycle.PolicySeeded = true
+	s.Lifecycle.Removed = false
+	s.Persist("lifecycle")
 	return nil
 }
 

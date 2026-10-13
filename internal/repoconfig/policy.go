@@ -24,7 +24,8 @@ type PolicyEntry struct {
 	Position int
 	// Available is true iff a registered component with that alias+name has
 	// role == repository-locator (research R12).
-	Available bool
+	Available         bool
+	UnavailableReason *string
 }
 
 // RegisteredLocator is one row of `work repository locator list": a
@@ -37,7 +38,10 @@ type RegisteredLocator struct {
 	Accepts     []string
 	// InPolicy is true iff Ref is a member of
 	// cfg.RepositoryResolution.Locators.
-	InPolicy bool
+	InPolicy          bool
+	Enabled           bool
+	State             string
+	UnavailableReason *string
 }
 
 // ListPolicy returns every policy entry in order, each marked with its
@@ -46,7 +50,8 @@ func ListPolicy(cfg *config.Config, reg *registry.Registry) []PolicyEntry {
 	list := cfg.RepositoryResolution.Locators
 	out := make([]PolicyEntry, len(list))
 	for i, ref := range list {
-		out[i] = PolicyEntry{Ref: ref, Position: i + 1, Available: isAvailable(reg, ref)}
+		state, reason := LocatorState(reg, ref)
+		out[i] = PolicyEntry{Ref: ref, Position: i + 1, Available: state == "available", UnavailableReason: reason}
 	}
 	return out
 }
@@ -65,7 +70,9 @@ func ListLocators(cfg *config.Config, reg *registry.Registry) []RegisteredLocato
 			Description: c.Description,
 			Accepts:     slices.Clone(c.Accepts),
 			InPolicy:    slices.Contains(cfg.RepositoryResolution.Locators, ref),
+			Enabled:     reg.PackageEnabled(c.Alias),
 		}
+		out[i].State, out[i].UnavailableReason = LocatorState(reg, ref)
 	}
 	return out
 }
@@ -181,16 +188,6 @@ func ReplacePolicy(cfg *config.Config, reg *registry.Registry, refs []string) er
 	return nil
 }
 
-// isAvailable reports whether ref names a registered repository-locator
-// component (research R12).
-func isAvailable(reg *registry.Registry, ref string) bool {
-	alias, name, ok := strings.Cut(ref, "/")
-	if !ok {
-		return false
-	}
-	return hasRepositoryLocator(reg, alias, name)
-}
-
 func hasRepositoryLocator(reg *registry.Registry, alias, name string) bool {
 	for _, c := range reg.Components {
 		if c.Alias == alias && c.Name == name && c.Role == registry.RoleRepositoryLocator && reg.PackageEnabled(alias) {
@@ -259,4 +256,37 @@ func notFoundAsUsage(ref string, err error) error {
 		return diag.Newf(diag.Usage, "unknown policy entry %q", ref)
 	}
 	return err
+}
+
+// LocatorState distinguishes retained references in requirement precedence.
+func LocatorState(reg *registry.Registry, ref string) (string, *string) {
+	alias, name, qualified := strings.Cut(ref, "/")
+	foundAlias := false
+	if _, ok := reg.PackageByAlias(alias); ok {
+		foundAlias = true
+	}
+	var component *registry.Component
+	for i, c := range reg.Components {
+		if c.Alias == alias {
+			foundAlias = true
+			if c.Name == name && qualified {
+				component = &reg.Components[i]
+			}
+		}
+	}
+	reason := ""
+	switch {
+	case !foundAlias:
+		reason = "package-missing"
+	case component == nil:
+		reason = "component-missing"
+	case component.Role != registry.RoleRepositoryLocator:
+		reason = "role-changed"
+	case !reg.PackageEnabled(alias):
+		reason = "package-disabled"
+	}
+	if reason != "" {
+		return "unavailable", &reason
+	}
+	return "available", nil
 }

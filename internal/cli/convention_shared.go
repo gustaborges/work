@@ -3,32 +3,21 @@ package cli
 import (
 	"os"
 
-	"github.com/gustaborges/work/internal/bootstrap"
+	"context"
+	"github.com/gustaborges/work/internal/adminstate"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/gitx"
-	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/repoidentity"
 	"github.com/gustaborges/work/internal/workhome"
 )
 
-// loadConventionContext resolves the Work home, ensures the seed is
-// bootstrapped (so the reference package's "freeform" convention exists even
-// before any `work start` has run), and loads the current registry. Every
-// `work convention` subcommand and the hub share this precondition, exactly
-// like `work repository`.
-func loadConventionContext() (workhome.Home, *registry.Registry, error) {
-	home, err := workhome.Resolve()
+// loadConventionContext projects current enabled providers without bootstrap.
+func loadConventionContext(ctx context.Context) (workhome.Home, *adminstate.Snapshot, error) {
+	h, s, err := readAdministration(ctx)
 	if err != nil {
-		return workhome.Home{}, nil, diag.Wrap(diag.BootstrapFailed, err, "cannot locate the Work home directory")
+		return h, nil, err
 	}
-	if err := bootstrap.EnsureSeed(home); err != nil {
-		return workhome.Home{}, nil, err
-	}
-	reg, err := registry.Load(home.RegistryFile())
-	if err != nil {
-		return workhome.Home{}, nil, diag.Wrap(diag.BootstrapFailed, err, "cannot read the component registry")
-	}
-	return home, reg.Effective(), nil
+	return h, s, nil
 }
 
 // resolveConventionIdentity discovers the git repository rooted at or above

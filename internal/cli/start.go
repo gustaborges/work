@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/gustaborges/work/internal/adminstate"
 	"github.com/gustaborges/work/internal/basebranch"
 	"github.com/gustaborges/work/internal/bootstrap"
 	"github.com/gustaborges/work/internal/branchname"
@@ -26,7 +27,6 @@ import (
 	"github.com/gustaborges/work/internal/projection"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/repoconfig"
-	"github.com/gustaborges/work/internal/repoconv"
 	"github.com/gustaborges/work/internal/repoidentity"
 	"github.com/gustaborges/work/internal/reporef"
 	"github.com/gustaborges/work/internal/shellintegration"
@@ -86,10 +86,6 @@ func newStartCmd() *cobra.Command {
 }
 
 func runStart(cmd *cobra.Command, source string, f startFlags) error {
-	ctx := cmd.Context()
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	out := cmd.OutOrStdout()
 	errOut := cmd.ErrOrStderr()
 	interactive := present.IsInteractive()
@@ -104,10 +100,12 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		return diag.Wrap(diag.BootstrapFailed, err, "cannot locate the Work home directory")
 	}
 
-	// Config is read-only here; a missing file yields defaults with no write.
+	// Only workspace presence is needed for automation grammar. An interrupted
+	// config publication must not prevent a fully specified command from
+	// reaching recovery; bootstrap validates the recovered config below.
 	cfg, err := config.Load(home.ConfigFile())
 	if err != nil {
-		return err
+		cfg = config.Default()
 	}
 
 	// Non-interactive runs must supply every required value up front: a missing
@@ -119,40 +117,33 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	}
 
 	// Preconditions: seed present, git usable.
-	if err := bootstrap.EnsureSeed(home); err != nil {
+	if err := mutationPreflight(cmd, home); err != nil {
+		return err
+	}
+	ctx := cmd.Context()
+	if err := bootstrap.EnsureSeedContext(ctx, home); err != nil {
 		return err
 	}
 	// EnsureSeed may have just appended the seed Locator to the policy (first
 	// run only, bootstrap.LocatorPolicyEntry); reload so locatorDeps below
 	// reflects it instead of the pre-bootstrap snapshot.
-	cfg, err = config.Load(home.ConfigFile())
+	snapshot, err := adminstate.Read(ctx, home)
 	if err != nil {
 		return err
 	}
+	cfg = snapshot.Config
+	reg := snapshot.Registry
+	convStore := snapshot.Memory
 	if err := gitx.Preflight(); err != nil {
 		return diag.Wrap(diag.BootstrapFailed, err, "git is required but not usable")
 	}
-
-	reg, err := registry.Load(home.RegistryFile())
-	if err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "cannot read the component registry")
-	}
-
 	catalog := convention.Load(reg)
-
-	// convStore is the per-repository-identity branch-convention memory
-	// (ADR-0011, research R14): loaded once, read/written by resolveConvention
-	// and the interactive Convention step below.
-	convStore, err := repoconv.Load(home.BranchConventionsFile())
-	if err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "cannot read the branch convention memory")
-	}
 
 	// First-run setup (interactive only, before any other step): ensure a
 	// workspace root and at least one repository search root exist, each with
 	// a purpose line. First-run only — once both are configured neither
 	// prompt appears again and an already-configured install is
-	// byte-identical to F1/F2.5. Persisted as a single config.Save here,
+	// byte-identical to F1/F2.5. Persisted in one latest-state transaction here,
 	// before the eager SOURCE-argv resolution below, so an explicit
 	// `work start <name>` also resolves through the just-configured root
 	// (contracts/cli-work-start.md §First-run setup, research R21).
@@ -215,7 +206,15 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 
 	// locatorDeps feeds internal/locator.Resolve from the loaded config: the
 	// policy and search roots are read-only here, exactly like cfg itself.
+	usedProviders := []registry.Component{}
 	locatorDeps := locator.Deps{
+		Guard: func(ctx context.Context, c registry.Component, invoke func() error) error {
+			err := adminstate.WithInvocation(ctx, home, c, invoke)
+			if err == nil {
+				usedProviders = append(usedProviders, c)
+			}
+			return err
+		},
 		PluginsDir: home.PluginsDir(),
 		Policy:     cfg.RepositoryResolution.Locators,
 		Roots:      cfg.RepositoryRoots,
@@ -277,7 +276,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		}
 		chosenStarter = comp
 
-		ref, err := starter.Invoke(home.PluginsDir(), comp, s)
+		ref, err := starter.InvokeGuarded(ctx, home, comp, s)
 		if err != nil {
 			if retryable(err, diag.InvalidPath, diag.UnusableRepo) {
 				return err // shown in-frame; the user can correct it
@@ -474,7 +473,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		}
 		conventionValue = names[0]
 		convStore.Set(id, conventionValue)
-		return repoconv.Save(home.BranchConventionsFile(), convStore)
+		return setConvention(ctx, home, id, conventionValue)
 	}
 
 	// Resolve every value an explicit flag or the SOURCE argument already
@@ -664,7 +663,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			if conventionValue == "" {
 				conventionValue = a.String("convention")
 				convStore.Set(repoIdentityKey, conventionValue)
-				if err := repoconv.Save(home.BranchConventionsFile(), convStore); err != nil {
+				if err := setConvention(ctx, home, repoIdentityKey, conventionValue); err != nil {
 					return present.SelectSpec[string]{}, present.Fatal(err)
 				}
 			}
@@ -836,6 +835,18 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	// exactly then.
 
 	// 9. Materialize.
+	if chosenStarter.Name != "" {
+		usedProviders = append(usedProviders, chosenStarter)
+	}
+	latest, err := adminstate.Read(ctx, home)
+	if err != nil {
+		return err
+	}
+	for _, provider := range usedProviders {
+		if err = adminstate.CheckComponent(latest.Registry, provider); err != nil {
+			return err
+		}
+	}
 	res, err := create.Run(ctx, create.Params{
 		Home:            home,
 		SourceRepo:      repoPath,
@@ -915,7 +926,7 @@ func runAutomaticExtensions(ctx context.Context, home workhome.Home, reg *regist
 // runFirstRunSetup asks for the workspace root and/or a repository search
 // root when either is still unconfigured (contracts/cli-work-start.md
 // §First-run setup, research R21). It mutates cfg in place and persists both
-// values in a single config.Save before returning; a cancelled prompt
+// values in one latest-state transaction before returning; a cancelled prompt
 // (Ctrl-C/Esc) returns diag.Cancelled with cfg unchanged on disk. A no-op
 // when both are already configured, or when a --workspace flag covers the
 // only missing piece.
@@ -987,13 +998,25 @@ func runFirstRunSetup(ctx context.Context, pio present.IO, home workhome.Home, c
 		return err // Ctrl-C/Esc -> diag.Cancelled (exit 20); nothing persisted
 	}
 
-	if setupWorkspace != "" {
-		cfg.Workspace = setupWorkspace
-	}
-	if setupRoot != "" {
-		cfg.RepositoryRoots = append(cfg.RepositoryRoots, setupRoot)
-	}
-	return config.Save(home.ConfigFile(), cfg)
+	return adminstate.WithWrite(ctx, home, "work start", func(s *adminstate.Session) error {
+		if setupWorkspace != "" {
+			if s.Config.Workspace != cfg.Workspace {
+				return diag.New(diag.AdministrationConflict, "workspace changed during setup; retry")
+			}
+			value, err := workspace.Validate(setupWorkspace, s.Config.RepositoryRoots)
+			if err != nil {
+				return err
+			}
+			s.Config.Workspace = value
+		}
+		if setupRoot != "" {
+			if err := repoconfig.AddRoots(s.Config, []string{setupRoot}); err != nil {
+				return err
+			}
+		}
+		*cfg = *s.Config
+		return nil
+	})
 }
 
 // requireNonInteractiveFlags enforces that a non-interactive run carries every

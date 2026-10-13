@@ -6,6 +6,8 @@
 package integration
 
 import (
+	"github.com/gustaborges/work/internal/bootstrap"
+	"github.com/gustaborges/work/internal/workhome"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -19,13 +21,16 @@ import (
 func TestConventionHubShowsCurrentChangesAndReceiptsTheEquivalentCommand(t *testing.T) {
 	needSeed(t)
 	bin := buildWorkBin(t)
-	env, homeDir, _ := ptyEnv(t)
+	env, homeDir, workHome := ptyEnv(t)
 
 	// specific-starter declares "gitflow" alongside the reference package's
 	// "freeform" — the hub needs 2+ enabled conventions to offer a real
 	// choice. Installed before any bootstrap, so the fixture's own
 	// convention is registered first.
 	installPluginFixture(t, bin, env, "specific-starter")
+	if err := bootstrap.EnsureSeed(workhome.At(workHome)); err != nil {
+		t.Fatal(err)
+	}
 
 	repo := filepath.Join(homeDir, "src", "demo")
 	makeRepo(t, repo)

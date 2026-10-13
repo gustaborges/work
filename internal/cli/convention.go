@@ -8,7 +8,6 @@ import (
 
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/present"
-	"github.com/gustaborges/work/internal/repoconv"
 )
 
 // newConventionCmd registers the `work convention` family: `show`/`set` are
@@ -52,7 +51,7 @@ func runConventionHub(cmd *cobra.Command) error {
 	}
 	pio := present.IO{In: cmd.InOrStdin(), UI: cmd.ErrOrStderr()}
 
-	home, reg, err := loadConventionContext()
+	home, snapshot, err := loadConventionContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -60,10 +59,8 @@ func runConventionHub(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
-	store, err := repoconv.Load(home.BranchConventionsFile())
-	if err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "cannot read the branch convention memory")
-	}
+	reg := snapshot.Registry.Effective()
+	store := snapshot.Memory
 	current, hasCurrent := store.Get(identity)
 
 	const leaveUnchanged = ""
@@ -100,9 +97,8 @@ func runConventionHub(cmd *cobra.Command) error {
 		return nil
 	}
 
-	store.Set(identity, chosen)
-	if err := repoconv.Save(home.BranchConventionsFile(), store); err != nil {
-		return diag.Wrap(diag.BootstrapFailed, err, "cannot persist the branch convention memory")
+	if err := setConvention(ctx, home, identity, chosen); err != nil {
+		return err
 	}
 
 	out := cmd.OutOrStdout()

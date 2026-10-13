@@ -46,7 +46,7 @@ func AddRoots(cfg *config.Config, paths []string) error {
 // RemoveRoots drops each path from cfg.RepositoryRoots on a canonical match; a
 // path that is not configured is a no-op success.
 func RemoveRoots(cfg *config.Config, paths []string) error {
-	next := cfg.RepositoryRoots
+	next := slices.Clone(cfg.RepositoryRoots)
 	for _, p := range paths {
 		abs, err := absExpand(p)
 		if err != nil {

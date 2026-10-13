@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 
+	"github.com/gustaborges/work/internal/adminstate"
 	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/extension"
@@ -29,15 +30,11 @@ func loadContextGlobals() (workhome.Home, *config.Config, *registry.Registry, er
 	if err != nil {
 		return workhome.Home{}, nil, nil, diag.Wrap(diag.BootstrapFailed, err, "cannot locate the Work home directory")
 	}
-	cfg, err := config.Load(home.ConfigFile())
+	s, err := adminstate.Read(context.Background(), home)
 	if err != nil {
 		return home, nil, nil, err
 	}
-	reg, err := registry.Load(home.RegistryFile())
-	if err != nil {
-		return home, nil, nil, diag.Wrap(diag.BootstrapFailed, err, "cannot read the component registry")
-	}
-	return home, cfg, reg, nil
+	return home, s.Config, s.Registry, nil
 }
 
 // resolveContext deliberately bypasses all global reads for current-directory
@@ -80,12 +77,12 @@ func requireActiveContext(ctx context.Context) (workcontext.Context, error) {
 // reloadContextProvider revalidates the selected identity against the latest
 // retained registry state. It never substitutes another installed provider.
 func reloadContextProvider(home workhome.Home, selected registry.Component) (registry.Component, error) {
-	reg, err := registry.Load(home.RegistryFile())
+	reg, err := adminstate.Revalidate(context.Background(), home, selected)
 	if err != nil {
-		return registry.Component{}, diag.Wrap(diag.BootstrapFailed, err, "cannot read the component registry")
+		return registry.Component{}, diag.Wrap(diag.ManualComponentUnavailable, err, "the selected manual component is no longer available")
 	}
 	for _, c := range reg.Effective().Components {
-		if c.Alias == selected.Alias && c.Name == selected.Name && c.Role == selected.Role && c.Manual != nil && c.Key == selected.Key {
+		if c.QualifiedName() == selected.QualifiedName() && c.Manual != nil {
 			return c, nil
 		}
 	}
@@ -125,4 +122,12 @@ func manualOptions(choices []extension.Decision) []present.Option[registry.Compo
 		options[i] = present.Option[registry.Component]{Value: c, Primary: c.QualifiedName(), Secondary: c.Manual.DisplayName + " — " + c.Manual.Description}
 	}
 	return options
+}
+
+func reloadSelectedProvider(ctx context.Context, home workhome.Home, selected registry.Component) (*registry.Registry, error) {
+	reg, err := adminstate.Revalidate(ctx, home, selected)
+	if err != nil {
+		return nil, diag.Wrap(diag.ManualComponentUnavailable, err, "the selected manual component changed or is unavailable; select it again")
+	}
+	return reg, nil
 }

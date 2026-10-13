@@ -1,0 +1,34 @@
+# US1 keeps exact policy membership and convention memory on package toggles.
+preparepluginfixture admin-suite SOURCE
+work plugin install $SOURCE --as outside
+work plugin install $SOURCE --as ordered
+work repository policy add ordered/clone
+stdout '^work: policy now ordered/clone$'
+cp $WORK_HOME/config/work.json before.json
+work plugin disable ordered ordered
+stdout '^work: disabled ordered$'
+work plugin list --json
+stdout '"enabled": false'
+stdout '"version": "release-blue"'
+work repository policy list --json
+stdout '"unavailable_reason": "package-disabled"'
+work plugin enable ordered
+stdout '^work: enabled ordered$'
+cmp $WORK_HOME/config/work.json before.json
+work plugin disable outside
+cmp $WORK_HOME/config/work.json before.json
+cp $WORK_HOME/state/registry.json registry-before.json
+! work plugin disable ordered missing
+stderr '^error: usage:'
+cmp $WORK_HOME/state/registry.json registry-before.json
+! work plugin enable ordered --json
+stderr '^error: usage:'
+cmp $WORK_HOME/state/registry.json registry-before.json
+
+# Native remote fixture retrieval is entirely offline and pins a local Git SHA.
+preparepluginremote admin-suite REMOTE
+work plugin install $REMOTE --as remote
+work plugin list --json
+stdout '"origin": "remote-pinned"'
+stdout '"version": "release-blue"'
+cmp $WORK_HOME/config/work.json before.json

@@ -1,14 +1,16 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/gustaborges/work/internal/adminstate"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/plugininstall"
-	"github.com/gustaborges/work/internal/registry"
+	"github.com/gustaborges/work/internal/workhome"
 )
 
 // newPluginInstallCmd registers `work plugin install <SOURCE> [--link]
@@ -31,21 +33,45 @@ func newPluginInstallCmd() *cobra.Command {
 			}
 			link, _ := cmd.Flags().GetBool("link")
 			as, _ := cmd.Flags().GetString("as")
-
-			home, reg, err := loadPluginContext()
-			if err != nil {
+			source := strings.TrimSpace(args[0])
+			opts := plugininstall.Options{Link: link, Alias: as}
+			if err := plugininstall.ValidateRequest(source, opts); err != nil {
 				return err
 			}
 
-			res, err := plugininstall.Install(home.PluginsDir(), reg, strings.TrimSpace(args[0]), plugininstall.Options{
-				Link:  link,
-				Alias: as,
+			home, err := workhome.Resolve()
+			if err != nil {
+				return err
+			}
+			if err = mutationPreflight(cmd, home); err != nil {
+				return err
+			}
+			prepared, err := plugininstall.Prepare(cmd.Context(), source, opts)
+			if err != nil {
+				return err
+			}
+			defer prepared.Close()
+			var res plugininstall.Result
+			err = adminstate.WithWrite(cmd.Context(), home, "work plugin install", func(s *adminstate.Session) error {
+				if err := prepared.ValidateCatalog(s.Registry); err != nil {
+					return err
+				}
+				stage, err := prepared.Stage(home.PluginsDir())
+				if err != nil {
+					return diag.Wrap(diag.PluginInstallFailed, err, "cannot stage plugin content")
+				}
+				if err = s.Replace(prepared.Alias, stage); err != nil {
+					return err
+				}
+				res = prepared.Register(s.Registry)
+				return nil
 			})
 			if err != nil {
-				return err
-			}
-			if err := registry.Save(home.RegistryFile(), reg); err != nil {
-				return diag.Wrap(diag.PluginInstallFailed, err, "cannot write the component registry")
+				var typed *diag.Error
+				if errors.As(err, &typed) {
+					return err
+				}
+				return diag.Wrap(diag.PluginInstallFailed, err, "cannot publish plugin content and registration")
 			}
 
 			out := cmd.OutOrStdout()

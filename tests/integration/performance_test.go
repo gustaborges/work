@@ -61,6 +61,7 @@ func TestStartMachinePortionUnderBudget(t *testing.T) {
 
 	// The workspace root would normally be resolved/persisted by the CLI.
 	cfg := config.Default()
+	cfg.RepositoryResolution.Locators = []string{bootstrap.LocatorPolicyEntry}
 	cfg.Workspace = workspaceRoot
 	if err := config.Save(home.ConfigFile(), cfg); err != nil {
 		t.Fatal(err)
@@ -157,6 +158,7 @@ func TestStartByUniqueNameOver500ReposUnderBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
+	cfg.RepositoryResolution.Locators = []string{bootstrap.LocatorPolicyEntry}
 	cfg.RepositoryRoots = []string{searchRoot}
 	if err := config.Save(cfgPath, cfg); err != nil {
 		t.Fatal(err)

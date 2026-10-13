@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/gustaborges/work/internal/diag"
-	"github.com/gustaborges/work/internal/repoconv"
+	"github.com/gustaborges/work/internal/workhome"
 )
 
 // newConventionSetCmd registers `work convention set <CONVENTION>`: replaces
@@ -31,25 +31,19 @@ func newConventionSetCmd() *cobra.Command {
 			}
 			name := strings.TrimSpace(args[0])
 
-			home, reg, err := loadConventionContext()
+			home, err := workhome.Resolve()
 			if err != nil {
 				return err
 			}
-			if _, ok := reg.ConventionByName(name); !ok {
-				return diag.Newf(diag.ConventionUnknown, "%q is not a currently enabled branch convention", name).
-					WithHint("run `work convention show` to see what is remembered, or `work plugin list` for the enabled catalog")
+			if err = mutationPreflight(cmd, home); err != nil {
+				return err
 			}
 			identity, err := resolveConventionIdentity()
 			if err != nil {
 				return err
 			}
-			store, err := repoconv.Load(home.BranchConventionsFile())
-			if err != nil {
-				return diag.Wrap(diag.BootstrapFailed, err, "cannot read the branch convention memory")
-			}
-			store.Set(identity, name)
-			if err := repoconv.Save(home.BranchConventionsFile(), store); err != nil {
-				return diag.Wrap(diag.BootstrapFailed, err, "cannot persist the branch convention memory")
+			if err = setConvention(cmd.Context(), home, identity, name); err != nil {
+				return err
 			}
 
 			fmt.Fprintf(cmd.OutOrStdout(), "work: convention set to %s\n", name)

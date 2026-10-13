@@ -4,9 +4,6 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-
-	"github.com/gustaborges/work/internal/diag"
-	"github.com/gustaborges/work/internal/repoconv"
 )
 
 // conventionShowResult is the `work convention show --json` shape
@@ -27,7 +24,7 @@ func newConventionShowCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			home, _, err := loadConventionContext()
+			_, snapshot, err := loadConventionContext(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -35,10 +32,7 @@ func newConventionShowCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			store, err := repoconv.Load(home.BranchConventionsFile())
-			if err != nil {
-				return diag.Wrap(diag.BootstrapFailed, err, "cannot read the branch convention memory")
-			}
+			store := snapshot.Memory
 			name, ok := store.Get(identity)
 
 			if cmd.Flags().Changed("json") {

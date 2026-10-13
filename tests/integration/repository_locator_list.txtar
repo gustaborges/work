@@ -1,6 +1,9 @@
 # S1 — `work repository locator list [--json]`: human + json shapes, the
 # in_policy flag, purity. Covers US5; contracts/resolution-policy.md.
 
+# Explicit seed fixture setup; list commands are pure.
+bootstrapseed
+
 work repository locator list
 stdout 'work-reference/filesystem-repository-locator'
 stdout '\(in policy\)'
