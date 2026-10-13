@@ -34,6 +34,8 @@
 - Validation complete on 2026-10-12: all 16 items pass; no clarification markers remain.
 - Review refinement: added explicit acceptance cases for interrupted update recovery (US3.9), whole-set uninstall failure (US4.7), concurrent administration (US4.8), and result/credential handling (US5.6) so FR-023 and FR-030–FR-032 have observable evidence.
 - Coverage: US1 covers FR-001–FR-005; US2 covers FR-006–FR-010; US3 covers FR-011–FR-019; US4 covers FR-020–FR-024 and FR-032; US5 covers FR-025–FR-031 and FR-033. SC-008 and the stated release acceptance matrix cover FR-034.
-- The 34 functional requirements, 34 acceptance scenarios, and 8 measurable outcomes describe product behavior. Command names are user-facing contracts; storage layout, implementation stack, and execution mechanics are reserved for planning.
+- The current 39 functional requirements, 40 acceptance scenarios, and 9 measurable outcomes describe product behavior. Command names are user-facing contracts; storage layout, implementation stack, and execution mechanics are reserved for planning.
 - Source-derived scope includes durable reference-package removal, opaque version comparison, dependency-aware update/removal, and unavailable convention handling. Origin-specific update defaults and batch commitment boundaries are documented in Assumptions.
 - Readiness means the specification is ready for planning; implementation and release acceptance checks have not been executed.
+
+- 2026-10-13 plugin-manager correction: FR-035–FR-039, US5.7–US5.12 and SC-009 record the user-approved UX. Prior blanket command-hint/receipt/cancellation wording now explicitly excludes plugin management. Requirements remain observable and technology-neutral; no marketplace infrastructure or Start/repository/convention redesign is added. Implementation evidence is tracked by T092–T097, separately from historical M7 and pending M8.

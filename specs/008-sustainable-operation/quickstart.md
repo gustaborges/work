@@ -122,6 +122,8 @@ The harness pauses after candidate review, mutates source/HEAD and resumes appli
 
 Each is usage/2 with no changes. A fully specified noninteractive apply without --yes also fails before changes. Use fixture candidates withdrawing a policy Locator: --yes alone is dependency/52, whereas explicit --remove-policy-references plus --yes permits only the computed references. Interactive approval names the same impact. For independent valid/invalid candidates, valid ones apply, every alias has an outcome, overall exit is 50 and only one terminal diagnostic appears. Cancellation retains already committed independent updates and marks remaining targets not-applied. Tests: `go test ./tests/contract ./tests/integration -run 'TestAdminBatch|TestAdminConfirmation|TestAdminDependency'`.
 
+Plugin-manager update/uninstall reviews retain separate policy-reference authorization before final confirmation. Declining or returning Back leaves the manager open; direct batch exit/output semantics above remain unchanged.
+
 ## Q7 — Whole-set removal and linked ownership
 
 ```sh
@@ -190,7 +192,7 @@ Both clones now have the same origin identity and remembered choice. Disable/rem
 "$F7_WORK" convention
 ```
 
-The last three run in a real terminal for hub acceptance. Navigate install/toggle/check/apply/remove, policy/root operations and convention replacement by keyboard; compare effective state with direct equivalents. Review exact references then cancel, reject values and resize; terminal history retains only accepted safe receipts and one result. Repeat supported viewport/color modes, NO_COLOR and TERM=dumb. Redirect input/output to verify bare hubs fail usage/2 with zero controls. Fixture credentials must appear nowhere in normal text/JSON/review/errors/equivalent commands, including repository identity URLs. Tests: `go test ./tests/contract ./tests/integration -run 'TestAdminHub|TestAdminOutput|TestAdminCredentials|TestPresentBoundary'` (PTY cases run on Unix).
+The last three run in a real terminal for hub acceptance. Navigate install/toggle/check/apply/remove, policy/root operations and convention replacement by keyboard; compare effective state with direct equivalents. For `work plugin`, confirm the initial inventory has only Installed (count), Official and Install plugin destinations, with name and Enabled/Disabled rows. Search and scroll a long inventory, open details, toggle with Space, install from local/file:// remote sources and Official, then check/apply a frozen candidate and refuse/authorize dependency-aware uninstall. Review exact references, Back, correct invalid fields and resize. Success, declined review and recoverable error must all permit another action inside the same terminal session. On normal close, assert exactly one alternate-screen entry/exit and only `Changes saved successfully.` after restoration, without action receipts, command equivalents or cancellation diagnostics. Repository/convention retain their accepted safe receipts and one result; Start feedback is unchanged. Repeat supported viewport/color modes, NO_COLOR and TERM=dumb. Redirect input/output to verify bare hubs fail usage/2 with zero controls. Fixture credentials must appear nowhere in normal text/JSON/review/errors/equivalent commands, including repository identity URLs. Tests: `go test ./tests/contract ./tests/integration -run 'TestAdminHub|TestAdminPluginManager|TestAdminPluginHub|TestAdminOutput|TestAdminCredentials|TestPresentBoundary'` (PTY cases run on Unix).
 
 ## Q13 — Release-candidate acceptance and full regression
 
@@ -203,4 +205,4 @@ make build
 
 Run the existing three-OS CI matrix. Add the complete F7 demonstration and retain every F1–F6 demonstration. Native release fixtures cover clean offline first bootstrap (default policy seeded once), explicit embedded install (no insertion), supported upgrade, interruption/restart, real repositories with ambiguous local/remote branches, and index loss/rebuild from canonical snapshots using the existing reconcile test helper. No public reindex command is invented here. Validate host build and existing release platform asset coverage.
 
-Success means SC-001–SC-008 and the acceptance matrix pass with no manual state editing. Save test results in the implementation-phase validation record; this planning guide does not itself certify the release candidate.
+Success means SC-001–SC-009 and the acceptance matrix pass with no manual state editing. Save test results in the implementation-phase validation record; this planning guide does not itself certify the release candidate.

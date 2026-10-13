@@ -142,3 +142,50 @@ Verification:
 - `GOCACHE=/tmp/work-go-cache make build`: PASS, including host seed generation and CLI compilation.
 
 Evidence remains local Linux amd64. M8 remains unchecked; no implementation extension hooks are registered.
+
+## M7 correction — Installed plugin manager (2026-10-13)
+
+The user correction in spec FR-035–FR-039 / SC-009 supersedes the original plugin action-interview and receipt-history evidence above. The manager opens on Installed (count), with only Official and Install plugin alongside it. Installed rows show name and Enabled/Disabled, with version/source metadata in details. Search, scrolling and Back preserve navigation; Space changes package enablement in place. The Official category contains the known bundled work-reference offering without a marketplace registration/discovery service.
+
+A dedicated `present.Catalog` model handles inventory, structured details, installation fields and reviews in one Bubble Tea lifecycle. Typed CLI callbacks use adminstate/pluginadmin/plugininstall/bootstrap services directly. Installation publication is shared with direct commands through `pluginadmin.InstallPrepared` / `InstallEmbedded`; direct outputs are unchanged. Pure review preparation never creates a fresh Work home; accepted application performs recovery preflight and shared transactional validation. Frozen updates survive a source change after review, and dependency removal requires its own checkbox authorization before final acceptance.
+
+Success replaces the current status; failed/declined/cancelled actions keep the manager open. Esc returns/clears search/closes; q and Ctrl+C at the inventory also succeed normally. Primary-buffer output after normal restoration contains only `Changes saved successfully.` once. No receipt dump, equivalent-command trail or cancellation diagnostic is produced. Start, repository and convention still use their existing paths and feedback.
+
+| Requirement / acceptance | Evidence |
+| --- | --- |
+| FR-035; US5.7 | Native PTY assertions inspect the reconstructed inventory for name and state, and absence of version/origin metadata. Installed/Official/Install plugin navigation is exercised on fresh and populated homes. |
+| FR-036; US5.8/US5.12 | Model tests cover case-insensitive search, long Unicode names, long details, visible actions, editable long fields, 48×16 / 80×24 / 120×50 rendering and scroll bounds. Native PTY tests cover a 28-plugin inventory, repeated details/Back, search, resize and NO_COLOR/TERM=dumb. |
+| FR-037; US5.9 | Native PTY journeys install local pinned and file:// remote-pinned sources, correct an invalid alias, and explicitly install the bundled package through Official. Back and failed preparation preserve fresh-home absence. |
+| FR-038; US5.10 | Native PTY update review freezes a release, changes the source, applies the reviewed release and continues to uninstall. Separate reference authorization is refused, then approved. Source errors and abandoned reviews remain inside the usable manager. Model tests verify review-resource cleanup and authorization gating. |
+| FR-039; US5.11 | Native PTY normal exits via Esc/q/Ctrl+C assert exactly one alternate-screen entry/restoration, one acknowledgment and no post-restoration transcript/cancellation diagnostic. Manager installation Back and read navigation preserve state. Existing Start/repository/convention coverage remains in the regression suite. |
+
+Focused model/CLI/contract/PTY checks passed; final focused integration runtime was 12.439 seconds. Terminal emulation gained ICH/DCH/ECH assertions so renderer character edits are represented correctly. The static update-retrieval boundary now permits only the explicit `prepareManagerUpdate` callback in addition to the direct update handler; initial inventory/navigation remain pure.
+
+Final verification (requested `GOCACHE=/tmp/work-go-cache` and `XDG_CACHE_HOME=/tmp/work-xdg-cache`; Git configuration isolated for tests):
+
+- `make seed`: PASS; host fixtures present before tests.
+- Focused model/contract/native-PTY checks: PASS; final integration run 12.439 seconds.
+- `go test ./...`: PASS; final full integration/testscript/PTY run 238.460 seconds.
+- `go test -race ./internal/present ./internal/cli ./internal/pluginadmin`: PASS (presentation 2.021, CLI 73.624, pluginadmin 45.711 seconds). Final presentation refinements additionally pass `go test -race ./internal/present` (1.908 seconds).
+- Final actual manager processes with `GOFLAGS=-race`, covering all plugin hub/manager and install-Back tests: PASS; 111.657 seconds.
+- Final `make lint`: PASS (formatting, vet, staticcheck).
+- `make build`: PASS; host seed and `bin/work` rebuilt.
+- `git diff --check`: PASS.
+
+The first full run exposed the old file-only update-discovery whitelist; its callback-specific correction and final full rerun pass. ICH/DCH/ECH emulation fixes and focus-aware viewport assertions distinguish actual renderer output from stale historical text. No unresolved test failures remain.
+
+T092–T097 are complete. Evidence is local Linux amd64 with Go 1.26.4; macOS/Windows runtime and remote CI are unexecuted. M8 / T086–T091 remains pending.
+
+### Source input visibility correction — T098
+
+FR-037 and the hub contract now explicitly require visible editing of local paths and git URLs. The manager source field no longer uses secret-input mode; its hint names these input forms. Existing Git source classification/transports and safe projections for reviews/details/errors remain unchanged.
+
+Native rendered-screen tests enter a local path with spaces, a GitHub HTTPS URL, SCP-style SSH and ssh:// form without submitting retrieval. Each stays visible/editable; Back and normal exit leave the home unchanged. Focused visible-source/local-install/file:// remote-install/credential-output checks: PASS (4.765 seconds). `make build`: PASS; `bin/work` rebuilt. `git diff --check`: PASS. T098 complete; M8 remains pending.
+
+### Install tab navigation correction — T099
+
+FR-036 and the hub contract distinguish top-level navigation focus from form editing. Arrow arrival on Install plugin keeps tab navigation active, so left/right can cycle through every destination in both directions. Enter/Tab starts editing; ordinary text/paste also starts editing and i remains a direct form shortcut. Esc restores navigation focus without losing source/alias/mode values; another Esc from the inactive form returns to Installed. In-field arrows retain normal cursor/mode behavior.
+
+Model tests and actual reconstructed PTY screens cover forward/backward wrap through Install, Enter/Tab editing, cursor movement, Esc and retained drafts, plus all plugin-manager operation/source/Back regressions. Focused model/native-PTY suite: PASS (integration 13.940 seconds). Presentation race suite: PASS (1.850 seconds). `make lint`, `make build`, and `git diff --check`: PASS. T099 complete; M8 remains pending.
+
+Terminology correction: the source hint reads `Local path or git URL`; the spec, contract, plan and README use the same name without a GitHub-only implication. Existing source transports are unchanged. Visible-source PTY checks: PASS (1.763 seconds); `make build` and `git diff --check`: PASS.

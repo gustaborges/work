@@ -1,15 +1,13 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
 
-	"github.com/gustaborges/work/internal/adminstate"
-	"github.com/gustaborges/work/internal/bootstrap"
 	"github.com/gustaborges/work/internal/diag"
+	"github.com/gustaborges/work/internal/pluginadmin"
 	"github.com/gustaborges/work/internal/plugininstall"
 	"github.com/gustaborges/work/internal/workhome"
 )
@@ -48,19 +46,11 @@ func newPluginInstallCmd() *cobra.Command {
 				if err = mutationPreflight(cmd, home); err != nil {
 					return err
 				}
-				var res plugininstall.Result
-				err = adminstate.WithWrite(cmd.Context(), home, "work plugin install --embedded", func(s *adminstate.Session) error {
-					var e error
-					res, e = bootstrap.InstallEmbeddedLocked(home, s)
-					return e
-				})
+				res, err := pluginadmin.InstallEmbedded(cmd.Context(), home)
 				if err != nil {
-					var typed *diag.Error
-					if errors.As(err, &typed) {
-						return err
-					}
-					return diag.Wrap(diag.PluginInstallFailed, err, "cannot install the embedded reference package")
+					return err
 				}
+
 				printPluginInstall(cmd, res)
 				return nil
 			}
@@ -84,27 +74,9 @@ func newPluginInstallCmd() *cobra.Command {
 				return err
 			}
 			defer prepared.Close()
-			var res plugininstall.Result
-			err = adminstate.WithWrite(cmd.Context(), home, "work plugin install", func(s *adminstate.Session) error {
-				if err := prepared.ValidateCatalog(s.Registry); err != nil {
-					return err
-				}
-				stage, err := prepared.Stage(home.PluginsDir())
-				if err != nil {
-					return diag.Wrap(diag.PluginInstallFailed, err, "cannot stage plugin content")
-				}
-				if err = s.Replace(prepared.Alias, stage); err != nil {
-					return err
-				}
-				res = prepared.Register(s.Registry)
-				return nil
-			})
+			res, err := pluginadmin.InstallPrepared(cmd.Context(), home, prepared)
 			if err != nil {
-				var typed *diag.Error
-				if errors.As(err, &typed) {
-					return err
-				}
-				return diag.Wrap(diag.PluginInstallFailed, err, "cannot publish plugin content and registration")
+				return err
 			}
 
 			printPluginInstall(cmd, res)

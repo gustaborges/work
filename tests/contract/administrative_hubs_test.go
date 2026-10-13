@@ -21,6 +21,12 @@ func TestAdminHubServiceBoundary(t *testing.T) {
 				t.Errorf("%s bypasses application services: %s", name, forbidden)
 			}
 		}
+		if name == "plugin_hub.go" {
+			if !strings.Contains(s, "present.Catalog(") || strings.Contains(s, "hubDirect(") {
+				t.Errorf("plugin manager must use the persistent catalog and typed services")
+			}
+			continue
+		}
 		if !strings.Contains(s, "hubChoice(") {
 			t.Errorf("%s bypasses shared wizard navigation", name)
 		}

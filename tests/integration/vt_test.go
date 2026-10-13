@@ -72,6 +72,22 @@ func TestVTScrollingRegionRedraw(t *testing.T) {
 	}
 }
 
+func TestVTCharacterEdits(t *testing.T) {
+	v := newVT(2, 20)
+	v.write([]byte("a disabled.\r\x1b[2C\x1b[P"))
+	if got := v.String(); got != "a isabled." {
+		t.Fatal(got)
+	}
+	v.write([]byte("\r\x1b[2C\x1b[@d"))
+	if got := v.String(); got != "a disabled." {
+		t.Fatal(got)
+	}
+	v.write([]byte("\r\x1b[2C\x1b[8X"))
+	if got := v.String(); got != "a         ." {
+		t.Fatal(got)
+	}
+}
+
 // vt is a deliberately small terminal emulator: just enough of the cursor,
 // erase, scroll, and alternate-screen semantics to reconstruct what bubbletea's
 // renderer leaves visible after a run. It is not a conformance-grade VT — it
@@ -261,6 +277,16 @@ func (v *vt) csi(final byte, params string) {
 			v.top, v.bottom = top, bottom
 			v.cx, v.cy = 0, 0
 		}
+	case '@': // ICH — insert characters (renderer line diffs)
+		count := min(n(1), v.cols-v.cx)
+		copy(v.grid[v.cy][v.cx+count:], v.grid[v.cy][v.cx:v.cols-count])
+		v.clearLine(v.cy, v.cx, v.cx+count)
+	case 'P': // DCH — delete characters
+		count := min(n(1), v.cols-v.cx)
+		copy(v.grid[v.cy][v.cx:], v.grid[v.cy][v.cx+count:])
+		v.clearLine(v.cy, v.cols-count, v.cols)
+	case 'X': // ECH — erase characters without moving
+		v.clearLine(v.cy, v.cx, v.cx+n(1))
 	case 'L': // IL — insert lines inside the scrolling region
 		if v.cy >= v.top && v.cy <= v.bottom {
 			v.scrollDown(v.cy, v.bottom, n(1))

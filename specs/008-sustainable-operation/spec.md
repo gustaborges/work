@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-12
 
-**Status**: Draft
+**Status**: Draft; plugin-manager experience revised 2026-10-13
 
 **Input**: User description: "next roadmap milestone M7" — interpreted as F7, Sustainable Platform Operation, in `docs/roadmap.md`, the cumulative v1 release-candidate milestone after F6.
 
@@ -92,7 +92,7 @@ A developer removes a package after reviewing which policy entries will disappea
 
 ### User Story 5 - Complete Administration Through Discoverable Hubs (Priority: P2)
 
-A developer manages plugins, repository resolution, and repository conventions with the keyboard. Every hub shows equivalent direct commands, current state, and pending impact. Automation achieves the same results without interactive controls.
+A developer manages plugins in a persistent inventory-centered manager, and repository resolution and conventions in their existing keyboard hubs. Current state and pending impact remain visible. Repository/convention hubs retain equivalent direct-command guidance; the plugin manager keeps its screens free of command hints and interview receipts. Automation achieves the same effective results through direct commands.
 
 **Why this priority**: Hubs complete the promised administrative surface; direct commands independently deliver and verify the underlying operations.
 
@@ -100,12 +100,19 @@ A developer manages plugins, repository resolution, and repository conventions w
 
 **Acceptance Scenarios**:
 
-1. **Given** an interactive terminal, **When** `work plugin`, `work repository`, or `work convention` runs, **Then** the hub presents current state and applicable actions with equivalent direct-command guidance and supports complete keyboard operation.
+1. **Given** an interactive terminal, **When** `work plugin`, `work repository`, or `work convention` runs, **Then** the interface presents current state and applicable actions and supports complete keyboard operation; plugin management opens directly on Installed, while repository/convention retain their direct-command guidance.
 2. **Given** a remembered convention with no enabled provider, **When** the choice is inspected, **Then** its stored value and unavailability are visible without replacement; creation requiring that convention requests an explicit available choice or fails with guidance non-interactively.
 3. **Given** an available replacement, **When** the choice is explicitly changed through the hub or `work convention set <CONVENTION>`, **Then** it is remembered across clones of that repository without rewriting existing Works.
-4. **Given** cancelled or rejected interactive input, **When** the journey exits, **Then** no unconfirmed change occurs, the terminal is restored, and the result appears once without rejected values or expanded controls in history.
+4. **Given** cancelled or rejected interactive input, **When** a plugin-manager action is abandoned, **Then** no unconfirmed change occurs and the manager remains open with Back navigation; repository/convention retain their existing cancellation behavior.
 5. **Given** redirected streams or missing required automation values, **When** a hub or incomplete mutation runs, **Then** no interactive controls start and actionable usage explains the direct form. Fully specified commands work without a terminal.
 6. **Given** administrative success, cancellation, or failure with a credential-bearing source, **When** results are presented, **Then** stable results and exit outcomes remain distinguishable from interface output, failures appear once, and normal output does not reveal credentials.
+
+7. **Given** installed plugins, **When** the plugin manager opens, **Then** Installed (count), Official, and Install plugin are the only top-level destinations; rows show name and Enabled/Disabled, without version or local/linked distinctions, enablement filter tabs, illustrative marketplaces, or Add marketplace.
+8. **Given** a highlighted installed plugin, **When** Space is pressed, **Then** the whole package toggles enablement in place; Enter opens its details with enable/disable, check/update, and uninstall actions. Search narrows names; scrolling and Back preserve usable navigation.
+9. **Given** Official or Install plugin, **When** the user browses or installs, **Then** the bundled official package is discoverable and explicitly installable offline, and a local directory or git URL can be entered visibly and installed through editable fields and a determined review. Browsing never installs implicitly.
+10. **Given** a completed, declined, cancelled, or recoverably failed action, **When** it finishes, **Then** the user stays inside the plugin manager, feedback appears in the current interface without accumulated receipts, repeated headings, or command hints, and further actions remain possible.
+11. **Given** an explicit normal exit from the plugin manager, **When** it closes, **Then** the terminal is restored and exactly one acknowledgment, “Changes saved successfully.”, is printed, without an action/cancellation transcript or “Operation cancelled.” Start interview feedback and repository/convention flows remain unchanged.
+12. **Given** long inventories, long names, supported viewport changes, or disabled color, **When** the manager is used, **Then** selection, current destination, content groups, status, and keyboard hints remain distinguishable and reachable using spacing, focus markers and textual state as well as color/style where available.
 
 ### Edge Cases
 
@@ -126,7 +133,7 @@ A developer manages plugins, repository resolution, and repository conventions w
 ### Functional Requirements
 
 - **FR-001**: Work MUST expose `work plugin list|install|enable|disable|update|uninstall`, using installed aliases as management targets and retaining existing installation and alias-conflict behavior.
-- **FR-002**: Plugin inventory MUST show enabled and disabled installations, origins, installed references or linked locations, declared versions, component roles, and conventions. Legacy installations lacking newly exposed information MUST remain inspectable without a write.
+- **FR-002**: Direct plugin inventory and manager details MUST show enabled and disabled installations, origins, installed references or linked locations, declared versions, component roles, and conventions. Legacy installations lacking newly exposed information MUST remain inspectable without a write.
 - **FR-003**: Enablement MUST apply to the whole package across Starters, Locators, Linkers, Importers, and conventions, with existing installations enabled unless explicitly disabled.
 - **FR-004**: Disablement MUST retain installation, policy references/order, remembered choices, and existing Works. Enablement MUST restore availability without inserting Locators into policy.
 - **FR-005**: Enable/disable MUST validate all aliases before committing, handle repeated targets once, and succeed idempotently when already satisfied.
@@ -151,14 +158,20 @@ A developer manages plugins, repository resolution, and repository conventions w
 - **FR-024**: Deliberate bundled-package disablement/removal MUST survive later commands and supported application upgrades. Bootstrap/repair MUST NOT reverse it or restore removed policy entries; explicit offline reinstallation MUST be available without automatic policy reinsertion.
 - **FR-025**: Maintenance MUST preserve remembered repository conventions. Inspection MUST show unavailable choices without replacing them; a journey needing an unavailable choice MUST request an explicit available replacement or fail with guidance. Another enabled provider keeps a shared name available under existing catalog semantics.
 - **FR-026**: `work convention show|set` and its hub MUST operate on the same remembered choice from any clone of that repository. Explicit change MUST affect future choices without rewriting existing snapshots or branches.
-- **FR-027**: Plugin, repository, and convention hubs MUST expose the same applicable operations, validation, dependency handling, and resulting state as direct commands and show equivalent direct-command guidance.
-- **FR-028**: All administrative reads, including update checks, MUST accept `--json` and be pure: no bootstrap, repair, recency changes, persistent cache writes, or application-state creation. Human/structured views MUST agree; source retrieval for explicit checks is permitted.
+- **FR-027**: Plugin, repository, and convention hubs MUST expose the same applicable operations, validation, dependency handling, and resulting state as direct commands; repository/convention show equivalent direct-command guidance, while the plugin manager omits those hints.
+- **FR-028**: Concrete administrative read commands, including update checks, MUST accept `--json`. Those reads and manager inspection/navigation MUST be pure: no bootstrap, repair, recency changes, persistent cache writes, or application-state creation. Human/structured views MUST agree; source retrieval for explicit checks is permitted.
 - **FR-029**: Required confirmations MUST show determined impact before acceptance. Explicit targets skip only selection; `--yes` confirms determined impacts only. Incomplete non-interactive requests MUST fail with actionable usage without opening controls.
-- **FR-030**: Interactive administration MUST follow current full-screen behavior, keyboard navigation, supported viewport constraints, semantic color rules, safe receipts, and cancellation semantics. Cancellation before commitment MUST cause no unconfirmed mutation.
-- **FR-031**: Mutations MUST have stable results and exit outcomes, identify affected packages/references in diagnostics, and render terminal failures once. Human interface output MUST remain separate from stable results; normal output MUST NOT expose source credentials.
+- **FR-030**: Interactive administration MUST preserve full-screen keyboard operation, supported viewport constraints, semantic color rules and safe output. Repository/convention retain current receipt/cancellation behavior; plugin management follows FR-035–FR-039. Cancellation before commitment MUST cause no unconfirmed mutation.
+- **FR-031**: Direct mutations MUST have stable results and exit outcomes, identify affected packages/references in diagnostics, and render terminal failures once. Human interface output MUST remain separate from stable results; normal output MUST NOT expose source credentials. Plugin-manager action outcomes remain inside the interface and normal exit follows FR-039.
 - **FR-032**: Administrative mutations MUST preserve consistent committed content, registrations, enablement, and configuration under recoverable failures and concurrent administration, without overwriting unrelated concurrent changes. Failed recovery MUST identify unresolved state and recovery actions rather than claim success.
 - **FR-033**: Every administrative journey MUST appear in grouped help and its applicable hub. Existing direct grammar and stable contracts MUST remain compatible except for additive maintenance commands/state and the already-promised interactive hubs.
 - **FR-034**: Previous slice demonstrations MUST remain successful. Release-candidate validation MUST cover clean offline setup, supported-version upgrade, cancellation/interruption at administrative mutation boundaries, rebuilding the Work index from snapshots, and real repositories with ambiguous local/remote branches on supported platforms.
+
+- **FR-035**: Bare `work plugin` MUST open a persistent inventory-centered manager with exactly Installed (count), Official, and Install plugin as top-level destinations. Installed rows MUST show plugin identity and textual Enabled/Disabled state, omitting versions and source-origin distinctions. Enablement filter tabs, other marketplace tabs and Add marketplace MUST NOT appear.
+- **FR-036**: The manager MUST keep ←/→ tab navigation available when arriving on any top-level destination, including Install plugin. Enter/Tab explicitly focuses the install form; while editing, ←/→ edits the field and Esc restores tab navigation without losing the draft. It MUST support keyboard selection, name search, scrollable inventories/details/reviews, clear Back navigation, detail inspection, and immediate Space enable/disable of the highlighted installed package. Visual hierarchy MUST distinguish current destination, focus, primary content, supporting metadata and feedback without relying on color alone.
+- **FR-037**: Official MUST list the known official offering, including the bundled reference package, with installation state and an explicit offline install action. Install plugin MUST present a visible, editable source field for local paths or git URLs, while preserving existing source grammar. Ordinary paths/URLs MUST NOT be treated as secret inputs. It MUST support optional alias and applicable linked-local mode, allow corrections, and review determined content before installation. No marketplace registration, remote discovery, or implicit install is added.
+- **FR-038**: Successful actions, declined/cancelled reviews and recoverable errors MUST leave the plugin manager open and usable. Feedback MUST stay inside the current interface without accumulated checkmark receipts, repeated headings, per-action CLI hints or transcript output. Update/uninstall MUST retain exact candidate/impact review and separate explicit policy-reference-removal authorization.
+- **FR-039**: Explicit normal plugin-manager exit MUST restore the terminal and print exactly “Changes saved successfully.” once, without operation logs or a cancellation diagnostic. Plugin management MUST retain one full-screen terminal lifecycle across navigation and actions. Start interview feedback, repository/convention flows, direct command outputs and administrative integrity semantics MUST remain unchanged.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -180,9 +193,11 @@ A developer manages plugins, repository resolution, and repository conventions w
 - **SC-003**: Twenty repeated inspections and update checks across fresh, unchanged, newer, invalid, and inaccessible-source cases leave installed content and persisted application state unchanged, with zero temporary retrieval directories after normal termination.
 - **SC-004**: Every update uses its reviewed candidate and preserves alias/enablement. Zero recoverably failed or cancelled package changes leave mixed installations or unapproved policy edits; multi-package results account for 100% of targets.
 - **SC-005**: Every dependency-aware uninstall either removes exactly the approved package/reference set together or changes nothing. Linked sources and existing Works remain unchanged in 100% of cases; deliberate bundled-package removal survives later commands and a supported upgrade.
-- **SC-006**: Users can complete all three hubs with the keyboard in supported terminal sizes/color modes. Every action shows an equivalent direct command; all incomplete non-interactive requests give actionable guidance and zero interactive controls.
+- **SC-006**: Users can complete all three hubs with the keyboard in supported terminal sizes/color modes. Repository/convention actions show equivalent direct commands; the plugin manager follows SC-009. All incomplete non-interactive requests give actionable guidance and zero interactive controls.
 - **SC-007**: In every convention-provider disablement/removal case, the stored choice stays inspectable, no replacement is silently selected, and an explicit replacement is reused from another clone without altering existing Works.
 - **SC-008**: The F7 demonstration—toggle enablement, add a Locator explicitly, reorder policy through both surfaces, check/apply an update, refuse then approve dependency-aware removal—passes without manual state editing. Prior demonstrations and release-candidate acceptance cases pass on the supported platform matrix.
+
+- **SC-009**: Plugin-manager acceptance journeys cover inventory/search/details, immediate toggles, Official/offline installation, local/remote installation, exact reviewed updates and dependency-aware uninstall. Every successful, declined, cancelled or recoverably failed action permits another action within the same terminal session; each normal exit produces exactly one acknowledgment and zero transcript/cancellation diagnostics. Long inventories/names, repeated navigation, resize and color-disabled journeys keep focus and actions visible/reachable, with exactly one full-screen entry/exit.
 
 ## Assumptions
 
@@ -195,4 +210,4 @@ A developer manages plugins, repository resolution, and repository conventions w
 - Independent updates use per-package commitment; uninstall of a selected set is one consistent removal. Integrity covers normal cancellation, recoverable failures, and supported interruption/restart recovery, without promising protection against hostile external writers or irrecoverable storage/machine failure.
 - Existing convention shared-name/provider semantics remain in force. Broader catalog identity changes, automatic convention detection, and rewriting historical Work context are outside this slice.
 - Supported platforms remain Linux, macOS, and Windows under the existing release/test matrix. Local-source fixtures can prove update behavior without live integration accounts.
-- Formal signatures, telemetry, background updates/notifications, marketplaces, synchronization, graphical interfaces, progress streaming, core-imposed plugin timeouts, and new official integrations remain outside v1.
+- Official is a presentation category for the known bundled offering, informally a marketplace; it does not introduce marketplace infrastructure or an invented remote catalog. Formal signatures, telemetry, background updates/notifications, marketplace registration/discovery, synchronization, graphical interfaces, progress streaming, core-imposed plugin timeouts, and new official integrations remain outside v1.

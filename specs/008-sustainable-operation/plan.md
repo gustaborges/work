@@ -182,3 +182,13 @@ Run `make seed` before host tests; retain existing `make seed-all`, `make lint`,
 ## Complexity Tracking
 
 No governing gate violation requires an exception. The two new packages separate low-level administrative consistency from package management policy. The finite journal, epoch control and external seed lifecycle record are necessary for explicit FR-023/FR-024/FR-028/FR-032 guarantees that existing one-file writes and early backup cleanup cannot provide.
+
+## M7 correction — Inventory-centered plugin manager (2026-10-13)
+
+Spec FR-035–FR-039 / SC-009 replace the plugin action interview. Implement a domain-free catalog manager in `internal/present`, separate from Wizard/session receipts. CLI maps snapshot inventory/details and the one known Official bundled offering to presentation records; typed callbacks prepare/apply installs, frozen updates and uninstall plans. Keep cleanup ownership across review/Back and asynchronous service work; no locks across input and no CLI-handler printing. Plugin-manager review preparation is pure; accepted application performs recovery preflight before the shared transaction and revalidates reviewed facts. Direct-command preflight ordering remains unchanged. Only bare plugin routing changes; Start and repository/convention keep their current paths. Use the existing semantic theme for active destinations, full-row focus, muted metadata/footer and current feedback, retaining textual hierarchy without color. Normal manager exit emits one acknowledgment after its one alternate-screen restoration. No dependency, persisted marketplace model or remote catalog is added.
+
+Add model/rendered-screen tests for scrolling, focus, form editing, review authorization, resize and repeated navigation; native PTY journeys prove local/remote/bundled install, toggles, frozen candidate application, uninstall, recoverable errors and exactly one terminal entry/exit with zero transcript. M8 remains separate and pending.
+
+Source-field correction: FR-037 requires visible editing of local paths and git URLs. The plugin source field does not use the generic secret-input mode; public summaries retain existing safe-source projections. Existing Git/source transport grammar and authentication behavior are unchanged.
+
+Install navigation correction: add explicit form-editing focus to the catalog model. Arrival via top-level arrows leaves the tab bar active; Enter/Tab or text/paste starts editing. Esc leaves editing while retaining the draft. The i shortcut still starts direct form entry.

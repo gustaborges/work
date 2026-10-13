@@ -65,6 +65,30 @@ State lives under `~/.work` (override with `WORK_HOME`):
 | `~/.work/state/registry.json` | component registry (generated) |
 | `~/.work/plugins/work-reference/` | the embedded seed package, installed on first run |
 
+## Plugin manager
+
+Run `work plugin` in a terminal to open the installed inventory. Rows show each
+plugin's name and Enabled/Disabled state. Use ↑/↓ to select, Enter for details,
+Space to enable/disable, `/` to search, and ←/→ to switch destinations, including
+Install plugin. Enter/Tab focuses the install form; Esc restores tab navigation
+while keeping its draft.
+
+**Official** lists the bundled reference package and offers explicit offline
+installation. **Install plugin** shows an editable local path or git URL,
+with an optional alias and a link mode for local development. Details expose
+update checks and uninstall; reviews show the exact change and require separate
+approval for removing policy references.
+
+Actions, declined reviews, and recoverable errors keep the manager open. Esc
+returns to the parent screen; from the inventory it clears an active search,
+then closes. Normal exit restores the terminal and prints only
+`Changes saved successfully.` Start interview feedback is unchanged.
+
+Direct commands and automation remain available through `work plugin --help`.
+See the [plugin contract](specs/008-sustainable-operation/contracts/cli-work-plugin.md)
+for flags, output and dependency authorization. Official is currently a category
+for the bundled offering; marketplace registration/discovery is not implemented.
+
 ## Saved context and manual enrichment
 
 ```text

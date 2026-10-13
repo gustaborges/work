@@ -26,23 +26,30 @@ func TestAdminUpdateRetrievalBoundary(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		ast.Inspect(f, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
+		for _, decl := range f.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
 			if !ok {
+				continue
+			}
+			explicitUpdate := entry.Name() == "plugin_update.go" || entry.Name() == "plugin_hub.go" && fn.Name.Name == "prepareManagerUpdate"
+			ast.Inspect(fn, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				sel, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok {
+					return true
+				}
+				id, ok := sel.X.(*ast.Ident)
+				if !ok {
+					return true
+				}
+				if id.Name == "pluginadmin" && (sel.Sel.Name == "Check" || sel.Sel.Name == "PrepareUpdates") && !explicitUpdate {
+					t.Errorf("implicit update retrieval in %s:%s", entry.Name(), fn.Name.Name)
+				}
 				return true
-			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok {
-				return true
-			}
-			id, ok := sel.X.(*ast.Ident)
-			if !ok {
-				return true
-			}
-			if id.Name == "pluginadmin" && (sel.Sel.Name == "Check" || sel.Sel.Name == "PrepareUpdates") && entry.Name() != "plugin_update.go" {
-				t.Errorf("implicit update retrieval in %s", entry.Name())
-			}
-			return true
-		})
+			})
+		}
 	}
 }

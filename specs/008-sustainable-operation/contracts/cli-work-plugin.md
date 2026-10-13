@@ -115,3 +115,7 @@ All text/JSON/receipts/review/errors use safe source projections. Remove URL pas
 ## Verification
 
 US1/US3/US4; FR-001–FR-005, FR-011–FR-024, FR-028–FR-032; Q1–Q2/Q5–Q10/Q12. Assert all origins, legacy unknown baselines, exact opaque versions, changed namespace, same-version changed content, unsupported exclusions, stable streams/codes, credential redaction, source drift, multi-target failures, dependency authorization, rollback/restart and durable seed removal.
+
+## Interactive manager
+
+Bare `work plugin` follows spec FR-035–FR-039 and [the plugin journey](administrative-hubs.md#plugin-journey): inventory-first Installed/Official/Install plugin navigation, in-interface feedback, explicit reviewed actions, and a single `Changes saved successfully.` acknowledgment on normal exit. Direct commands retain the contracts above.

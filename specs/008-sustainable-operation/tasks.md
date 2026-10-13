@@ -15,7 +15,7 @@
 | **M4** | Phase 4: US2 — Explicit repository resolution | T038–T047 | Policy/root direct operations preserve unavailable entries and validate whole requests. |
 | **M5** | Phase 5: US3 — Deliberate updates | T048–T061 | Pure checks and fixed reviewed updates report every target and commit independently. |
 | **M6** | Phase 6: US4 — Dependency-aware removal | T062–T072 | Whole-set uninstall preserves linked sources and durable bundled removal; offline reinstall works. |
-| **M7** | Phase 7: US5 — Hubs and convention availability | T073–T085 | All three hubs share direct services; unavailable choices remain explicit and terminal contracts pass. |
+| **M7** | Phase 7: US5 — Hubs, convention availability and corrected plugin manager | T073–T085; T092–T099 | All three hubs share direct services; unavailable choices remain explicit and terminal contracts pass. |
 | **M8** | Phase 8: Polish and release candidate | T086–T091 | Cumulative F7/F1–F6, upgrade, recovery, portability and release gates have recorded evidence. |
 
 **Default delivery**: M1 → M2 → M3 → M4 → M5 → M6 → M7 → M8. **Suggested MVP**: M1–M3, ending at T037. A direct-control increment must include the complete M2 invocation and writer safeguards.
@@ -286,8 +286,25 @@ These are optional dependency-ready batches for implementers; no delegation is r
 4. Deliver M7 through the existing services and finish deferred direct/hub parity. Never implement a separate hub persistence/validation path.
 5. Complete M8 and record actual evidence. Milestone completion does not imply a commit, PR, build publication or deployment; these tasks authorize implementation and verification only when invoked.
 
-## Task Summary
+## Original Task Summary
 
 - Total: **91 tasks** — setup **3**, foundations **25**, US1 **9**, US2 **10**, US3 **14**, US4 **11**, US5 **13**, polish/release **6**.
 - **32 `[P]` tasks** identify separate-file test/diagnostic/documentation opportunities; hub implementation has an additional dependency-ready three-file batch described above.
 - All task IDs are sequential; every user-story task has its matching `[USn]` label and every task names concrete files. No implementation is claimed complete by generation of this list.
+
+## M7 correction — Plugin manager (FR-035–FR-039; SC-009)
+
+T073–T085 record the original M7 delivery. They do not establish completion of the revised plugin experience below. M8 / T086–T091 remain outside this correction.
+
+- [X] T092 [US5] Update `specs/008-sustainable-operation/spec.md`, `plan.md`, `contracts/administrative-hubs.md`, `contracts/cli-work-plugin.md` and this task list with the agreed Installed/Official/Install plugin experience, hierarchy, persistent navigation and one exit acknowledgment.
+- [X] T093 [US5] Add a domain-free persistent catalog manager and behavioral/rendering tests in `internal/present/catalog.go` and `internal/present/catalog_test.go`: inventory/details/form/review/results, keyboard search/Back, scroll/resize, semantic hierarchy, separate dependency authorization, safe asynchronous work and resource cleanup without wizard receipts.
+- [X] T094 [US5] Replace `internal/cli/plugin_hub.go` and bare routing in `internal/cli/plugin.go`, extracting shared installation publication into `internal/pluginadmin/install.go` for the manager and `internal/cli/plugin_install.go` with typed inventory, official bundled offering and prepare/apply callbacks using existing adminstate/pluginadmin/plugininstall/bootstrap services; preserve direct handlers and Start/repository/convention paths.
+- [X] T095 [US5] Update `tests/contract/administrative_hubs_test.go`, explicit update-retrieval boundaries in `tests/contract/admin_update_boundary_test.go`, terminal character-edit emulation/assertions in `tests/integration/vt_test.go`, and plugin journeys in `tests/integration/admin_hubs_test.go` for local/remote/bundled install, toggles, exact reviewed updates, dependency refusal/approval, errors, repeated navigation and actual screen assertions; require one alternate-screen entry/exit, one acknowledgment and zero transcript/cancellation diagnostic.
+- [X] T096 [US5] Align Q6/Q12 in `specs/008-sustainable-operation/quickstart.md` and plugin-manager guidance in `README.md`; record current spec checklist coverage and actual correction evidence in `checklists/requirements.md` and `validation.md` without claiming M8 completion.
+- [X] T097 [US5] Run host seed, focused model/CLI/contract/PTY checks, appropriate race checks, `make lint`, `go test ./...` and `make build` with the requested temporary caches; reconcile correction tasks with passing evidence and local-platform limits.
+
+Current total: **99 tasks** (91 original + 8 M7 correction tasks). M8 remains T086–T091.
+
+- [X] T098 [US5] Align FR-037, the hub contract and `internal/cli/plugin_hub.go` with visible local-path/git-URL source input; verify actual rendered editing and pure Back/exit in `tests/integration/admin_hubs_test.go`, retain source/output safety and existing transports, rebuild and record focused evidence in `validation.md`.
+
+- [X] T099 [US5] Align FR-036, the hub contract and `internal/present/catalog.go` with uninterrupted ←/→ navigation through Install plugin, explicit form-editing focus and retained drafts; verify both navigation directions, editing/Back and one terminal lifecycle in model/PTY tests, rebuild and record evidence.
