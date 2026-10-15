@@ -107,12 +107,13 @@ func TestAdminRepositoryHubRootCorrectionAndClear(t *testing.T) {
 	c.send("/nonexistent-admin-root\r")
 	c.expect("does not exist")
 	c.send("\x15" + dir + "\r")
-	c.expect("Selected: " + dir)
+	expectWrappedHubText(c, "Selected: "+dir)
 	c.send("/Review selected entries\r")
 	c.expect("Review repository change")
 	c.send("y")
-	c.expect("work: roots now " + dir)
-	c.expect("Search roots (independent of workspace location): " + dir)
+	// Receipts truncate long paths; the refreshed inventory retains the full root.
+	c.expect("work: roots now ")
+	expectWrappedHubText(c, "Search roots (independent of workspace location): "+dir)
 	hubExit(c, "Repositories")
 	before := adminTree(t, home)
 	hubRun(t, bin, env, dir, "repository", "root", "add", dir)
@@ -134,6 +135,23 @@ func TestAdminRepositoryHubRootCorrectionAndClear(t *testing.T) {
 	c.expect("location): (none)")
 	hubExit(c, "Repositories")
 }
+
+// Long temporary paths can wrap at spaces, hyphens or the terminal edge.
+// Compare the current screen's text independently of those line breaks.
+func expectWrappedHubText(c *console, text string) {
+	c.t.Helper()
+	compact := func(s string) string { return strings.Join(strings.Fields(s), "") }
+	want := compact(text)
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(compact(c.screen()), want) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	c.t.Fatalf("hub screen missing wrapped text %q:\n%s", text, c.screen())
+}
+
 func TestAdminHubEmptyNavigationCancellationAndViewport(t *testing.T) {
 	bin := buildWorkBin(t)
 	for _, surface := range []struct{ name, title string }{{"repository", "Repositories"}, {"convention", "Convention"}} {

@@ -289,3 +289,24 @@ acceptance coverage is mapped above rather than inferred from line coverage.
 
 `.specify/extensions.yml` parses successfully and contains no `before_implement`
 or `after_implement` hooks, so both implementation hook phases are skipped.
+
+## Completion audit — 2026-10-14
+
+All 99 implementation tasks and all 16 requirements-checklist items are checked.
+[PR #54](https://github.com/gustaborges/work/pull/54) is open against `develop`.
+The [remote CI run](https://github.com/gustaborges/work/actions/runs/38345398107)
+passed on Ubuntu and Windows, but macOS failed
+`TestAdminRepositoryHubRootCorrectionAndClear`: its long temporary path wrapped
+after `Selected:`, invalidating an assertion that required one uninterrupted line.
+This supersedes the earlier statement that remote CI was unexecuted.
+
+The failure was reproduced on Linux with
+`TMPDIR=/tmp/work-f7-macos-path-length-reproduction-directory`. The corrected
+test checks wrapped text on the reconstructed screen and allows the receipt's
+existing path truncation, while retaining the full root-inventory and direct/hub
+state-parity assertions. The long-path reproduction and all
+`TestAdminRepositoryHub*` tests pass. Host `make seed`, the full `go test ./...`
+regression (integration 232.492 seconds), final `make lint` and `git diff --check`
+also pass with temporary caches and isolated Git fixture configuration.
+No before/after implementation hooks are registered. The correction remains local; macOS runtime
+success requires a fresh CI run after the fix is published.
