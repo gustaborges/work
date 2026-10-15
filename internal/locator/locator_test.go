@@ -298,3 +298,23 @@ func TestDisabledLocatorUnavailable(t *testing.T) {
 		t.Fatal("ownerless Locator unavailable")
 	}
 }
+
+func TestAdminPolicyTraversalSkipsUnavailableAndStopsOnResult(t *testing.T) {
+	repo := gittest.Repo(t)
+	setMatches(t, repo)
+	d := newDeps(t, t.TempDir(), nil, entry("disabled", "boom", "name"), entry("empty", "empty", "name"), entry("match", "ok", "name"), entry("later", "boom", "name"))
+	off := false
+	d.Registry.UpsertPackage(registry.Package{Alias: "disabled", Enabled: &off})
+	d.Policy = append([]string{"missing/clone"}, d.Policy...)
+	var calls []string
+	d.Guard = func(_ context.Context, c registry.Component, invoke func() error) error {
+		calls = append(calls, c.Alias)
+		return invoke()
+	}
+	if _, err := Resolve(context.Background(), d, Reference{Name: "demo"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 2 || calls[0] != "empty" || calls[1] != "match" {
+		t.Fatal(calls)
+	}
+}

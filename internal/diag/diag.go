@@ -62,17 +62,24 @@ var (
 	ConventionUnknown      = Category{Token: "convention-unknown", Code: 38}
 	// Manual link/import operation failures; automatic extension failures remain
 	// warnings.
-	ManualComponentUnavailable = Category{Token: "manual-component-unavailable", Code: 39}
-	ManualComponentAmbiguous   = Category{Token: "manual-component-ambiguous", Code: 40}
-	NoEligibleComponent        = Category{Token: "no-eligible-component", Code: 41}
-	RequiredInputMissing       = Category{Token: "required-input-missing", Code: 42}
-	LinkFailed                 = Category{Token: "link-failed", Code: 43}
-	ExtensionStartFailed       = Category{Token: "extension-start-failed", Code: 44}
-	ExtensionFailed            = Category{Token: "extension-failed", Code: 45}
-	ExtensionResponseInvalid   = Category{Token: "extension-response-invalid", Code: 46}
-	ExtensionOutputRefused     = Category{Token: "extension-output-refused", Code: 47}
-	ExtensionPersistFailed     = Category{Token: "extension-persist-failed", Code: 48}
-	ExtensionCleanupFailed     = Category{Token: "extension-cleanup-failed", Code: 49}
+	ManualComponentUnavailable     = Category{Token: "manual-component-unavailable", Code: 39}
+	ManualComponentAmbiguous       = Category{Token: "manual-component-ambiguous", Code: 40}
+	NoEligibleComponent            = Category{Token: "no-eligible-component", Code: 41}
+	RequiredInputMissing           = Category{Token: "required-input-missing", Code: 42}
+	LinkFailed                     = Category{Token: "link-failed", Code: 43}
+	ExtensionStartFailed           = Category{Token: "extension-start-failed", Code: 44}
+	ExtensionFailed                = Category{Token: "extension-failed", Code: 45}
+	ExtensionResponseInvalid       = Category{Token: "extension-response-invalid", Code: 46}
+	ExtensionOutputRefused         = Category{Token: "extension-output-refused", Code: 47}
+	ExtensionPersistFailed         = Category{Token: "extension-persist-failed", Code: 48}
+	ExtensionCleanupFailed         = Category{Token: "extension-cleanup-failed", Code: 49}
+	PluginUpdateFailed             = Category{Token: "plugin-update-failed", Code: 50}
+	PluginUninstallFailed          = Category{Token: "plugin-uninstall-failed", Code: 51}
+	PluginPolicyDependency         = Category{Token: "plugin-policy-dependency", Code: 52}
+	AdministrationConflict         = Category{Token: "administration-conflict", Code: 53}
+	AdministrationRecoveryRequired = Category{Token: "administration-recovery-required", Code: 54}
+	AdministrationCleanupFailed    = Category{Token: "administration-cleanup-failed", Code: 55}
+	AdministrationBusy             = Category{Token: "administration-busy", Code: 56}
 )
 
 // All lists every category including OK, ordered by exit code. Tests assert the
@@ -86,6 +93,7 @@ var All = []Category{
 	PluginInvalid, PluginAliasConflict, PluginFallbackConflict, PluginInstallFailed,
 	StarterNotMatched, StarterAmbiguous, StarterResponseInvalid, ConventionUnknown,
 	ManualComponentUnavailable, ManualComponentAmbiguous, NoEligibleComponent, RequiredInputMissing, LinkFailed, ExtensionStartFailed, ExtensionFailed, ExtensionResponseInvalid, ExtensionOutputRefused, ExtensionPersistFailed, ExtensionCleanupFailed,
+	PluginUpdateFailed, PluginUninstallFailed, PluginPolicyDependency, AdministrationConflict, AdministrationRecoveryRequired, AdministrationCleanupFailed, AdministrationBusy,
 }
 
 // IsManualOperation reports whether c is one of the categories a manual link or

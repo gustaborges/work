@@ -17,8 +17,12 @@ stdout 'work: created [0-9A-HJKMNP-TV-Z]{26}'
 
 workid $WS/in-progress/src_piped-run/work-state.json ID
 
-# F3: work repository — grouped help, list/mutation output — no escapes.
-work repository
+# F7: redirected repository hub gives direct guidance; explicit help and
+# list/mutation output still contain no escapes.
+! work repository
+stderr 'error: usage:'
+! stderr '\x1b'
+work repository --help
 stdout 'locator'
 ! stdout '\x1b'
 
@@ -79,7 +83,10 @@ stdout 'specific-starter'
 work plugin list --json
 ! stdout '\x1b'
 
-work plugin
+! work plugin
+stderr 'error: usage:'
+! stderr '\x1b'
+work plugin --help
 stdout 'install'
 ! stdout '\x1b'
 

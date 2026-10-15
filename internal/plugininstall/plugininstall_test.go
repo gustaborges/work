@@ -467,6 +467,14 @@ func TestInstallReinstallReplacesWhatTheAliasRegistered(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	for _, name := range []string{"a", "b"} {
+		if runtime.GOOS == "windows" {
+			name += ".exe"
+		}
+		if err := os.WriteFile(filepath.Join(src, name), []byte("fixture"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
 	plugins := t.TempDir()
 	reg := &registry.Registry{}
 

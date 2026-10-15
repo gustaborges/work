@@ -222,3 +222,60 @@ func TestDisabledSeedSurvivesIntegrityAndRepair(t *testing.T) {
 		t.Fatal("repair lost disablement")
 	}
 }
+
+func TestAdminSeedPreservesDisabledAndPolicy(t *testing.T) {
+	h := testHome(t)
+	if err := EnsureSeed(h); err != nil {
+		t.Fatal(err)
+	}
+	reg, err := registry.Load(h.RegistryFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, ok := reg.PackageByAlias(Alias)
+	if !ok {
+		t.Fatal("seed has no owned package")
+	}
+	b := false
+	p.Enabled = &b
+	reg.UpsertPackage(p)
+	if err = registry.Save(h.RegistryFile(), reg); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(h.ConfigFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.RepositoryResolution.Locators = []string{}
+	if err = config.Save(h.ConfigFile(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Remove(filepath.Join(h.PluginsDir(), Alias, "source", binaryNames()[0])); err != nil {
+		t.Fatal(err)
+	}
+	if err = EnsureSeed(h); err != nil {
+		t.Fatal(err)
+	}
+	reg, _ = registry.Load(h.RegistryFile())
+	if reg.PackageEnabled(Alias) {
+		t.Fatal("repair enabled disabled package")
+	}
+	cfg, _ = config.Load(h.ConfigFile())
+	if len(cfg.RepositoryResolution.Locators) != 0 {
+		t.Fatal("repair reseeded policy")
+	}
+}
+func TestAdminSeedExistingConfiguration(t *testing.T) {
+	h := testHome(t)
+	cfg := config.Default()
+	if err := config.Save(h.ConfigFile(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureSeed(h); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _ = config.Load(h.ConfigFile())
+	if len(cfg.RepositoryResolution.Locators) != 0 {
+		t.Fatal("existing explicit empty policy replaced")
+	}
+}

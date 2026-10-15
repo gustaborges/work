@@ -152,12 +152,12 @@ func (c *console) expect(sub string) {
 	c.t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		if strings.Contains(c.snapshot(), sub) {
+		if strings.Contains(c.snapshot(), sub) || strings.Contains(c.screen(), sub) {
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	c.t.Fatalf("timed out waiting for %q\n--- output ---\n%s", sub, c.snapshot())
+	c.t.Fatalf("timed out waiting for %q\n--- screen ---\n%s\n--- output ---\n%s", sub, c.screen(), c.snapshot())
 }
 
 func (c *console) send(s string) {

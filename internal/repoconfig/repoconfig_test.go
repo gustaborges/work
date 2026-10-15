@@ -337,13 +337,14 @@ func TestMovePolicyUnknownRefIsUsageError(t *testing.T) {
 	wantToken(t, MovePolicy(cfg, "a/one", "z/nope", ""), diag.Usage)
 }
 
-func TestReplacePolicyValidatesAndDedups(t *testing.T) {
+func TestReplacePolicyRejectsDuplicates(t *testing.T) {
 	reg := &registry.Registry{Components: []registry.Component{
 		locatorComponent("a", "one"), locatorComponent("b", "two"),
 	}}
 	cfg := newCfg("")
-	if err := ReplacePolicy(cfg, reg, []string{"a/one", "b/two", "a/one"}); err != nil {
-		t.Fatalf("ReplacePolicy: %v", err)
+	wantToken(t, ReplacePolicy(cfg, reg, []string{"a/one", "b/two", "a/one"}), diag.Usage)
+	if err := ReplacePolicy(cfg, reg, []string{"a/one", "b/two"}); err != nil {
+		t.Fatal(err)
 	}
 	want := []string{"a/one", "b/two"}
 	if !equal(cfg.RepositoryResolution.Locators, want) {
@@ -414,10 +415,45 @@ func TestDisabledLocatorPolicyRetained(t *testing.T) {
 	if len(entries) != 1 || entries[0].Available || cfg.RepositoryResolution.Locators[0] != "a/loc" {
 		t.Fatalf("%+v", entries)
 	}
-	if err := AddPolicy(cfg, r, "a/loc", "", ""); err == nil {
-		t.Fatal("added disabled Locator")
+	if err := AddPolicy(cfg, r, "a/loc", "", ""); err != nil {
+		t.Fatal(err)
 	}
 	if len(ListLocators(cfg, r)) != 1 {
 		t.Fatal("installed inventory lost")
+	}
+}
+
+func TestAdminPolicyDisabledAndRetainedReplacement(t *testing.T) {
+	off := false
+	reg := &registry.Registry{Packages: []registry.Package{{Alias: "a", Enabled: &off}}, Components: []registry.Component{locatorComponent("a", "clone"), {Alias: "b", Name: "old", Role: registry.RoleStarter}}}
+	cfg := newCfg("")
+	cfg.RepositoryResolution.Locators = []string{"missing/gone", "b/old"}
+	if err := AddPolicy(cfg, reg, "clone", "missing/gone", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := ReplacePolicy(cfg, reg, []string{"b/old", "clone", "gone"}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"b/old", "a/clone", "missing/gone"}
+	if !equal(cfg.RepositoryResolution.Locators, want) {
+		t.Fatal(cfg)
+	}
+	for _, refs := range [][]string{{"a/clone", "clone"}, {"a/clone", "unknown"}} {
+		wantToken(t, ReplacePolicy(cfg, reg, refs), diag.Usage)
+		if !equal(cfg.RepositoryResolution.Locators, want) {
+			t.Fatal("partial replace")
+		}
+	}
+	cfg.RepositoryResolution.Locators = append(cfg.RepositoryResolution.Locators, "missing/clone")
+	wantToken(t, ReplacePolicy(cfg, reg, []string{"clone"}), diag.Usage)
+}
+
+func TestAdminRootLateRemovalInvalidPreservesSlice(t *testing.T) {
+	a, b := t.TempDir(), t.TempDir()
+	cfg := newCfg("", a, b)
+	original := cfg.RepositoryRoots
+	wantToken(t, RemoveRoots(cfg, []string{a, "\x00"}), diag.Usage)
+	if !equal(cfg.RepositoryRoots, []string{a, b}) || !equal(original, []string{a, b}) {
+		t.Fatal("partial removal")
 	}
 }

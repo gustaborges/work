@@ -275,6 +275,16 @@ func (m wizard) View() tea.View {
 	bodyLines := lineCount(body)
 	available := max(m.h-m.baseChromeLines()-bodyLines, 0)
 	receipts := m.visibleReceipts(available)
+	// Mixed one/two-line options can leave a partial row in the budget. Keep
+	// history only when it leaves the active control's contents intact, including
+	// its last option and help. This also keeps input/scroll geometry consistent.
+	for len(receipts) > 0 {
+		interior := max(m.h-m.baseChromeLines()-receiptLines(receipts), 1)
+		if m.cur.body(max(m.w, 1), interior) == body {
+			break
+		}
+		receipts = receipts[1:]
+	}
 	for _, r := range receipts {
 		b.WriteString(r)
 	}
@@ -346,6 +356,11 @@ func (m wizard) finalReceipts() string { return strings.Join(m.receipts, "") }
 // returned unwrapped for the CLI diagnostic border. Callers gate on an
 // interactive terminal first (contracts/presentation-boundary.md).
 func Wizard(ctx context.Context, io IO, spec WizardSpec) (Answers, error) {
+	if ctx != nil {
+		if s, ok := ctx.Value(sessionKey{}).(*session); ok {
+			return s.wizard(ctx, spec)
+		}
+	}
 	w, err := runWizard(ctx, io, newWizard(ctx, io, spec))
 	if err != nil {
 		return nil, err

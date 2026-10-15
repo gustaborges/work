@@ -3,18 +3,9 @@ package cli
 import (
 	"fmt"
 
+	"github.com/gustaborges/work/internal/pluginadmin"
 	"github.com/spf13/cobra"
-
-	"github.com/gustaborges/work/internal/diag"
-	"github.com/gustaborges/work/internal/repoconv"
 )
-
-// conventionShowResult is the `work convention show --json` shape
-// (contracts/cli-work-convention.md).
-type conventionShowResult struct {
-	Identity   string  `json:"identity"`
-	Convention *string `json:"convention"`
-}
 
 // newConventionShowCmd registers `work convention show [--json]`: read-only in
 // every respect (FR-028) — it never creates, persists, or otherwise touches
@@ -27,7 +18,7 @@ func newConventionShowCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			home, _, err := loadConventionContext()
+			_, snapshot, err := loadConventionContext(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -35,26 +26,27 @@ func newConventionShowCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			store, err := repoconv.Load(home.BranchConventionsFile())
-			if err != nil {
-				return diag.Wrap(diag.BootstrapFailed, err, "cannot read the branch convention memory")
+			view := snapshot.Memory.View(identity, snapshot.Registry)
+			view.Identity = pluginadmin.SafeSource(identity)
+			if view.Convention != nil {
+				safe := pluginadmin.SafeText(*view.Convention)
+				view.Convention = &safe
 			}
-			name, ok := store.Get(identity)
-
 			if cmd.Flags().Changed("json") {
-				var namePtr *string
-				if ok {
-					namePtr = &name
-				}
-				return printJSON(cmd, conventionShowResult{Identity: identity, Convention: namePtr})
+				return printJSON(cmd, view)
 			}
 
 			out := cmd.OutOrStdout()
-			if !ok {
+			if view.Convention == nil {
 				fmt.Fprintln(out, "work: convention not set")
 				return nil
 			}
-			fmt.Fprintf(out, "work: convention %s\n", name)
+			if !view.Available {
+				fmt.Fprintf(out, "work: convention %s (unavailable)\n", *view.Convention)
+				fmt.Fprintln(out, "work: install or enable its provider, or use `work convention set <name>`")
+				return nil
+			}
+			fmt.Fprintf(out, "work: convention %s\n", *view.Convention)
 			return nil
 		},
 	}

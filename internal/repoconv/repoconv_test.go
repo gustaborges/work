@@ -1,6 +1,7 @@
 package repoconv
 
 import (
+	"github.com/gustaborges/work/internal/registry"
 	"path/filepath"
 	"testing"
 )
@@ -88,5 +89,28 @@ func TestIdempotentReloadAfterSave(t *testing.T) {
 	}
 	if len(second.Entries) != 1 || second.Entries[0] != (Entry{Identity: "repo-a", Convention: "gitflow"}) {
 		t.Errorf("reload after re-save drifted: %+v", second.Entries)
+	}
+}
+
+func TestAvailabilityRetainsRememberedChoice(t *testing.T) {
+	s := &Store{}
+	reg := &registry.Registry{Conventions: []registry.Convention{{Name: "team"}}, Packages: []registry.Package{{Alias: "a", Conventions: []string{"team"}}, {Alias: "b", Conventions: []string{"team"}}}}
+	v := s.View("repo", reg)
+	if v.Convention != nil || v.Available || *v.UnavailableReason != "not-set" {
+		t.Fatal(v)
+	}
+	s.Set("repo", "team")
+	off := false
+	reg.Packages[0].Enabled = &off
+	if !s.View("repo", reg).Available {
+		t.Fatal("shared owner unavailable")
+	}
+	reg.Packages[1].Enabled = &off
+	v = s.View("repo", reg)
+	if v.Available || v.Convention == nil || *v.Convention != "team" || *v.UnavailableReason != "provider-unavailable" {
+		t.Fatal(v)
+	}
+	if got, _ := s.Get("repo"); got != "team" {
+		t.Fatal("projection changed memory")
 	}
 }

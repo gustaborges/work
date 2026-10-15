@@ -37,6 +37,7 @@ func (r Reference) hasField() bool {
 // starter.Invoke and create.Run already take explicit dependencies rather
 // than loading config themselves.
 type Deps struct {
+	Guard func(context.Context, registry.Component, func() error) error
 	// PluginsDir is the root under which registered components' entrypoints
 	// live (workhome.Home.PluginsDir()).
 	PluginsDir string

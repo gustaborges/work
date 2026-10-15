@@ -42,6 +42,52 @@ func TestVTAlternateScreen(t *testing.T) {
 	}
 }
 
+func TestVTScrollingRegionRedraw(t *testing.T) {
+	v := newVT(5, 20)
+	v.write([]byte("A\r\nB\r\nC\r\nD\r\nE"))
+	v.write([]byte("\x1b[2;4r\x1b[T"))
+	if got := v.String(); got != "A\n\nB\nC\nE" {
+		t.Fatal(got)
+	}
+	v.write([]byte("\x1b[3;1H\x1b[L"))
+	if got := v.String(); got != "A\n\n\nB\nE" {
+		t.Fatal(got)
+	}
+	v.write([]byte("\x1b[2;1H\x1b[M"))
+	if got := v.String(); got != "A\n\nB\n\nE" {
+		t.Fatal(got)
+	}
+	v.write([]byte("\x1b[S"))
+	if got := v.String(); got != "A\nB\n\n\nE" {
+		t.Fatal(got)
+	}
+	// Index/reverse index must also respect the margins.
+	v.write([]byte("\x1b[2;1H\x1bM"))
+	if got := v.String(); got != "A\n\nB\n\nE" {
+		t.Fatal(got)
+	}
+	v.write([]byte("\x1b[4;1H\n"))
+	if got := v.String(); got != "A\nB\n\n\nE" {
+		t.Fatal(got)
+	}
+}
+
+func TestVTCharacterEdits(t *testing.T) {
+	v := newVT(2, 20)
+	v.write([]byte("a disabled.\r\x1b[2C\x1b[P"))
+	if got := v.String(); got != "a isabled." {
+		t.Fatal(got)
+	}
+	v.write([]byte("\r\x1b[2C\x1b[@d"))
+	if got := v.String(); got != "a disabled." {
+		t.Fatal(got)
+	}
+	v.write([]byte("\r\x1b[2C\x1b[8X"))
+	if got := v.String(); got != "a         ." {
+		t.Fatal(got)
+	}
+}
+
 // vt is a deliberately small terminal emulator: just enough of the cursor,
 // erase, scroll, and alternate-screen semantics to reconstruct what bubbletea's
 // renderer leaves visible after a run. It is not a conformance-grade VT — it
@@ -49,10 +95,11 @@ func TestVTAlternateScreen(t *testing.T) {
 // ED, EL, CR, LF, TAB, BS, and the DECSET 1049/1047/47 alt-screen toggle) and
 // ignores styling and the other private-mode toggles.
 type vt struct {
-	rows, cols int
-	grid       [][]rune
-	scroll     []string // lines that scrolled above the viewport
-	cx, cy     int
+	rows, cols  int
+	grid        [][]rune
+	scroll      []string // lines that scrolled above the viewport
+	cx, cy      int
+	top, bottom int // inclusive scrolling margins (DECSTBM)
 
 	// Alternate-screen buffer (DECSET 1049/1047/47). A full-screen program
 	// enters it on start and leaves it on exit; the primary buffer and its
@@ -71,7 +118,7 @@ func newVT(rows, cols int) *vt {
 	if cols <= 0 {
 		cols = 80
 	}
-	v := &vt{rows: rows, cols: cols}
+	v := &vt{rows: rows, cols: cols, bottom: rows - 1}
 	v.grid = make([][]rune, rows)
 	for i := range v.grid {
 		v.grid[i] = blankRow(cols)
@@ -154,11 +201,10 @@ func (v *vt) escape(s string) int {
 		}
 		return len(s)
 	case 'M': // RI — reverse index: cursor up one line, scroll down at the top
-		if v.cy > 0 {
-			v.cy--
+		if v.cy == v.top {
+			v.scrollDown(v.top, v.bottom, 1)
 		} else {
-			copy(v.grid[1:], v.grid[:v.rows-1])
-			v.grid[0] = blankRow(v.cols)
+			v.cy = max(v.cy-1, 0)
 		}
 		return 2
 	case 'D': // IND — index: cursor down one line, scroll at the bottom
@@ -221,6 +267,38 @@ func (v *vt) csi(final byte, params string) {
 		v.cy = clamp(n(1)-1, 0, v.rows-1)
 	case 'e': // VPR — line position relative
 		v.cy = clamp(v.cy+n(1), 0, v.rows-1)
+	case 'r': // DECSTBM — set scrolling margins and home the cursor
+		parts := strings.Split(params, ";")
+		top, bottom := atoi(parts[0], 1)-1, v.rows-1
+		if len(parts) > 1 {
+			bottom = atoi(parts[1], v.rows) - 1
+		}
+		if top >= 0 && top < bottom && bottom < v.rows {
+			v.top, v.bottom = top, bottom
+			v.cx, v.cy = 0, 0
+		}
+	case '@': // ICH — insert characters (renderer line diffs)
+		count := min(n(1), v.cols-v.cx)
+		copy(v.grid[v.cy][v.cx+count:], v.grid[v.cy][v.cx:v.cols-count])
+		v.clearLine(v.cy, v.cx, v.cx+count)
+	case 'P': // DCH — delete characters
+		count := min(n(1), v.cols-v.cx)
+		copy(v.grid[v.cy][v.cx:], v.grid[v.cy][v.cx+count:])
+		v.clearLine(v.cy, v.cols-count, v.cols)
+	case 'X': // ECH — erase characters without moving
+		v.clearLine(v.cy, v.cx, v.cx+n(1))
+	case 'L': // IL — insert lines inside the scrolling region
+		if v.cy >= v.top && v.cy <= v.bottom {
+			v.scrollDown(v.cy, v.bottom, n(1))
+		}
+	case 'M': // DL — delete lines inside the scrolling region
+		if v.cy >= v.top && v.cy <= v.bottom {
+			v.scrollUp(v.cy, v.bottom, n(1))
+		}
+	case 'S': // SU
+		v.scrollUp(v.top, v.bottom, n(1))
+	case 'T': // SD
+		v.scrollDown(v.top, v.bottom, n(1))
 	case 'H', 'f':
 		row, col := 1, 1
 		if k := strings.IndexByte(params, ';'); k >= 0 {
@@ -286,17 +364,32 @@ func (v *vt) put(r rune) {
 }
 
 func (v *vt) lineFeed() {
-	if v.cy >= v.rows-1 {
-		if !v.alt {
+	if v.cy == v.bottom {
+		if !v.alt && v.top == 0 && v.bottom == v.rows-1 {
 			// The alternate screen has no scrollback: content that scrolls off
 			// the top is gone, not captured (DECSET 1049).
 			v.scroll = append(v.scroll, rowString(v.grid[0]))
 		}
-		copy(v.grid, v.grid[1:])
-		v.grid[v.rows-1] = blankRow(v.cols)
+		v.scrollUp(v.top, v.bottom, 1)
 		return
 	}
-	v.cy++
+	v.cy = min(v.cy+1, v.rows-1)
+}
+
+func (v *vt) scrollUp(top, bottom, count int) {
+	count = min(count, bottom-top+1)
+	copy(v.grid[top:bottom+1-count], v.grid[top+count:bottom+1])
+	for r := bottom - count + 1; r <= bottom; r++ {
+		v.grid[r] = blankRow(v.cols)
+	}
+}
+
+func (v *vt) scrollDown(top, bottom, count int) {
+	count = min(count, bottom-top+1)
+	copy(v.grid[top+count:bottom+1], v.grid[top:bottom+1-count])
+	for r := top; r < top+count; r++ {
+		v.grid[r] = blankRow(v.cols)
+	}
 }
 
 // enterAlt switches to the alternate screen: the primary grid and cursor are
@@ -312,6 +405,7 @@ func (v *vt) enterAlt() {
 		v.grid[i] = blankRow(v.cols)
 	}
 	v.cx, v.cy, v.alt = 0, 0, true
+	v.top, v.bottom = 0, v.rows-1
 }
 
 // exitAlt restores the primary screen exactly as it was before enterAlt.
@@ -324,6 +418,7 @@ func (v *vt) exitAlt() {
 	}
 	v.cx, v.cy = v.savedCx, v.savedCy
 	v.savedGrid, v.alt = nil, false
+	v.top, v.bottom = 0, v.rows-1
 }
 
 func (v *vt) String() string {

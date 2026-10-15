@@ -4,7 +4,7 @@
 
 **Date:** 2026-08-31
 
-**Decisions governing this document:** ADR-0000 (plugin execution), ADR-0002 (installation and registration), ADR-0003 (bootstrap), ADR-0004 (Starter collision), ADR-0005 (updates), ADR-0006 (runtime), ADR-0008 (signing), ADR-0009 (stack), ADR-0011 (convention resolution), ADR-0012 (component model and manifest), ADR-0013 (namespaces and persisted state), ADR-0014 (source vs. location separation), ADR-0015 (resolution policy), and ADR-0016 (Repository Reference and Git endpoints).
+**Decisions governing this document:** ADR-0000 (plugin execution), ADR-0002 (installation and registration), ADR-0003 (bootstrap), ADR-0004 (Starter collision), ADR-0005 (updates), ADR-0006 (runtime), ADR-0008 (signing), ADR-0009 (stack), ADR-0011 (convention resolution), ADR-0012 (component model and manifest), ADR-0013 (namespaces and persisted state), ADR-0014 (source vs. location separation), ADR-0015 (resolution policy), ADR-0016 (Repository Reference and Git endpoints), ADR-0019 (CLI surface), ADR-0020 (presentation boundary), and ADR-0021 (full-screen lifecycle).
 
 **Requirements satisfied:** `docs/prd.md` — RF-1 through RF-49, RNF-1 through RNF-9. This document implements the requirements and decisions listed here; incompatibilities must be resolved in the PRD or in an ADR, never by silent design drift.
 
@@ -51,7 +51,7 @@ The workspace directory is chosen by the user on the first use that requires it 
 
 ```jsonc
 {
-  "schema": 1,
+  "schema": 3,
   "work": {
     "slug": "my-work",
     "status": "in-progress",
@@ -182,17 +182,74 @@ Public `meta` and `link` keys follow Work Semantic Conventions: they define name
     work.json
   state/
     work.db
+    registry.json
+    branch_conventions.json
+    reference-package.json
+    administration.json
+    administration/<transaction-id>/journal.json
 ```
 
 `work plugin install <source>` accepts a remote source or a local path and produces a pinned installation; for a local path, `--link` creates a development link instead. `--link` is invalid with a remote source. The registry is generated from the manifest and stores, per component, the package alias, name, role, entrypoint, runtime, pattern, events and filters, inputs, Linker key, discovery, manual presentation, and Locator `accepts`. Installation validates the grammar and namespaces of `inputs[]`, `accepts`, and the syntax of the keys declared in the manifest; data published in outputs is validated when received. Conventions are registered separately with name and prefixes.
 
 Conflicting package aliases from different sources fail; `--as <alias>` resolves it. Reinstalling the same source under the same alias is idempotent. Changes to the field model are validated by the same install and update pipeline. Installation registers Locators, but does not automatically alter the Repository Resolution Policy. If uninstalling affects Locators referenced in the policy, interactive mode surfaces the impact and confirms removal of those references in the same change; non-interactive mode requires explicit handling.
 
+### 5.1 Administrative storage and services
+
+This flow realizes `docs/prd.md` FR-17–FR-21, FR-25, FR-40–FR-41, FR-45 and FR-47–FR-48 through the governing installation, update, bootstrap, convention and policy ADRs.
+
+Under ADR-0002's config/state separation and consistent package registration,
+`adminstate` provides coherent inspection, serialized publication, recovery and
+revision-protected invocation. `pluginadmin` owns inventory, toggle, update and
+whole-set removal operations; `plugininstall` prepares validated pinned content
+or linked registration. CLI adapters compose these services for direct commands
+and hubs. The services have no presentation or Work-database dependency.
+
+The registry records package origin, source/reference, opaque version, content
+digest and enablement alongside declarations. Missing legacy enablement means
+enabled; metadata inspection projects only provable installed facts without
+writing migration state. Convention memory and bundled lifecycle history remain
+separate from the registry and survive package removal. Work snapshots and the
+SQLite projection remain schema/version 3; they contain no administrative state.
+
+One administration lock protects all package, config, convention-memory and
+bootstrap writers. A finite journal holds before/after JSON images with existence
+and digest information plus owned package moves. Publication proceeds through
+prepared journal, pending epoch, package/JSON replacement, committed marker,
+stable epoch, then cleanup. Before-images and package backups remain owned until
+stable publication. Recovery restores prepared transactions and completes
+committed transactions; unreferenced stable journals permit cleanup only. Unsafe
+or incomplete evidence remains available for explicit mutating recovery.
+
+Pure reads inspect the control epoch before and after loading administrative
+state and accept matching stable epochs, with at most three attempts on drift.
+They never acquire a lock, bootstrap, recover or open the Work database. A valid
+explicit mutation runs a short recovery preflight before semantic lookup, then
+prepares sources/review outside the lock and revalidates affected facts against
+latest state at commitment. Updates publish per package; removals publish the
+reviewed set and approved policy references together. Linked sources are external
+and never traversed as owned removal content.
+
+Managed invocation checks the selected package revision, declarations and
+eligibility under administration and retains that lock through subprocess
+completion. It releases administration before taking Work/branch locks; subsequent
+publication checks use pure snapshots. This realizes the existing execution and
+integrity contracts from ADR-0000, ADR-0002, ADR-0005 and ADR-0013 without changing
+plugin IPC or adding a component timeout. Detailed finite-state and failure
+contracts are in [spec-008](../../specs/008-sustainable-operation/contracts/administrative-state.md).
+
 ***
 
 ## 6. Reference package bootstrap
 
 The official seed contains, at minimum, a fallback Starter for local repository references, a filesystem-based Repository Locator, and the `freeform` convention with the `{slug}` prefix. The default Locator is initially included in the Repository Resolution Policy. On the first command that requires this state — usually `work start` — everything goes through the normal installation pipeline, without network access. There is no public `work init`. Seed components may be uninstalled like any other package.
+
+The ADR-0003 bootstrap participates in the administrative transaction above.
+`reference-package.json` retains initialization, policy-seeding and deliberate
+removal history outside the removable package. Fresh required setup seeds the
+default policy once; repair and supported legacy adoption preserve edited/empty
+policy and disablement. Deliberate removal prevents later bootstrap resurrection.
+Explicit `work plugin install --embedded` installs offline and records policy
+initialization as handled without inserting a Locator reference.
 
 ***
 
@@ -289,7 +346,14 @@ The official filesystem Locator searches only the configured roots, with depth l
 
 ## 8. Branch convention
 
-Each enabled package contributes its `conventions[]` to the global catalog. Outside contribution mode, Work computes the repository identity, reuses the convention stored in `repo_branch_convention`, or asks the user to choose one and persists it. It then presents its prefixes. `work convention` opens the TUI with the current choice and the switch action; `work convention show` only displays it and `work convention set <convention>` replaces it directly. Identity uses, in this order, the `origin` URL, root commits, or the absolute path in a shallow clone without a remote.
+Each enabled package contributes its `conventions[]` to the global catalog. Outside contribution mode, Work computes the repository identity, reuses the available convention stored in `branch_conventions.json`, or asks the user to choose one and persists it. It then presents its prefixes. `work convention` opens the TUI with the current choice and the switch action; `work convention show` only displays it and `work convention set <convention>` replaces it directly. Identity uses, in this order, the `origin` URL, root commits, or the absolute path in a shallow clone without a remote.
+
+Under ADR-0011, remembered choice and effective provider availability are separate
+projections. Shared enabled owners retain availability. Unavailable memory stays
+stored and visible with its reason until explicitly replaced; noninteractive start
+returns convention-unknown, and interactive start asks for a replacement even when
+only one remains. The shared setter revalidates the reviewed memory and provider
+facts while merging unrelated identities. Existing Work conventions are unchanged.
 
 Outside contribution mode, after interpolating the convention prefix with the chosen slug, the core validates the resulting branch name using Git's own rules. It also checks for collisions with existing local and remote branches before materializing the new branch/worktree. An invalid name or collision blocks creation and returns the flow to the choice that produced the name.
 
@@ -368,7 +432,7 @@ As defined by ADR-0019, `work` without arguments does not open an interactive mo
 
 `work --help` uses the registered command tree as the single inventory and groups only the commands that are present by context: everyday/global, within a Work, administration, and setup/plumbing. Branding, usage, options, and groups are rendered by the same capability policy. The home does not maintain a second command list.
 
-`work plugin`, `work repository`, and `work convention` remain interactive hubs and, after an operation, show the equivalent direct command. `work resume`, `work archive`, `work import`, and `work link` use interactive presentation only for omitted values; explicit targets skip the corresponding selection, but not validations or confirmations. In non-interactive stdin, missing required values fail without opening interactive controls.
+`work plugin`, `work repository`, and `work convention` remain interactive hubs. Repository/convention operations show the equivalent direct command. The plugin inventory manager shows current feedback within its session and one acknowledgment after normal exit, as specified by spec-008 FR-035–FR-039. `work resume`, `work archive`, `work import`, and `work link` use interactive presentation only for omitted values; explicit targets skip the corresponding selection, but not validations or confirmations. In non-interactive stdin, missing required values fail without opening interactive controls.
 
 ### 12.2 Interactive presentation boundary
 
@@ -385,6 +449,17 @@ active --cancelled----------> status "cancelled"; wizard exits
 ```
 
 In controls with confirmation, the sequence is `selection → confirmation → completed`; going back from confirmation returns to selection without mutating domain state, and cancellation ends the step. On exit, the primary buffer is restored automatically and the compact receipt trail is reprinted to the UI channel, ahead of the stable stdout lines — this reprint is what enters terminal history.
+
+For looping administration hubs, the presentation session hosts successive wizards inside the same full-screen program, following ADR-0021's one-program-per-journey lifecycle. The CLI performs service work between prompts; the session retains terminal dimensions, theme, and accepted receipts across screens. Read results use a scrollable view that waits for Back before returning to the menu. Operation output is shown within the session and published to its configured streams after terminal restoration; retained history yields space to the active control.
+
+The plugin manager realizes the same domain-free boundary and single terminal
+lifecycle through a catalog model with Installed, Official and Install plugin
+destinations. CLI callbacks supply inventory/details, prepare frozen candidates
+and apply accepted service operations. The model owns cursor/filter/form/review
+state and candidate cleanup across Back and asynchronous results. Dependency
+authorization is separate from acceptance. Current status replaces prior feedback;
+normal exit restores the primary buffer once and emits only its acknowledgment.
+Start and repository/convention retain their wizard receipt behavior.
 
 ### 12.3 Geometry, theme, and capacity
 
@@ -407,13 +482,14 @@ The direct administrative API is:
 ```text
 work plugin list
 work plugin install <SOURCE> [--link] [--as <ALIAS>]
+work plugin install --embedded
 work plugin enable <PLUGIN...>
 work plugin disable <PLUGIN...>
 work plugin update
 work plugin update --check [PLUGIN...]
-work plugin update <PLUGIN...>
-work plugin update --all
-work plugin uninstall <PLUGIN...>
+work plugin update <PLUGIN...> [--yes] [--remove-policy-references]
+work plugin update --all [--yes] [--remove-policy-references]
+work plugin uninstall <PLUGIN...> [--yes] [--remove-policy-references]
 
 work repository locator list
 work repository policy list
