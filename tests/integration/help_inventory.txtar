@@ -62,3 +62,36 @@ work import --help
 stdout 'import \[IMPORTER\]'
 ! stdout '\-\-json'
 ! stdout '\-\-yes'
+
+# F7 complete administrative direct inventory and automation flags.
+work plugin --help
+stdout 'install'
+stdout 'enable'
+stdout 'disable'
+stdout 'update'
+stdout 'uninstall'
+work plugin install --help
+stdout '.*--embedded'
+stdout '.*--link'
+stdout '.*--as'
+work plugin update --help
+stdout '.*--check'
+stdout '.*--all'
+stdout '.*--yes'
+stdout '.*--remove-policy-references'
+work plugin uninstall --help
+stdout '.*--yes'
+stdout '.*--remove-policy-references'
+work repository policy --help
+stdout 'add'
+stdout 'remove'
+stdout 'move'
+stdout 'replace'
+work repository root --help
+stdout 'list'
+stdout 'add'
+stdout 'remove'
+stdout 'replace'
+work convention --help
+stdout 'show'
+stdout 'set'

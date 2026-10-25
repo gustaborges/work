@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"github.com/gustaborges/work/internal/adminstate"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/plugin"
 	"github.com/gustaborges/work/internal/registry"
@@ -47,6 +48,11 @@ func TestSharedProviderReloadAndStreams(t *testing.T) {
 	if err := registry.Save(home.RegistryFile(), r); err != nil {
 		t.Fatal(err)
 	}
+	snapshot, err := adminstate.Read(context.Background(), home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected = snapshot.Registry.Components[0]
 	if _, err := reloadContextProvider(home, selected); err != nil {
 		t.Fatal(err)
 	}

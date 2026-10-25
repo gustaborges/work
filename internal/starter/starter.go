@@ -9,6 +9,9 @@
 package starter
 
 import (
+	"context"
+	"github.com/gustaborges/work/internal/adminstate"
+	"github.com/gustaborges/work/internal/workhome"
 	"maps"
 	"regexp"
 	"slices"
@@ -30,7 +33,7 @@ func Select(reg *registry.Registry) (registry.Component, error) {
 	c, ok := reg.Effective().StarterFallback()
 	if !ok {
 		return registry.Component{}, diag.New(diag.BootstrapFailed,
-			"no Starter is registered; the reference package is not installed")
+			"no Starter is registered; run `work plugin install --embedded` or install and enable a Starter")
 	}
 	return c, nil
 }
@@ -80,9 +83,9 @@ func Match(reg *registry.Registry, arg string) (registry.Component, Outcome, err
 		fb, ok := reg.Effective().StarterFallback()
 		if !ok {
 			return registry.Component{}, Outcome{}, diag.New(diag.StarterNotMatched,
-				"no Starter matches this argument, and none is registered as a fallback").
+				"no Starter matches this argument; run `work plugin install --embedded` or install and enable a matching Starter").
 				WithSummary("Nothing recognizes this argument.").
-				WithHint("Install a Starter that matches it, or enable a fallback Starter.")
+				WithHint("Run `work plugin install --embedded`, install a matching Starter, or enable a fallback with `work plugin enable <alias>`.")
 		}
 		return fb, Outcome{}, nil
 	case 1:
@@ -196,4 +199,11 @@ func validatePublished(ref Reference, owner string) error {
 		}
 	}
 	return nil
+}
+
+// InvokeGuarded protects the selected package revision through IPC completion.
+func InvokeGuarded(ctx context.Context, h workhome.Home, c registry.Component, arg string) (Reference, error) {
+	var ref Reference
+	err := adminstate.WithInvocation(ctx, h, c, func() error { var err error; ref, err = Invoke(h.PluginsDir(), c, arg); return err })
+	return ref, err
 }

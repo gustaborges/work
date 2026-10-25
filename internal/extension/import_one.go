@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/gustaborges/work/internal/adminstate"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/ipc"
 	"github.com/gustaborges/work/internal/lockfile"
@@ -148,8 +149,23 @@ func ImportOne(ctx context.Context, p ImportParams) (result ImportResult, err er
 	if p.Started != nil {
 		p.Started()
 	}
-	res, runErr := invoke(ctx, c.Target(p.Home.PluginsDir()), ipc.ImporterInput{Inputs: inputs, OutputDir: stage.Dir})
+	var res ipc.Result
+	var runErr error
+	call := func() error {
+		res, runErr = invoke(ctx, c.Target(p.Home.PluginsDir()), ipc.ImporterInput{Inputs: inputs, OutputDir: stage.Dir})
+		return runErr
+	}
+	if c.Revision != "" {
+		runErr = adminstate.WithInvocation(ctx, p.Home, c, call)
+	} else {
+		runErr = call()
+	}
 	if runErr != nil {
+		// Importers have no committed-cleanup step, so only the states that make
+		// the provider itself unusable map to manual-component-unavailable.
+		if diag.ExitCode(runErr) == diag.AdministrationConflict.Code || diag.ExitCode(runErr) == diag.AdministrationRecoveryRequired.Code || diag.ExitCode(runErr) == diag.AdministrationBusy.Code {
+			return result, failure(diag.ManualComponentUnavailable, runErr)
+		}
 		cat := diag.ExtensionStartFailed
 		switch {
 		case ctx.Err() != nil:

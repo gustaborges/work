@@ -118,3 +118,75 @@ func StageInventory(dir string) ([]string, error) {
 	}
 	return names, nil
 }
+
+// AdminVariant adds executable roles to the Locator-only admin fixture.
+// Every binary uses the same pipe-blocked/logging protocol.
+func AdminVariant(t *testing.T, roles ...string) string {
+	t.Helper()
+	dir := Prepare(t, "admin-suite")
+	data, err := os.ReadFile(filepath.Join(dir, "plugin.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatal(err)
+	}
+	components := m["components"].([]any)
+	_, file, _, _ := runtime.Caller(0)
+	for _, role := range roles {
+		c := map[string]any{"name": role, "role": role, "entrypoint": role}
+		switch role {
+		case "starter":
+			c["pattern"] = "^admin-"
+		case "linker":
+			c["key"] = "github.issue"
+			c["manual"] = map[string]any{"display_name": "Admin Linker"}
+		case "importer":
+			c["inputs"] = []string{"work:worktree_path"}
+			c["manual"] = map[string]any{"display_name": "Admin Importer"}
+		}
+		components = append(components, c)
+		bin := filepath.Join(dir, role)
+		if runtime.GOOS == "windows" {
+			bin += ".exe"
+		}
+		if out, err := exec.Command("go", "build", "-o", bin, filepath.Join(filepath.Dir(file), "admin-suite")).CombinedOutput(); err != nil {
+			t.Fatalf("%v: %s", err, out)
+		}
+	}
+	m["components"] = components
+	data, err = json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(dir, "plugin.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// Revise changes the opaque version/declarations without invoking a component.
+func Revise(t *testing.T, dir, version string, edit func(map[string]any)) {
+	t.Helper()
+	path := filepath.Join(dir, "plugin.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err = json.Unmarshal(data, &m); err != nil {
+		t.Fatal(err)
+	}
+	m["version"] = version
+	if edit != nil {
+		edit(m)
+	}
+	data, err = json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+}

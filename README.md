@@ -62,8 +62,89 @@ State lives under `~/.work` (override with `WORK_HOME`):
 |---|---|
 | `~/.work/config/work.json` | workspace root, repository roots, resolution policy (human-editable) |
 | `~/.work/state/work.db` | SQLite projection — **disposable**: deleted or corrupt, it is rebuilt from snapshots by lifecycle operations; `work status` only reads |
-| `~/.work/state/registry.json` | component registry (generated) |
-| `~/.work/plugins/work-reference/` | the embedded seed package, installed on first run |
+| `~/.work/state/registry.json` | installed package metadata, enablement, components and conventions (generated) |
+| `~/.work/state/branch_conventions.json` | remembered conventions by repository identity |
+| `~/.work/state/reference-package.json` | durable bundled-package initialization/removal history |
+| `~/.work/state/administration.json` | administrative epoch and stable/pending transaction state |
+| `~/.work/state/administration/` | temporary transaction journals and recovery evidence |
+| `~/.work/plugins/work-reference/` | the embedded seed package, installed when setup first requires it |
+
+## Plugin manager
+
+Run `work plugin` in a terminal to open the installed inventory. Rows show each
+plugin's name and Enabled/Disabled state. Use ↑/↓ to select, Enter for details,
+Space to enable/disable, `/` to search, and ←/→ to switch destinations, including
+Install plugin. Enter/Tab focuses the install form; Esc restores tab navigation
+while keeping its draft.
+
+**Official** lists the bundled reference package and offers explicit offline
+installation. **Install plugin** shows an editable local path or git URL,
+with an optional alias and a link mode for local development. Details expose
+update checks and uninstall; reviews show the exact change and require separate
+approval for removing policy references.
+
+Actions, declined reviews, and recoverable errors keep the manager open. Esc
+returns to the parent screen; from the inventory it clears an active search,
+then closes. Normal exit restores the terminal and prints only
+`Changes saved successfully.` Start interview feedback is unchanged.
+
+Direct commands and automation remain available through `work plugin --help`.
+See the [plugin contract](specs/008-sustainable-operation/contracts/cli-work-plugin.md)
+for flags, output and dependency authorization. Official is currently a category
+for the bundled offering; marketplace registration/discovery is not implemented.
+
+## Administrative commands and recovery
+
+```sh
+work plugin list --json
+work plugin disable acme
+work plugin enable acme
+work plugin update --check acme --json
+work plugin update acme --yes
+work plugin uninstall acme --yes --remove-policy-references
+work plugin install --embedded
+
+work repository policy add acme/clone
+work repository policy move acme/clone --before work-reference/filesystem-repository-locator
+work repository root add /path/to/repositories
+work convention show --json
+work convention set freeform
+```
+
+Use exact installed aliases for plugin management. Installation, enablement and
+updates leave policy membership/order unchanged unless an update withdraws a
+referenced Locator and you approve removing that reference. Disabled and missing
+policy entries remain visible with an availability reason. Remembered conventions
+also remain visible when their providers are unavailable; explicitly set an
+available replacement before starting a new Work noninteractively.
+
+Updates compare the author's opaque version string, then apply the exact candidate
+prepared for review. Local pinned packages use a frozen copy; remote pinned packages
+use the source's default revision. Linked packages report `source-managed` and are
+refreshed by explicit reinstall. The bundled package reports `not-applicable` and
+uses offline `install --embedded`. Removing a linked package preserves its external
+source. Removing the bundled package survives later setup and upgrades; explicit
+embedded installation restores it without inserting a policy entry.
+
+`--yes` confirms a determined update/removal; policy dependency removal separately
+requires `--remove-policy-references`. Updates commit independently per package and
+report every target; an uninstall set commits together. Existing Works and remembered
+conventions survive these operations. Read commands and update checks never bootstrap,
+repair state, create locks or open the Work database.
+
+If an interrupted transaction leaves administration pending, reads return
+`administration-recovery-required` (54). Rerun the indicated mutating command with
+its original arguments and required confirmation flags. Its recovery preflight
+restores a precommit transaction or finishes a committed one before preparing the
+new request, reporting prior recovery separately. Keep the journals, stages and
+backups until recovery succeeds. `administration-cleanup-failed` (55) explicitly means the change
+was committed; a repeat mutation finishes cleanup. `administration-busy` (56) asks
+you to retry after the running component or operation finishes. `work status` can
+still inspect canonical Work snapshots while administration needs recovery.
+
+See the [validation guide](specs/008-sustainable-operation/quickstart.md) and
+[evidence record](specs/008-sustainable-operation/validation.md) for offline journeys,
+failure/restart checks and platform limits.
 
 ## Saved context and manual enrichment
 
@@ -329,13 +410,15 @@ an extra per-Work acknowledgement (interactive); it is left active and reported.
 Unknown or already-archived `id`s in a batch are reported and skipped, not fatal.
 `--json` is rejected.
 
-## Canonical snapshot — schema 2
+## Canonical snapshot — schema 3
 
 F2 moves `work-state.json` to **schema 2**, an additive superset of schema 1:
 `status` gains `archived`, a new `archived_at` appears (present only when the Work
 is archived), and `last_accessed_at` is now mutable. Readers still accept schema-1
-files; the first write upgrades a file in place. Plugins never read or write the
-`work` object (ADR-0013).
+files; the first write upgrades a file in place. F5 adds schema 3 for the current
+saved-context model; administrative operations retain schema 3 and SQLite
+`user_version` 3. Plugin state, convention memory and recovery journals live outside
+Work snapshots. Plugins never read or write the `work` object (ADR-0013).
 
 ## Transactional guarantee
 
@@ -369,6 +452,16 @@ only a warning; it never rolls the Work back.
 | 23 | `dirty-worktree` | the sole `work archive` target has uncommitted changes and no `--force-dirty` |
 | 24 | `archive-failed` | a post-commit archive step failed; the Work is archived on disk, the index self-heals next run |
 | 25 | `snapshot-unreadable` | a canonical snapshot could not be read during an index rebuild (surfaced as a `note:` and skipped) |
+| 50 | `plugin-update-failed` | one or more targets failed; inspect every reported outcome |
+| 51 | `plugin-uninstall-failed` | removal failed and the complete selected set was restored |
+| 52 | `plugin-policy-dependency` | explicitly authorize the listed policy-reference removals |
+| 53 | `administration-conflict` | reviewed facts changed; inspect/review again |
+| 54 | `administration-recovery-required` | pending or unsafe evidence prevents coherent administration |
+| 55 | `administration-cleanup-failed` | changes committed; rerun a mutating command to finish cleanup |
+| 56 | `administration-busy` | administration lock acquisition timed out |
+
+Existing plugin, repository and extension categories 26–49 retain their codes and
+tokens; see `internal/diag/diag.go` for the complete category inventory.
 
 ## Project layout
 

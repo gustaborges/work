@@ -152,11 +152,11 @@ func TestEnsureSeedRecoversAfterDestinationIsBackedUp(t *testing.T) {
 	installCheckpoint = nil
 
 	dest := filepath.Join(h.PluginsDir(), Alias)
-	if _, err := os.Stat(dest); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("destination after interruption: want absent, got %v", err)
+	if _, err := os.Stat(dest); err != nil {
+		t.Fatalf("previous installation was not retained: %v", err)
 	}
-	if _, err := os.Stat(dest + backupSuffix); err != nil {
-		t.Fatalf("backup after interruption: %v", err)
+	if _, err := os.Stat(dest + backupSuffix); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unexpected unowned backup: %v", err)
 	}
 
 	if err := EnsureSeed(h); err != nil {

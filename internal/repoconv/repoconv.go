@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 
 	"github.com/gustaborges/work/internal/atomicfile"
+	"github.com/gustaborges/work/internal/registry"
 )
 
 // Entry is one repository's memoized convention choice.
@@ -81,4 +82,27 @@ func (s *Store) Set(identity, convention string) {
 		}
 	}
 	s.Entries = append(s.Entries, Entry{Identity: identity, Convention: convention})
+}
+
+// View reports remembered state without selecting a replacement or writing.
+type View struct {
+	Identity          string  `json:"identity"`
+	Convention        *string `json:"convention"`
+	Available         bool    `json:"available"`
+	UnavailableReason *string `json:"unavailable_reason"`
+}
+
+func (s *Store) View(identity string, reg *registry.Registry) View {
+	v := View{Identity: identity}
+	reason := "not-set"
+	if name, ok := s.Get(identity); ok {
+		v.Convention = &name
+		reason = "provider-unavailable"
+		if _, ok := reg.Effective().ConventionByName(name); ok {
+			v.Available = true
+			return v
+		}
+	}
+	v.UnavailableReason = &reason
+	return v
 }

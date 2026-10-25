@@ -101,3 +101,15 @@ func TestWorkLockPathKeepsTheHistoricalKey(t *testing.T) {
 		t.Error("distinct Works share a lock")
 	}
 }
+
+func TestAdminPathsContained(t *testing.T) {
+	h := At(t.TempDir())
+	for _, id := range []string{"../x", "/tmp/x", "a/b", "..", ""} {
+		if _, err := h.TransactionDir(id); err == nil {
+			t.Fatalf("unsafe id %q accepted", id)
+		}
+	}
+	if _, err := h.TransactionDir("a12f"); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -1,32 +1,39 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/007-on-demand-context/plan.md`
+`specs/008-sustainable-operation/plan.md`
 
-Active feature: **F6 — On-Demand Context** (`specs/007-on-demand-context/`).
+Active feature: **F7 — Sustainable Platform Operation** (`specs/008-sustainable-operation/`).
+M1–M3 (T001–T037) are implemented and validated; M4–M8 remain pending.
 Design artifacts: `plan.md`, `research.md`, `data-model.md`, `quickstart.md`,
-`contracts/`. Implementation is complete; milestone and validation evidence is in `tasks.md`. Builds on F1–F5, including
-`specs/006-automatic-start-context/` for input projection, semantic keys,
-external component execution, atomic link publication and safe import staging.
-Stack remains Go 1.26, Cobra, Bubble Tea/Lip Gloss through `internal/present`,
-system Git, `modernc.org/sqlite`, and the embedded offline seed package.
+and `contracts/`. Progress is in `tasks.md`; MVP evidence is in `validation.md`.
 
-F6 adds `work status [WORK] [--json]`, `work link [LINKER] [VALUE]` and
-`work import [IMPORTER]`. Status reads canonical snapshots without bootstrap,
-index repair, extensions, access updates or shell repositioning. Link associates
-exact non-empty text without a plugin subprocess; import invokes only the
-selected eligible manual provider and shares F5 staging/IPC contracts.
-The design adds pure `internal/workcontext` resolution, retained optional
-package enablement (legacy default true), shared manual eligibility/publication/
-import helpers, and cancellable artifact application with rollback ownership
-retained through cleanup and commitment. Package management commands remain F7.
-Snapshot schema and database version remain 3; manual provenance uses operation
-`link`. Manual failures return the documented command errors; automatic start
-failures retain existing warnings and success behavior. All prior command and
-presentation contracts remain binding.
+Builds on F1–F6. Stack remains Go 1.26, Cobra, Bubble Tea/Lip Gloss through
+`internal/present`, system Git, existing portable locks/atomic-file helpers,
+`modernc.org/sqlite` for the existing Work index, and the embedded offline seed.
+Work snapshot schema and database version remain 3; no dependency upgrade.
 
-Authorities: PRD FR-30/31/38 and related integrity/UX requirements; ADD §3, §4,
-§9–§12; accepted ADR-0000, ADR-0006, ADR-0012, ADR-0013, ADR-0019–ADR-0021.
+F7 completes plugin enable/disable/update/uninstall and administrative hubs.
+Pure administrative reads never bootstrap, repair, create locks or application
+state. Mutations use one administrative lock, a finite before/after journal,
+and a monotonic stable/pending epoch; all existing config/registry/convention
+memory writers must participate. Review/fetch happens outside the lock.
+Update applies the exact reviewed candidate; opaque versions compare only for
+equality. Updates commit per package; selected uninstall commits as a set.
+`--remove-policy-references` is separate from `--yes` confirmation.
+Durable seed removal survives bootstrap/upgrades; `plugin install --embedded`
+explicitly restores it offline without policy insertion, even on fresh state.
+Pinned snapshots reject escaping/cyclic symlinks and escaping entrypoints;
+linked sources remain developer-owned. Unavailable conventions remain stored
+until explicitly replaced. New administrative errors occupy codes 50–56.
+
+Protect component invocation through current-revision validation and execution
+under the administrative lock; release before Work/branch locks. Never acquire
+administration under a Work lock; post-run checks use guarded pure snapshots.
+Keep existing F5 automatic warning and F6 manual failure/commit guarantees.
+
+Authorities: roadmap F7/§4; PRD FR-18–FR-20, FR-25, FR-40–FR-41, FR-45,
+FR-47–FR-48, FR-50–FR-64; accepted ADR-0002/0003/0005/0011/0012/0015/0019–0021.
 <!-- SPECKIT END -->
 
 

@@ -16,6 +16,7 @@ import (
 
 	"github.com/creack/pty"
 
+	"github.com/gustaborges/work/internal/bootstrap"
 	"github.com/gustaborges/work/internal/config"
 )
 
@@ -28,6 +29,7 @@ func writeRepositoryRoots(t *testing.T, workHome string, roots ...string) {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
+	cfg.RepositoryResolution.Locators = []string{bootstrap.LocatorPolicyEntry}
 	cfg.RepositoryRoots = roots
 	if err := config.Save(cfgPath, cfg); err != nil {
 		t.Fatal(err)

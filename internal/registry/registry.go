@@ -24,6 +24,7 @@ import (
 // Importers and Linkers; a component registered before they existed has none
 // and is never eligible until it is reinstalled.
 type Component struct {
+	Revision     string   `json:"-"` // transient package baseline captured by adminstate.Read
 	Alias        string   `json:"alias"`
 	Name         string   `json:"name"`
 	Role         string   `json:"role"`
@@ -82,12 +83,15 @@ type Convention struct {
 // names are), so Package is where a package's own declared convention names
 // are recorded.
 type Package struct {
-	Enabled     *bool    `json:"enabled,omitempty"` // retained core state; nil means enabled
-	Alias       string   `json:"alias"`
-	Origin      string   `json:"origin"`                // one of the Origin* constants
-	Reference   string   `json:"reference"`             // absolute source path (local kinds), or "<source>@<sha>" (remote)
-	Conventions []string `json:"conventions,omitempty"` // convention names this package's manifest declared
-	PluginName  string   `json:"plugin_name,omitempty"` // manifest name; the alias stands in when empty
+	Version       string   `json:"version,omitempty"`
+	Source        string   `json:"source,omitempty"`
+	ContentDigest string   `json:"content_digest,omitempty"`
+	Enabled       *bool    `json:"enabled,omitempty"` // retained core state; nil means enabled
+	Alias         string   `json:"alias"`
+	Origin        string   `json:"origin"`                // one of the Origin* constants
+	Reference     string   `json:"reference"`             // absolute source path (local kinds), or "<source>@<sha>" (remote)
+	Conventions   []string `json:"conventions,omitempty"` // convention names this package's manifest declared
+	PluginName    string   `json:"plugin_name,omitempty"` // manifest name; the alias stands in when empty
 }
 
 // Registry is the whole registry.json document.
@@ -106,6 +110,7 @@ const (
 
 // Package origin kinds (F4, ADR-0002).
 const (
+	OriginEmbedded     = "embedded-seed"
 	OriginLocalLinked  = "local-linked"
 	OriginLocalPinned  = "local-pinned"
 	OriginRemotePinned = "remote-pinned"

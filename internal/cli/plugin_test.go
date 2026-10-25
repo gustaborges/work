@@ -7,8 +7,8 @@ import (
 	fixtures "github.com/gustaborges/work/tests/fixtures/plugins"
 )
 
-func TestPluginNoSubcommandPrintsHelpExitZero(t *testing.T) {
-	out, _, code := runWork(t, "plugin")
+func TestPluginExplicitHelpExitZero(t *testing.T) {
+	out, _, code := runWork(t, "plugin", "--help")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
 	}
