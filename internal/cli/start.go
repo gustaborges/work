@@ -836,14 +836,6 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		return err
 	}
 
-	// The workspace root is persisted only once every source- and name-level
-	// check has passed, so a rejected run never records a root (SC-004).
-	if persistWorkspace {
-		if err := workspace.Persist(home, workspaceRoot); err != nil {
-			return err
-		}
-	}
-
 	// conventionValue is already resolved by this point: eagerly, by the
 	// Convention/Prefix wizard steps, or left empty in contribution mode
 	// (FR-020) — work-state schema 3 requires branch_convention to be absent
@@ -867,6 +859,13 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	}
 	for _, provider := range usedProviders {
 		if err = adminstate.CheckComponent(latest.Registry, provider); err != nil {
+			return err
+		}
+	}
+	// The workspace root is persisted only once every source-, name- and
+	// final-state check has passed, so a rejected run never records a root.
+	if persistWorkspace {
+		if err = workspace.Persist(home, workspaceRoot); err != nil {
 			return err
 		}
 	}

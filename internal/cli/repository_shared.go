@@ -32,7 +32,7 @@ type repositoryEdit struct {
 
 func applyRepositoryEdit(ctx context.Context, h workhome.Home, edit repositoryEdit) (*config.Config, error) {
 	var result *config.Config
-	err := adminstate.WithWrite(ctx, h, "work repository "+edit.Kind, func(s *adminstate.Session) error {
+	err := adminstate.WithWrite(ctx, h, "work repository "+strings.Replace(edit.Kind, "-", " ", 1), func(s *adminstate.Session) error {
 		current := s.Config.RepositoryResolution.Locators
 		if strings.HasPrefix(edit.Kind, "root-") {
 			current = s.Config.RepositoryRoots

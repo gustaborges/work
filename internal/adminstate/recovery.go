@@ -280,6 +280,20 @@ func sweepOrphanStages(h workhome.Home) error {
 	return nil
 }
 
+// recoveryCommand maps a journal operation label to the command the user can
+// rerun. Labels that are not direct user commands (automatic setup, start)
+// fall back to generic wording rather than naming a command nobody typed.
+func recoveryCommand(operation string) string {
+	words := strings.Fields(operation)
+	if len(words) >= 3 && words[0] == "work" {
+		switch words[1] + " " + words[2] {
+		case "plugin install", "plugin enable", "plugin disable", "plugin update", "plugin uninstall", "repository policy", "repository root", "convention set":
+			return "work " + words[1] + " " + words[2]
+		}
+	}
+	return "the interrupted administrative command"
+}
+
 // Only known command words enter the public recovery hint. Journal contents,
 // source credentials and filesystem evidence remain private diagnostics.
 func pendingReadError(h workhome.Home, c Control) error {
@@ -287,13 +301,6 @@ func pendingReadError(h workhome.Home, c Control) error {
 	if err != nil {
 		return err
 	}
-	words := strings.Fields(j.Operation)
-	command := "the interrupted administrative command"
-	if len(words) >= 3 && words[0] == "work" {
-		switch words[1] + " " + words[2] {
-		case "plugin install", "plugin enable", "plugin disable", "plugin update", "plugin uninstall", "repository policy", "repository root", "convention set":
-			command = "work " + words[1] + " " + words[2]
-		}
-	}
+	command := recoveryCommand(j.Operation)
 	return diag.New(diag.AdministrationRecoveryRequired, "administration needs recovery; rerun "+command+" with its original arguments and required flags")
 }

@@ -81,7 +81,7 @@ func EnsureSeed(h workhome.Home) error {
 	return EnsureSeedContext(context.Background(), h)
 }
 func EnsureSeedContext(ctx context.Context, h workhome.Home) error {
-	err := adminstate.WithWriteOptions(ctx, h, "work plugin enable work-reference", func(s *adminstate.Session) error { return EnsureSeedLocked(h, s) }, adminstate.WriteOptions{Checkpoint: func(point string) error {
+	err := adminstate.WithWriteOptions(ctx, h, "work (automatic setup)", func(s *adminstate.Session) error { return EnsureSeedLocked(h, s) }, adminstate.WriteOptions{Checkpoint: func(point string) error {
 		switch point {
 		case "move-backup:" + Alias:
 			return checkpoint("dest-backed-up")
