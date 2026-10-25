@@ -144,3 +144,118 @@ func TestArchiveExplicitTargetStillConfirms(t *testing.T) {
 		t.Errorf("declined archive removed the worktree: %v", err)
 	}
 }
+
+func TestArchiveDirtyExplicitAcknowledgement(t *testing.T) {
+	needSeed(t)
+	bin := buildWorkBin(t)
+	env, homeDir, _ := ptyEnv(t)
+	repo := filepath.Join(homeDir, "demo")
+	makeRepo(t, repo)
+	ws := filepath.Join(homeDir, "ws")
+	seedWorks(t, bin, env, repo, ws, "solo")
+	dir := filepath.Join(ws, "in-progress", "demo_solo")
+	if err := os.WriteFile(filepath.Join(dir, "worktree", "UNTRACKED"), []byte("scratch"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st, err := work.Read(filepath.Join(dir, "work-state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Neither --yes nor --force-dirty is needed after both TUI confirmations.
+	c := newConsole(t, bin, env, "archive", st.Work.ID)
+	c.expect("1 worktree(s) will be destroyed")
+	c.send("y")
+	c.expect("Archive anyway")
+	c.send("y")
+	c.expect("work: archived 1 of 1")
+	if code := c.wait(); code != 0 {
+		t.Fatalf("archive exited %d, want 0", code)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("acknowledged dirty Work stayed active: %v", err)
+	}
+	archived := filepath.Join(ws, "archived", time.Now().Format("20060102")+"-demo_solo")
+	if got := snapStatus(t, filepath.Join(archived, "work-state.json")); got != "archived" {
+		t.Errorf("snapshot status = %q, want archived", got)
+	}
+	if _, err := os.Stat(filepath.Join(archived, "worktree")); !os.IsNotExist(err) {
+		t.Errorf("acknowledged dirty worktree survived: %v", err)
+	}
+	if !branchExists(t, repo, "solo") {
+		t.Error("archiving deleted the branch")
+	}
+}
+
+func TestArchiveDirtyPickerAcknowledgementsArePerWork(t *testing.T) {
+	needSeed(t)
+	bin := buildWorkBin(t)
+	env, homeDir, _ := ptyEnv(t)
+	repo := filepath.Join(homeDir, "demo")
+	makeRepo(t, repo)
+	ws := filepath.Join(homeDir, "ws")
+	seedWorks(t, bin, env, repo, ws, "clean", "late", "declined", "accepted")
+	inProgress := filepath.Join(ws, "in-progress")
+	dirtyPath := func(slug string) string {
+		return filepath.Join(inProgress, "demo_"+slug, "worktree", "UNTRACKED")
+	}
+	for _, slug := range []string{"accepted", "declined"} {
+		if err := os.WriteFile(dirtyPath(slug), []byte(slug), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := map[string]string{}
+	for _, slug := range []string{"declined", "late"} {
+		b, err := os.ReadFile(filepath.Join(inProgress, "demo_"+slug, "work-state.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		before[slug] = string(b)
+	}
+
+	c := newConsole(t, bin, env, "archive")
+	c.expect("demo  accepted")
+	// Select all four in recency order: accepted, declined, late, clean.
+	c.send(" \x1b[B \x1b[B \x1b[B ")
+	c.send("\r")
+	c.expect("4 worktree(s) will be destroyed")
+	c.send("y")
+	c.expect("Archive anyway")
+	c.expect("accepted  (accepted)")
+	// The dirty preflight has finished. A different Work becoming dirty now
+	// must not inherit the acknowledgement for accepted.
+	if err := os.WriteFile(dirtyPath("late"), []byte("late"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c.send("y")
+	c.expect("declined  (declined)")
+	c.send("n")
+	c.expect("work: archived 2 of 4")
+	if code := c.wait(); code != 0 {
+		t.Fatalf("archive exited %d, want 0", code)
+	}
+	for _, slug := range []string{"accepted", "clean"} {
+		if _, err := os.Stat(filepath.Join(inProgress, "demo_"+slug)); !os.IsNotExist(err) {
+			t.Errorf("%s stayed active: %v", slug, err)
+		}
+		archived := filepath.Join(ws, "archived", time.Now().Format("20060102")+"-demo_"+slug)
+		if got := snapStatus(t, filepath.Join(archived, "work-state.json")); got != "archived" {
+			t.Errorf("%s status = %q, want archived", slug, got)
+		}
+		if _, err := os.Stat(filepath.Join(archived, "worktree")); !os.IsNotExist(err) {
+			t.Errorf("%s worktree survived: %v", slug, err)
+		}
+		if !branchExists(t, repo, slug) {
+			t.Errorf("archiving deleted %s branch", slug)
+		}
+	}
+	for _, slug := range []string{"declined", "late"} {
+		b, err := os.ReadFile(filepath.Join(inProgress, "demo_"+slug, "work-state.json"))
+		if err != nil || string(b) != before[slug] {
+			t.Errorf("%s snapshot changed: %v", slug, err)
+		}
+		if b, err := os.ReadFile(dirtyPath(slug)); err != nil || string(b) != slug {
+			t.Errorf("%s unacknowledged changes were lost: %q, %v", slug, b, err)
+		}
+	}
+}
