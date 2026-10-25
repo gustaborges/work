@@ -161,7 +161,9 @@ func ImportOne(ctx context.Context, p ImportParams) (result ImportResult, err er
 		runErr = call()
 	}
 	if runErr != nil {
-		if diag.ExitCode(runErr) == 53 || diag.ExitCode(runErr) == 54 || diag.ExitCode(runErr) == 56 {
+		// Importers have no committed-cleanup step, so only the states that make
+		// the provider itself unusable map to manual-component-unavailable.
+		if diag.ExitCode(runErr) == diag.AdministrationConflict.Code || diag.ExitCode(runErr) == diag.AdministrationRecoveryRequired.Code || diag.ExitCode(runErr) == diag.AdministrationBusy.Code {
 			return result, failure(diag.ManualComponentUnavailable, runErr)
 		}
 		cat := diag.ExtensionStartFailed

@@ -97,7 +97,7 @@ func newLinkCmd() *cobra.Command {
 				return err
 			})
 			if err != nil {
-				if diag.ExitCode(err) == 53 || diag.ExitCode(err) == 54 {
+				if diag.ExitCode(err) == diag.AdministrationConflict.Code || diag.ExitCode(err) == diag.AdministrationRecoveryRequired.Code {
 					return diag.Wrap(diag.ManualComponentUnavailable, err, "the selected manual component changed or is unavailable; select it again")
 				}
 				return err

@@ -445,8 +445,10 @@ func ApplyWithOptions(ctx context.Context, h workhome.Home, plan *UpdatePlan, re
 			}
 			if err != nil {
 				updateFailure(&rows[i], err)
+				// A concurrent-change conflict only affects this package; recovery,
+				// cleanup and cancellation make further targets unsafe to attempt.
 				switch diag.ExitCode(err) {
-				case 54, 55, 20:
+				case diag.AdministrationRecoveryRequired.Code, diag.AdministrationCleanupFailed.Code, diag.Cancelled.Code:
 					stop = err
 				}
 			}
@@ -492,7 +494,7 @@ func ApplyWithOptions(ctx context.Context, h workhome.Home, plan *UpdatePlan, re
 			s.Config.RepositoryResolution.Locators = slices.DeleteFunc(slices.Clone(s.Config.RepositoryResolution.Locators), func(ref string) bool { return slices.Contains(refs, ref) })
 			return nil
 		}, opts)
-		if err == nil || diag.ExitCode(err) == 55 {
+		if err == nil || diag.ExitCode(err) == diag.AdministrationCleanupFailed.Code {
 			for next, f := range refreshed {
 				next.providers = f.providers
 				next.conventions = f.conventions
@@ -502,14 +504,15 @@ func ApplyWithOptions(ctx context.Context, h workhome.Home, plan *UpdatePlan, re
 			rows[i].Status = "updated"
 			continue
 		}
-		if diag.ExitCode(err) == 55 {
+		if diag.ExitCode(err) == diag.AdministrationCleanupFailed.Code {
 			rows[i].Status = "updated"
 			rows[i].Error = &UpdateError{Token: diag.Token(err), Message: "update committed; cleanup requires recovery"}
 		} else {
 			updateFailure(&rows[i], err)
 		}
+		// Same stop set as candidate verification above.
 		switch diag.ExitCode(err) {
-		case 54, 55, 20:
+		case diag.AdministrationRecoveryRequired.Code, diag.AdministrationCleanupFailed.Code, diag.Cancelled.Code:
 			stop = err
 		}
 	}

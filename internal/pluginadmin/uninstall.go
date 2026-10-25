@@ -183,7 +183,7 @@ func UninstallWithOptions(ctx context.Context, h workhome.Home, p *UninstallPlan
 		}
 		return nil
 	}, opts)
-	if err == nil || diag.ExitCode(err) == 55 {
+	if err == nil || diag.ExitCode(err) == diag.AdministrationCleanupFailed.Code {
 		return p.Aliases(), err
 	}
 	var typed *diag.Error
