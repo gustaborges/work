@@ -273,7 +273,10 @@ func TestAdminPluginHubInstallCheckAndEnable(t *testing.T) {
 	c.send("\r")
 	managerScreen(c, "Plugins › work-reference", "Install bundled package")
 	c.send("\r")
-	managerScreen(c, "Install bundled package", "offline")
+	// The action label and "Available offline." already appear on the details
+	// screen; only the review text proves preparation finished, and keys sent
+	// while the manager is still preparing are discarded.
+	managerScreen(c, "Install work-reference offline.", "Repository policy membership is unchanged.")
 	c.send("\x1b[B\r")
 	managerScreen(c, "Installed work-reference.", "Installed (2)")
 	c.send("\x1b")
