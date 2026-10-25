@@ -47,7 +47,7 @@ func (r *runner) runImporter(ctx context.Context, d Decision) bool {
 	if real, err := filepath.EvalSymlinks(filepath.Dir(snapshot)); err == nil {
 		snapshot = filepath.Join(real, filepath.Base(snapshot))
 	}
-	result, err := ImportOne(ctx, ImportParams{Home: r.c.Home, Expected: workcontext.Context{State: r.state, WorkDir: dir, SnapshotPath: snapshot, WorktreePath: r.c.WorktreePath}, Component: d.Component, Automatic: true, Starter: r.c.Starter, Reload: func() (*registry.Registry, error) { return r.c.Registry, nil }})
+	result, err := ImportOne(ctx, ImportParams{Home: r.c.Home, Expected: workcontext.Context{State: r.state, WorkDir: dir, SnapshotPath: snapshot, WorktreePath: r.c.WorktreePath}, Component: d.Component, Automatic: true, Starter: r.c.Starter, Reload: func() (*registry.Registry, error) { return r.reload(ctx, d.Component) }})
 	if result.Ran {
 		r.report.Ran++
 	}

@@ -22,6 +22,7 @@ stderr 'error: convention-unknown:'
 stderr 'error: usage:'
 
 # set, ok: exit 0; show now reflects it, from text and --json alike.
+bootstrapseed
 work convention set freeform
 stdout 'work: convention set to freeform'
 

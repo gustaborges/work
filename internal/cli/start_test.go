@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gustaborges/work/internal/bootstrap"
 	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/create"
 	"github.com/gustaborges/work/internal/diag"
@@ -45,7 +46,13 @@ func writeRepositoryRoot(t *testing.T, home, root string) {
 	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := config.Default()
+	if err := bootstrap.EnsureSeed(workhome.At(home)); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 	cfg.RepositoryRoots = []string{root}
 	if err := config.Save(cfgPath, cfg); err != nil {
 		t.Fatal(err)

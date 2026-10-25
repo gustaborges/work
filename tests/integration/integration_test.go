@@ -22,14 +22,17 @@ import (
 	"github.com/rogpeppe/go-internal/testscript"
 	_ "modernc.org/sqlite"
 
+	"github.com/gustaborges/work/internal/bootstrap"
 	"github.com/gustaborges/work/internal/cli"
 	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/projection"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/work"
 	"github.com/gustaborges/work/internal/work/verify"
+	"github.com/gustaborges/work/internal/workhome"
 	"github.com/gustaborges/work/seed"
 	fixtureplugins "github.com/gustaborges/work/tests/fixtures/plugins"
+	"slices"
 )
 
 func TestMain(m *testing.M) {
@@ -65,6 +68,14 @@ func TestScripts(t *testing.T) {
 			return nil
 		},
 		Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
+			"bootstrapseed": func(ts *testscript.TestScript, neg bool, args []string) {
+				if neg || len(args) != 0 {
+					ts.Fatalf("usage: bootstrapseed")
+				}
+				if err := bootstrap.EnsureSeed(workhome.At(ts.Getenv("WORK_HOME"))); err != nil {
+					ts.Fatalf("%v", err)
+				}
+			},
 			"package-enabled": func(ts *testscript.TestScript, neg bool, args []string) {
 				if neg || len(args) != 2 {
 					ts.Fatalf("usage: package-enabled <alias> <bool>")
@@ -137,6 +148,9 @@ func TestScripts(t *testing.T) {
 				if len(args) < 2 {
 					ts.Fatalf("usage: work-set-roots <config.json> <path>...")
 				}
+				if err := bootstrap.EnsureSeed(workhome.At(ts.Getenv("WORK_HOME"))); err != nil {
+					ts.Fatalf("%v", err)
+				}
 				path := ts.MkAbs(args[0])
 				cfg, err := config.Load(path)
 				if err != nil {
@@ -145,6 +159,11 @@ func TestScripts(t *testing.T) {
 				roots := make([]string, len(args)-1)
 				for i, p := range args[1:] {
 					roots[i] = ts.MkAbs(p)
+				}
+				// This legacy fixture explicitly requests the default Locator;
+				// production root/list commands no longer bootstrap or insert policy.
+				if !slices.Contains(cfg.RepositoryResolution.Locators, bootstrap.LocatorPolicyEntry) {
+					cfg.RepositoryResolution.Locators = append(cfg.RepositoryResolution.Locators, bootstrap.LocatorPolicyEntry)
 				}
 				cfg.RepositoryRoots = roots
 				if err := config.Save(path, cfg); err != nil {

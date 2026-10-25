@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"context"
 	"os"
+	"reflect"
+	"slices"
 
-	"github.com/gustaborges/work/internal/bootstrap"
+	"github.com/gustaborges/work/internal/adminstate"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/gitx"
 	"github.com/gustaborges/work/internal/registry"
@@ -11,24 +14,13 @@ import (
 	"github.com/gustaborges/work/internal/workhome"
 )
 
-// loadConventionContext resolves the Work home, ensures the seed is
-// bootstrapped (so the reference package's "freeform" convention exists even
-// before any `work start` has run), and loads the current registry. Every
-// `work convention` subcommand and the hub share this precondition, exactly
-// like `work repository`.
-func loadConventionContext() (workhome.Home, *registry.Registry, error) {
-	home, err := workhome.Resolve()
+// loadConventionContext projects current enabled providers without bootstrap.
+func loadConventionContext(ctx context.Context) (workhome.Home, *adminstate.Snapshot, error) {
+	h, s, err := readAdministration(ctx)
 	if err != nil {
-		return workhome.Home{}, nil, diag.Wrap(diag.BootstrapFailed, err, "cannot locate the Work home directory")
+		return h, nil, err
 	}
-	if err := bootstrap.EnsureSeed(home); err != nil {
-		return workhome.Home{}, nil, err
-	}
-	reg, err := registry.Load(home.RegistryFile())
-	if err != nil {
-		return workhome.Home{}, nil, diag.Wrap(diag.BootstrapFailed, err, "cannot read the component registry")
-	}
-	return home, reg.Effective(), nil
+	return h, s, nil
 }
 
 // resolveConventionIdentity discovers the git repository rooted at or above
@@ -53,4 +45,39 @@ func resolveConventionIdentity() (string, error) {
 		return "", diag.Wrap(diag.BootstrapFailed, err, "cannot compute the repository identity")
 	}
 	return identity, nil
+}
+
+// setConvention takes a review snapshot even for direct commands, so a writer
+// cannot silently replace facts that changed while waiting for the lock.
+func setConvention(ctx context.Context, h workhome.Home, identity, name string) error {
+	reviewed, err := adminstate.Read(ctx, h)
+	if err != nil {
+		return err
+	}
+	return setReviewedConvention(ctx, h, identity, name, reviewed)
+}
+func conventionProviders(reg *registry.Registry, name string) []registry.Package {
+	owners := []registry.Package{}
+	for _, p := range reg.ListPackages() {
+		if slices.Contains(p.Conventions, name) {
+			owners = append(owners, p)
+		}
+	}
+	return owners
+}
+func setReviewedConvention(ctx context.Context, h workhome.Home, identity, name string, reviewed *adminstate.Snapshot) error {
+	return adminstate.WithWrite(ctx, h, "work convention set", func(s *adminstate.Session) error {
+		old, had := reviewed.Memory.Get(identity)
+		current, has := s.Memory.Get(identity)
+		before, bok := reviewed.Registry.Effective().ConventionByName(name)
+		after, aok := s.Registry.Effective().ConventionByName(name)
+		if old != current || had != has || bok != aok || !reflect.DeepEqual(before, after) || !reflect.DeepEqual(conventionProviders(reviewed.Registry, name), conventionProviders(s.Registry, name)) {
+			return diag.New(diag.AdministrationConflict, "reviewed convention choice or provider changed; review again")
+		}
+		if !aok {
+			return diag.New(diag.ConventionUnknown, "the selected branch convention is unavailable; install or enable its provider, then run work convention set <name>")
+		}
+		s.Memory.Set(identity, name)
+		return nil
+	})
 }

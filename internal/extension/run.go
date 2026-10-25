@@ -4,9 +4,11 @@ import (
 	"context"
 	"time"
 
+	"github.com/gustaborges/work/internal/adminstate"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/ipc"
 	"github.com/gustaborges/work/internal/plugin"
+	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/work"
 )
 
@@ -103,4 +105,15 @@ func (r *runner) linkerPhase(ctx context.Context) bool {
 		}
 	}
 	return true
+}
+
+func (r *runner) reload(ctx context.Context, c registry.Component) (*registry.Registry, error) {
+	if c.Revision == "" {
+		return r.c.Registry, nil
+	}
+	reg, err := adminstate.Revalidate(ctx, r.c.Home, c)
+	if err != nil {
+		return nil, diag.Wrap(diag.ManualComponentUnavailable, err, "provider changed before publication")
+	}
+	return reg, nil
 }

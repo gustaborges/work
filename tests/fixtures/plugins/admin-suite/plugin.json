@@ -1,0 +1,8 @@
+{
+  "name": "admin-suite",
+  "version": "release-blue",
+  "components": [
+    {"name": "clone", "role": "repository-locator", "entrypoint": "locator", "accepts": ["name"]}
+  ],
+  "conventions": [{"name": "admin-team", "prefixes": ["admin/{slug}"]}]
+}

@@ -2,6 +2,7 @@ package locator
 
 import (
 	"context"
+	"github.com/gustaborges/work/internal/diag"
 
 	"github.com/gustaborges/work/internal/ipc"
 )
@@ -41,8 +42,18 @@ func traverse(ctx context.Context, d Deps, ref Reference) (traverseResult, error
 		anyEligible = true
 
 		input := ipc.LocatorInput{Repository: proj, RepositoryRoots: d.Roots}
-		resp, err := ipc.InvokeLocator(comp.Target(d.PluginsDir), input)
+		var resp *ipc.LocatorResponse
+		var err error
+		invoke := func() error { resp, err = ipc.InvokeLocator(comp.Target(d.PluginsDir), input); return err }
+		if d.Guard != nil {
+			err = d.Guard(ctx, comp, invoke)
+		} else {
+			err = invoke()
+		}
 		if err != nil {
+			if diag.ExitCode(err) == diag.AdministrationConflict.Code || diag.ExitCode(err) == diag.AdministrationRecoveryRequired.Code || diag.ExitCode(err) == diag.AdministrationBusy.Code || diag.ExitCode(err) == diag.Cancelled.Code {
+				return traverseResult{}, err
+			}
 			return traverseResult{}, errLocatorFailed(policyRef, err)
 		}
 		if len(resp.Matches) == 0 {

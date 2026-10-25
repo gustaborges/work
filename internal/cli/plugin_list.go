@@ -5,23 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/gustaborges/work/internal/registry"
+	"github.com/gustaborges/work/internal/pluginadmin"
 )
-
-// pluginListEntry is the `work plugin list --json` shape for one package
-// (contracts/cli-work-plugin.md §work plugin list).
-type pluginListEntry struct {
-	Alias       string                `json:"alias"`
-	Origin      string                `json:"origin"`
-	Reference   string                `json:"reference"`
-	Components  []pluginListComponent `json:"components"`
-	Conventions []string              `json:"conventions"`
-}
-
-type pluginListComponent struct {
-	Name string `json:"name"`
-	Role string `json:"role"`
-}
 
 // newPluginListCmd registers `work plugin list [--json]`: read-only, mutates
 // nothing (FR-034).
@@ -33,28 +18,11 @@ func newPluginListCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, reg, err := loadPluginContext()
+			_, snapshot, err := loadPluginContext(cmd.Context())
 			if err != nil {
 				return err
 			}
-
-			pkgs := reg.ListPackages()
-			entries := make([]pluginListEntry, len(pkgs))
-			for i, p := range pkgs {
-				comps := componentsByAlias(reg, p.Alias)
-				jsonComps := make([]pluginListComponent, len(comps))
-				for j, c := range comps {
-					jsonComps[j] = pluginListComponent{Name: c.Name, Role: c.Role}
-				}
-				conventions := p.Conventions
-				if conventions == nil {
-					conventions = []string{}
-				}
-				entries[i] = pluginListEntry{
-					Alias: p.Alias, Origin: p.Origin, Reference: p.Reference,
-					Components: jsonComps, Conventions: conventions,
-				}
-			}
+			entries := pluginadmin.Inventory(snapshot)
 
 			if cmd.Flags().Changed("json") {
 				return printJSON(cmd, entries)
@@ -62,7 +30,15 @@ func newPluginListCmd() *cobra.Command {
 
 			out := cmd.OutOrStdout()
 			for _, e := range entries {
-				fmt.Fprintf(out, "%s  %s  %s\n", e.Alias, e.Origin, e.Reference)
+				version := "unknown"
+				if e.Version != nil {
+					version = *e.Version
+				}
+				state := "enabled"
+				if !e.Enabled {
+					state = "disabled"
+				}
+				fmt.Fprintf(out, "%s  %s  %s  version: %s  %s  %s\n", e.Alias, e.Origin, e.Reference, version, state, e.InspectionStatus)
 				for _, c := range e.Components {
 					fmt.Fprintf(out, "  %s (%s)\n", c.Name, c.Role)
 				}
@@ -70,16 +46,4 @@ func newPluginListCmd() *cobra.Command {
 			return nil
 		},
 	}
-}
-
-// componentsByAlias returns every component registered by alias, in
-// manifest order.
-func componentsByAlias(reg *registry.Registry, alias string) []registry.Component {
-	var out []registry.Component
-	for _, c := range reg.Components {
-		if c.Alias == alias {
-			out = append(out, c)
-		}
-	}
-	return out
 }

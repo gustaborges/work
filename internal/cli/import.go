@@ -63,11 +63,7 @@ func newImportCmd() *cobra.Command {
 			result, err := extension.ImportOne(cmd.Context(), extension.ImportParams{Home: home, Expected: current, Component: selected, Started: func() {
 				progress.OnEvent(extension.Event{Kind: extension.Running, Component: selected.QualifiedName(), Operation: extension.OpImport})
 			}, Reload: func() (*registry.Registry, error) {
-				reg, err := registry.Load(home.RegistryFile())
-				if err != nil {
-					return nil, diag.Wrap(diag.BootstrapFailed, err, "cannot read the component registry")
-				}
-				return reg, nil
+				return reloadSelectedProvider(cmd.Context(), home, selected)
 			}})
 			if err != nil {
 				return err

@@ -210,3 +210,24 @@ func TestImportHelpGrammarAndGroup(t *testing.T) {
 		t.Fatal(c, err)
 	}
 }
+
+func TestAdminHubDirectInventoryAndFlags(t *testing.T) {
+	for _, path := range [][]string{
+		{"plugin", "list"}, {"plugin", "install"}, {"plugin", "enable"}, {"plugin", "disable"}, {"plugin", "update"}, {"plugin", "uninstall"},
+		{"repository", "locator", "list"}, {"repository", "policy", "list"}, {"repository", "policy", "add"}, {"repository", "policy", "remove"}, {"repository", "policy", "move"}, {"repository", "policy", "replace"},
+		{"repository", "root", "list"}, {"repository", "root", "add"}, {"repository", "root", "remove"}, {"repository", "root", "replace"}, {"convention", "show"}, {"convention", "set"},
+	} {
+		cmd, remaining, err := newRootCmd().Find(path)
+		if err != nil || len(remaining) != 0 || cmd.RunE == nil {
+			t.Fatalf("missing direct action %v: %v", path, err)
+		}
+	}
+	for name, flags := range map[string][]string{"install": {"embedded", "link", "as"}, "update": {"check", "all", "yes", "remove-policy-references"}, "uninstall": {"yes", "remove-policy-references"}} {
+		cmd, _, _ := newRootCmd().Find([]string{"plugin", name})
+		for _, flag := range flags {
+			if cmd.Flags().Lookup(flag) == nil {
+				t.Errorf("missing plugin %s --%s", name, flag)
+			}
+		}
+	}
+}

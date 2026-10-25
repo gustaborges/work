@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 
+	"github.com/gustaborges/work/internal/adminstate"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/ipc"
 	"github.com/gustaborges/work/internal/lockfile"
@@ -24,7 +25,18 @@ func (r *runner) runLinker(ctx context.Context, d Decision) bool {
 	}
 	r.emit(Event{Kind: Running, Component: name, Operation: OpDiscover})
 
-	resp, res, err := ipc.InvokeLinker(ctx, c.Target(r.c.Home.PluginsDir()), ipc.LinkerInput{Inputs: d.Inputs})
+	var resp ipc.LinkerResponse
+	var res ipc.Result
+	var err error
+	invoke := func() error {
+		resp, res, err = ipc.InvokeLinker(ctx, c.Target(r.c.Home.PluginsDir()), ipc.LinkerInput{Inputs: d.Inputs})
+		return err
+	}
+	if c.Revision != "" {
+		err = adminstate.WithInvocation(ctx, r.c.Home, c, invoke)
+	} else {
+		err = invoke()
+	}
 	r.report.Ran++
 	if err != nil {
 		return r.warnRun(ctx, name, OpDiscover, "no link was recorded", err, res)
@@ -69,7 +81,7 @@ func (r *runner) persistLink(ctx context.Context, component registry.Component, 
 	if real, err := filepath.EvalSymlinks(filepath.Dir(snapshot)); err == nil {
 		snapshot = filepath.Join(real, filepath.Base(snapshot))
 	}
-	p := PublishParams{Home: r.c.Home, Expected: workcontext.Context{State: r.state, WorkDir: dir, SnapshotPath: snapshot}, Component: component, Value: value, Operation: OpDiscover, Now: r.now, Reload: func() (*registry.Registry, error) { return r.c.Registry, nil }}
+	p := PublishParams{Home: r.c.Home, Expected: workcontext.Context{State: r.state, WorkDir: dir, SnapshotPath: snapshot}, Component: component, Value: value, Operation: OpDiscover, Now: r.now, Reload: func() (*registry.Registry, error) { return r.reload(ctx, component) }}
 	if r.c.Index != nil {
 		p.Record = func(_ workcontext.Context, entry projection.Provenance) error {
 			return r.c.Index.RecordProvenance(entry)

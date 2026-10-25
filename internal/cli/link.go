@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/gustaborges/work/internal/adminstate"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/extension"
 	"github.com/gustaborges/work/internal/plugin"
@@ -85,17 +86,20 @@ func newLinkCmd() *cobra.Command {
 				selected = answers.Value("provider").(registry.Component)
 				value = answers.String("value")
 			}
-			result, err := extension.PublishLink(cmd.Context(), extension.PublishParams{Home: home, Expected: current, Component: selected, Operation: extension.OpLink, Value: value,
-				Reload: func() (*registry.Registry, error) {
-					r, err := registry.Load(home.RegistryFile())
-					if err != nil {
-						return nil, diag.Wrap(diag.BootstrapFailed, err, "cannot read the component registry")
-					}
-					return r, nil
-				},
-				Record: func(c workcontext.Context, p projection.Provenance) error { return recordContextLink(home, c, p) },
+			var result extension.PublishResult
+			err = adminstate.WithInvocation(cmd.Context(), home, selected, func() error {
+				result, err = extension.PublishLink(cmd.Context(), extension.PublishParams{Home: home, Expected: current, Component: selected, Operation: extension.OpLink, Value: value,
+					Reload: func() (*registry.Registry, error) {
+						return reloadSelectedProvider(cmd.Context(), home, selected)
+					},
+					Record: func(c workcontext.Context, p projection.Provenance) error { return recordContextLink(home, c, p) },
+				})
+				return err
 			})
 			if err != nil {
+				if diag.ExitCode(err) == diag.AdministrationConflict.Code || diag.ExitCode(err) == diag.AdministrationRecoveryRequired.Code {
+					return diag.Wrap(diag.ManualComponentUnavailable, err, "the selected manual component changed or is unavailable; select it again")
+				}
 				return err
 			}
 			if os.Getenv("WORK_DEBUG") != "" {

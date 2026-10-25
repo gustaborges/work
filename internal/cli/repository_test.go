@@ -1,19 +1,23 @@
 package cli
 
 import (
+	"context"
+	"github.com/gustaborges/work/internal/adminstate"
+	"github.com/gustaborges/work/internal/diag"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/gustaborges/work/internal/bootstrap"
 	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/workhome"
 )
 
-func TestRepositoryNoSubcommandPrintsHelpExitZero(t *testing.T) {
+func TestRepositoryExplicitHelpExitZero(t *testing.T) {
 	needSeed(t)
-	out, _, code := runWork(t, "repository")
+	out, _, code := runSeededWork(t, "repository", "--help")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
 	}
@@ -26,7 +30,7 @@ func TestRepositoryNoSubcommandPrintsHelpExitZero(t *testing.T) {
 
 func TestRepositoryJSONOnParentIsUsage(t *testing.T) {
 	needSeed(t)
-	_, _, code := runWork(t, "repository", "--json")
+	_, _, code := runSeededWork(t, "repository", "--json")
 	if code != 2 {
 		t.Fatalf("exit = %d, want 2", code)
 	}
@@ -34,7 +38,7 @@ func TestRepositoryJSONOnParentIsUsage(t *testing.T) {
 
 func TestRepositoryLocatorListShowsSeedLocator(t *testing.T) {
 	needSeed(t)
-	out, _, code := runWork(t, "repository", "locator", "list")
+	out, _, code := runSeededWork(t, "repository", "locator", "list")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0\n%s", code, out)
 	}
@@ -48,7 +52,7 @@ func TestRepositoryLocatorListShowsSeedLocator(t *testing.T) {
 
 func TestRepositoryLocatorListJSON(t *testing.T) {
 	needSeed(t)
-	out, _, code := runWork(t, "repository", "locator", "list", "--json")
+	out, _, code := runSeededWork(t, "repository", "locator", "list", "--json")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
 	}
@@ -61,7 +65,7 @@ func TestRepositoryLocatorListJSON(t *testing.T) {
 
 func TestRepositoryPolicyListShowsSeedAtPosition1(t *testing.T) {
 	needSeed(t)
-	out, _, code := runWork(t, "repository", "policy", "list")
+	out, _, code := runSeededWork(t, "repository", "policy", "list")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
 	}
@@ -72,10 +76,10 @@ func TestRepositoryPolicyListShowsSeedAtPosition1(t *testing.T) {
 
 func TestRepositoryPolicyMoveRequiresExactlyOneDirection(t *testing.T) {
 	needSeed(t)
-	if _, _, code := runWork(t, "repository", "policy", "move", "work-reference/filesystem-repository-locator"); code != 2 {
+	if _, _, code := runSeededWork(t, "repository", "policy", "move", "work-reference/filesystem-repository-locator"); code != 2 {
 		t.Fatalf("neither flag: exit = %d, want 2", code)
 	}
-	if _, _, code := runWork(t, "repository", "policy", "move", "work-reference/filesystem-repository-locator",
+	if _, _, code := runSeededWork(t, "repository", "policy", "move", "work-reference/filesystem-repository-locator",
 		"--before", "x", "--after", "y"); code != 2 {
 		t.Fatalf("both flags: exit = %d, want 2", code)
 	}
@@ -83,7 +87,7 @@ func TestRepositoryPolicyMoveRequiresExactlyOneDirection(t *testing.T) {
 
 func TestRepositoryPolicyAddUnknownLocatorIsUsage(t *testing.T) {
 	needSeed(t)
-	_, _, code := runWork(t, "repository", "policy", "add", "nonexistent/thing")
+	_, _, code := runSeededWork(t, "repository", "policy", "add", "nonexistent/thing")
 	if code != 2 {
 		t.Fatalf("exit = %d, want 2", code)
 	}
@@ -92,11 +96,11 @@ func TestRepositoryPolicyAddUnknownLocatorIsUsage(t *testing.T) {
 func TestRepositoryPolicyRemoveKeepsComponentInstalled(t *testing.T) {
 	needSeed(t)
 	home := filepath.Join(t.TempDir(), "dothome")
-	if _, _, code := runWorkHome(t, home, "repository", "policy", "remove",
+	if _, _, code := runSeededWorkHome(t, home, "repository", "policy", "remove",
 		"work-reference/filesystem-repository-locator"); code != 0 {
 		t.Fatalf("remove: exit = %d, want 0", code)
 	}
-	out, _, code := runWorkHome(t, home, "repository", "locator", "list")
+	out, _, code := runSeededWorkHome(t, home, "repository", "locator", "list")
 	if code != 0 {
 		t.Fatalf("locator list: exit = %d, want 0", code)
 	}
@@ -110,7 +114,7 @@ func TestRepositoryPolicyRemoveKeepsComponentInstalled(t *testing.T) {
 
 func TestRepositoryPolicyMutationRejectsJSON(t *testing.T) {
 	needSeed(t)
-	if _, _, code := runWork(t, "repository", "policy", "add", "x/y", "--json"); code != 2 {
+	if _, _, code := runSeededWork(t, "repository", "policy", "add", "x/y", "--json"); code != 2 {
 		t.Fatalf("exit = %d, want 2", code)
 	}
 }
@@ -120,32 +124,32 @@ func TestRepositoryRootAddListRemoveReplace(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "dothome")
 	d1, d2 := t.TempDir(), t.TempDir()
 
-	if _, _, code := runWorkHome(t, home, "repository", "root", "add", d1, d2); code != 0 {
+	if _, _, code := runSeededWorkHome(t, home, "repository", "root", "add", d1, d2); code != 0 {
 		t.Fatalf("add: exit = %d, want 0", code)
 	}
-	out, _, code := runWorkHome(t, home, "repository", "root", "list")
+	out, _, code := runSeededWorkHome(t, home, "repository", "root", "list")
 	if code != 0 || !strings.Contains(out, d1) || !strings.Contains(out, d2) {
 		t.Fatalf("list = %q (exit %d)", out, code)
 	}
 
 	// Re-adding is a no-op.
-	if _, _, code := runWorkHome(t, home, "repository", "root", "add", d1); code != 0 {
+	if _, _, code := runSeededWorkHome(t, home, "repository", "root", "add", d1); code != 0 {
 		t.Fatalf("re-add: exit = %d, want 0", code)
 	}
 
-	if _, _, code := runWorkHome(t, home, "repository", "root", "remove", d1); code != 0 {
+	if _, _, code := runSeededWorkHome(t, home, "repository", "root", "remove", d1); code != 0 {
 		t.Fatalf("remove: exit = %d, want 0", code)
 	}
-	out, _, _ = runWorkHome(t, home, "repository", "root", "list")
+	out, _, _ = runSeededWorkHome(t, home, "repository", "root", "list")
 	if strings.Contains(out, d1) {
 		t.Errorf("removed root still listed: %s", out)
 	}
 
 	d3 := t.TempDir()
-	if _, _, code := runWorkHome(t, home, "repository", "root", "replace", d3); code != 0 {
+	if _, _, code := runSeededWorkHome(t, home, "repository", "root", "replace", d3); code != 0 {
 		t.Fatalf("replace: exit = %d, want 0", code)
 	}
-	out, _, _ = runWorkHome(t, home, "repository", "root", "list")
+	out, _, _ = runSeededWorkHome(t, home, "repository", "root", "list")
 	if strings.TrimSpace(out) != d3 {
 		t.Errorf("after replace, list = %q, want only %q", out, d3)
 	}
@@ -172,17 +176,17 @@ func TestRepositoryRootAddRejectsWorkspaceOverlap(t *testing.T) {
 	if err := os.MkdirAll(nested, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, code := runWorkHome(t, home, "repository", "root", "add", nested); code != 2 {
+	if _, _, code := runSeededWorkHome(t, home, "repository", "root", "add", nested); code != 2 {
 		t.Fatalf("root inside workspace: exit = %d, want 2", code)
 	}
-	if _, _, code := runWorkHome(t, home, "repository", "root", "add", ws); code != 2 {
+	if _, _, code := runSeededWorkHome(t, home, "repository", "root", "add", ws); code != 2 {
 		t.Fatalf("root == workspace: exit = %d, want 2", code)
 	}
 }
 
 func TestRepositoryRootMutationRejectsJSON(t *testing.T) {
 	needSeed(t)
-	if _, _, code := runWork(t, "repository", "root", "add", t.TempDir(), "--json"); code != 2 {
+	if _, _, code := runSeededWork(t, "repository", "root", "add", t.TempDir(), "--json"); code != 2 {
 		t.Fatalf("exit = %d, want 2", code)
 	}
 }
@@ -196,7 +200,7 @@ func TestRepositoryRootMutationRejectsJSON(t *testing.T) {
 func TestRepositoryInstallingLocatorDoesNotTouchPolicy(t *testing.T) {
 	needSeed(t)
 	home := filepath.Join(t.TempDir(), "dothome")
-	if _, _, code := runWorkHome(t, home, "repository", "policy", "list"); code != 0 {
+	if _, _, code := runSeededWorkHome(t, home, "repository", "policy", "list"); code != 0 {
 		t.Fatalf("initial policy list: exit = %d", code)
 	}
 
@@ -227,7 +231,7 @@ func TestRepositoryInstallingLocatorDoesNotTouchPolicy(t *testing.T) {
 		t.Fatalf("config changed after installing a component:\nbefore: %s\nafter:  %s", before, after)
 	}
 
-	out, _, code := runWorkHome(t, home, "repository", "locator", "list")
+	out, _, code := runSeededWorkHome(t, home, "repository", "locator", "list")
 	if code != 0 {
 		t.Fatalf("locator list: exit = %d", code)
 	}
@@ -247,7 +251,7 @@ func TestRepositoryInstallingLocatorDoesNotTouchPolicy(t *testing.T) {
 func TestRepositoryPolicyListShowsUnavailableAndResolutionSkipsIt(t *testing.T) {
 	needSeed(t)
 	home := filepath.Join(t.TempDir(), "dothome")
-	if _, _, code := runWorkHome(t, home, "repository", "policy", "list"); code != 0 {
+	if _, _, code := runSeededWorkHome(t, home, "repository", "policy", "list"); code != 0 {
 		t.Fatalf("bootstrap via policy list: exit = %d", code)
 	}
 
@@ -261,7 +265,7 @@ func TestRepositoryPolicyListShowsUnavailableAndResolutionSkipsIt(t *testing.T) 
 		t.Fatalf("config.Save: %v", err)
 	}
 
-	out, _, code := runWorkHome(t, home, "repository", "policy", "list")
+	out, _, code := runSeededWorkHome(t, home, "repository", "policy", "list")
 	if code != 0 {
 		t.Fatalf("policy list: exit = %d", code)
 	}
@@ -269,7 +273,7 @@ func TestRepositoryPolicyListShowsUnavailableAndResolutionSkipsIt(t *testing.T) 
 		t.Errorf("unavailable entry not shown as expected:\n%s", out)
 	}
 
-	out, _, code = runWorkHome(t, home, "repository", "policy", "list", "--json")
+	out, _, code = runSeededWorkHome(t, home, "repository", "policy", "list", "--json")
 	if code != 0 || !strings.Contains(out, `"available": false`) {
 		t.Fatalf("json list missing available:false: %s (exit %d)", out, code)
 	}
@@ -283,7 +287,7 @@ func TestRepositoryPolicyListShowsUnavailableAndResolutionSkipsIt(t *testing.T) 
 	cfg.RepositoryRoots = []string{root}
 	config.Save(cfgPath, cfg)
 
-	_, errb, code := runWorkHome(t, home, "start", "payments",
+	_, errb, code := runSeededWorkHome(t, home, "start", "payments",
 		"--workspace", filepath.Join(t.TempDir(), "ws"),
 		"--base", "main", "--slug", "s", "--prefix", "{slug}", "--yes")
 	if code != 0 {
@@ -293,11 +297,44 @@ func TestRepositoryPolicyListShowsUnavailableAndResolutionSkipsIt(t *testing.T) 
 
 func TestRepositoryRootListEmptyPrintsNote(t *testing.T) {
 	needSeed(t)
-	_, errb, code := runWork(t, "repository", "root", "list")
+	_, errb, code := runSeededWork(t, "repository", "root", "list")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
 	}
 	if !strings.Contains(errb, "note:") {
 		t.Errorf("stderr missing note: %s", errb)
+	}
+}
+
+// Seed is explicit fixture preparation; administrative reads themselves are pure.
+func runSeededWork(t *testing.T, args ...string) (string, string, int) {
+	t.Helper()
+	return runSeededWorkHome(t, filepath.Join(t.TempDir(), "dothome"), args...)
+}
+func runSeededWorkHome(t *testing.T, home string, args ...string) (string, string, int) {
+	t.Helper()
+	if err := bootstrap.EnsureSeed(workhome.At(home)); err != nil {
+		t.Fatal(err)
+	}
+	return runWorkHome(t, home, args...)
+}
+
+func TestAdminRepositoryReviewedEditMergesAndConflicts(t *testing.T) {
+	h := workhome.At(filepath.Join(t.TempDir(), "home"))
+	ctx := context.Background()
+	if err := adminstate.WithWrite(ctx, h, "fixture", func(s *adminstate.Session) error {
+		s.Config.RepositoryResolution.Locators = []string{"missing/old"}
+		s.Config.Workspace = "/other"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	edit := repositoryEdit{Kind: "policy-remove", Values: []string{"missing/old"}, Reviewed: []string{"missing/old"}}
+	cfg, err := applyRepositoryEdit(ctx, h, edit)
+	if err != nil || cfg.Workspace != "/other" || len(cfg.RepositoryResolution.Locators) != 0 {
+		t.Fatal(cfg, err)
+	}
+	if _, err = applyRepositoryEdit(ctx, h, edit); diag.ExitCode(err) != 53 {
+		t.Fatal(err)
 	}
 }

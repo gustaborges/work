@@ -11,7 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gustaborges/work/internal/config"
+	"context"
+	"github.com/gustaborges/work/internal/adminstate"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/workhome"
 )
@@ -106,14 +107,18 @@ func Overlaps(a, b string) (bool, error) {
 // Persist writes absRoot to config.workspace and creates the root's
 // in-progress/ and archived/ subdirectories. absRoot must already be validated.
 func Persist(h workhome.Home, absRoot string) error {
-	cfg, err := config.Load(h.ConfigFile())
+	err := adminstate.WithWrite(context.Background(), h, "work start", func(s *adminstate.Session) error {
+		root, err := Validate(absRoot, s.Config.RepositoryRoots)
+		if err != nil {
+			return err
+		}
+		s.Config.Workspace = root
+		return nil
+	})
 	if err != nil {
 		return err
 	}
-	cfg.Workspace = absRoot
-	if err := config.Save(h.ConfigFile(), cfg); err != nil {
-		return diag.Wrap(diag.MaterializationFailed, err, "cannot save the workspace root")
-	}
+
 	return EnsureLayout(absRoot)
 }
 

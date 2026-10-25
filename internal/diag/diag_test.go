@@ -54,6 +54,13 @@ func TestCategoryTable(t *testing.T) {
 		{ExtensionOutputRefused, "extension-output-refused", 47},
 		{ExtensionPersistFailed, "extension-persist-failed", 48},
 		{ExtensionCleanupFailed, "extension-cleanup-failed", 49},
+		{PluginUpdateFailed, "plugin-update-failed", 50},
+		{PluginUninstallFailed, "plugin-uninstall-failed", 51},
+		{PluginPolicyDependency, "plugin-policy-dependency", 52},
+		{AdministrationConflict, "administration-conflict", 53},
+		{AdministrationRecoveryRequired, "administration-recovery-required", 54},
+		{AdministrationCleanupFailed, "administration-cleanup-failed", 55},
+		{AdministrationBusy, "administration-busy", 56},
 	}
 
 	if len(want) != len(All) {
