@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 
@@ -79,6 +80,12 @@ func Prepare(ctx context.Context, source string, opts Options) (_ *Prepared, err
 	if opts.Link {
 		p.ContentDir = dir
 	} else {
+		// A SOURCE that is itself a symlink to the package directory is a
+		// legitimate layout; WalkDir would otherwise treat the root as an
+		// absolute package symlink and reject it.
+		if resolved, e := filepath.EvalSymlinks(dir); e == nil {
+			dir = resolved
+		}
 		if err = validatePinned(dir); err != nil {
 			return nil, diag.Wrap(diag.PluginInvalid, err, "plugin content contains unsafe paths or file kinds")
 		}
@@ -110,20 +117,26 @@ func Prepare(ctx context.Context, source string, opts Options) (_ *Prepared, err
 	if err = preflightRuntimes(p.Manifest); err != nil {
 		return nil, err
 	}
+	surface := []string{"plugin.json"}
 	for _, c := range p.Manifest.Components {
 		if !filepath.IsLocal(c.Entrypoint) || strings.Contains(c.Entrypoint, "\\") {
 			return nil, diag.New(diag.PluginInvalid, "component entrypoint must stay inside its package")
 		}
-		entry := filepath.Join(p.ContentDir, c.Entrypoint)
+		rel := c.Entrypoint
 		if c.Runtime == "" && runtime.GOOS == "windows" {
-			entry += ".exe"
+			rel += ".exe"
 		}
-		info, e := os.Stat(entry)
+		info, e := os.Stat(filepath.Join(p.ContentDir, rel))
 		if e != nil || !info.Mode().IsRegular() {
 			return nil, diag.New(diag.PluginInvalid, "component entrypoint is unavailable")
 		}
+		surface = append(surface, rel)
 	}
-	p.Digest, err = ContentDigest(p.ContentDir)
+	if p.link {
+		p.Digest, err = surfaceDigest(p.ContentDir, surface)
+	} else {
+		p.Digest, err = ContentDigest(p.ContentDir)
+	}
 	if err != nil {
 		return nil, diag.Wrap(diag.PluginInvalid, err, "cannot inspect plugin content")
 	}
@@ -169,6 +182,31 @@ func validatePinned(root string) error {
 		}
 		return nil
 	})
+}
+
+// surfaceDigest hashes only the manifest and declared entrypoints. Linked
+// trees stay developer-owned, so the baseline must not depend on unrelated
+// files such as VCS metadata, dependency folders, sockets or FIFOs.
+func surfaceDigest(root string, rels []string) (string, error) {
+	rels = slices.Clone(rels)
+	slices.Sort(rels)
+	rels = slices.Compact(rels)
+	h := sha256.New()
+	for _, rel := range rels {
+		path := filepath.Join(root, rel)
+		info, err := os.Stat(path)
+		if err != nil {
+			return "", err
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return "", err
+		}
+		if _, err = fmt.Fprintf(h, "%q file %t %q\n", filepath.ToSlash(rel), info.Mode().Perm()&0111 != 0, b); err != nil {
+			return "", err
+		}
+	}
+	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // ContentDigest normalizes relative paths, kinds, executability and link text.

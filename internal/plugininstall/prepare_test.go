@@ -116,3 +116,59 @@ func TestAdminCandidateDeterministicDigestAndEntrypointEscape(t *testing.T) {
 		t.Fatal("entrypoint escaped package")
 	}
 }
+
+func TestPrepareAcceptsSourceThatIsASymlinkToTheDirectory(t *testing.T) {
+	dir := prepareSource(t)
+	lnk := filepath.Join(t.TempDir(), "lnk")
+	if err := os.Symlink(dir, lnk); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	p, err := Prepare(context.Background(), lnk, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	if p.Reference != lnk || p.Identity != lnk {
+		t.Fatalf("source identity must keep the path the user gave: %q %q", p.Identity, p.Reference)
+	}
+}
+
+func TestPrepareLinkedDigestCoversOnlyThePackageSurface(t *testing.T) {
+	dir := prepareSource(t)
+	first, err := Prepare(context.Background(), dir, Options{Link: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	for _, noise := range []string{".git/objects/pack", "node_modules/dep/index.js"} {
+		path := filepath.Join(dir, filepath.FromSlash(noise))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("unrelated"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	second, err := Prepare(context.Background(), dir, Options{Link: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	if first.Digest == "" || first.Digest != second.Digest {
+		t.Fatalf("linked digest depends on unrelated files: %q vs %q", first.Digest, second.Digest)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "plugin.json"), []byte(`{"name":"frozen","version":"red","components":[],"conventions":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	third, err := Prepare(context.Background(), dir, Options{Link: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer third.Close()
+	if third.Digest == first.Digest {
+		t.Fatal("linked digest ignored a manifest change")
+	}
+}
