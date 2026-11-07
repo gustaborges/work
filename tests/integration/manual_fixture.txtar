@@ -1,8 +1,8 @@
 # The same offline source supports two independent aliases and retained state.
 preparepluginfixture manual-suite FIXTURE
-exec work plugin install $FIXTURE --as manual
-exec work plugin install $FIXTURE --as alternate
-package-enabled manual false
+installplugin manual $FIXTURE
+installplugin alternate $FIXTURE
+package-enabled manual-suite@manual false
 exec work plugin list
 stdout 'manual'
 stdout 'alternate'

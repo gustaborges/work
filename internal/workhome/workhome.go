@@ -10,6 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
+
+	"github.com/gustaborges/work/internal/pluginid"
 )
 
 // Home is a resolved Work home root. The zero value is not usable; obtain one
@@ -47,7 +50,7 @@ func (h Home) ConfigDir() string { return filepath.Join(h.root, "config") }
 // ConfigFile is the path to work.json.
 func (h Home) ConfigFile() string { return filepath.Join(h.ConfigDir(), "work.json") }
 
-// PluginsDir holds installed plugin packages, including the embedded seed.
+// PluginsDir holds installed plugin packages under plugins/<marketplace>/<plugin>.
 func (h Home) PluginsDir() string { return filepath.Join(h.root, "plugins") }
 
 // StateDir holds generated state that is never hand-edited.
@@ -95,17 +98,89 @@ func (h Home) EnsureLayout() error {
 
 // AdministrationFile is the stable/pending epoch control; absent means epoch 0.
 func (h Home) AdministrationFile() string { return filepath.Join(h.StateDir(), "administration.json") }
-func (h Home) ReferencePackageFile() string {
-	return filepath.Join(h.StateDir(), "reference-package.json")
-}
+
+// LifecycleFile records initialization, policy handling and default removal
+// outside any removable package directory.
+func (h Home) LifecycleFile() string      { return filepath.Join(h.StateDir(), "lifecycle.json") }
 func (h Home) AdministrationDir() string  { return filepath.Join(h.StateDir(), "administration") }
 func (h Home) AdministrationLock() string { return h.LockPath("administration") }
 
-var transactionID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$`)
+var transactionIDGrammar = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$`)
 
 func (h Home) TransactionDir(id string) (string, error) {
-	if !transactionID.MatchString(id) {
+	if !transactionIDGrammar.MatchString(id) {
 		return "", fmt.Errorf("invalid administrative transaction id")
 	}
 	return filepath.Join(h.AdministrationDir(), id), nil
+}
+
+// CatalogsFile holds the stored discovery offers of every registered source.
+func (h Home) CatalogsFile() string { return filepath.Join(h.StateDir(), "marketplace-catalogs.json") }
+
+// SnapshotsDir holds complete fixed captures, one directory per validated
+// 64-hex digest payload. A capture is never an execution root.
+func (h Home) SnapshotsDir() string { return filepath.Join(h.StateDir(), "marketplace-snapshots") }
+
+// LeasesDir holds the per-plan lease records and their process-held locks. It
+// is deliberately outside AdministrationDir, whose children are all treated as
+// transaction directories by recovery.
+func (h Home) LeasesDir() string { return filepath.Join(h.StateDir(), "administration-leases") }
+
+// SnapshotDir resolves a capture directory from the bare hex digest payload.
+// The algorithm prefix is never a path segment because ':' is not portable.
+func (h Home) SnapshotDir(hexDigest string) (string, error) {
+	if err := pluginid.ValidateHexDigest(hexDigest); err != nil {
+		return "", err
+	}
+	return filepath.Join(h.SnapshotsDir(), hexDigest), nil
+}
+
+// PackageRoot is the owned wrapper directory of one installed provider:
+// plugins/<marketplace>/<plugin>. Both segments are validated separately, so a
+// display string can never select a path.
+func (h Home) PackageRoot(p pluginid.Provider) (string, error) {
+	if err := p.Validate(); err != nil {
+		return "", err
+	}
+	return filepath.Join(h.PluginsDir(), p.Marketplace, p.Plugin), nil
+}
+
+// PackageSource is the managed copy that components execute from.
+func (h Home) PackageSource(p pluginid.Provider) (string, error) {
+	root, err := h.PackageRoot(p)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, "source"), nil
+}
+
+// MarketplaceDir is the namespace directory that parents package roots.
+func (h Home) MarketplaceDir(marketplace string) (string, error) {
+	if err := pluginid.ValidateName(marketplace); err != nil {
+		return "", err
+	}
+	return filepath.Join(h.PluginsDir(), marketplace), nil
+}
+
+// StagePrefix marks transaction-owned package stages directly under PluginsDir.
+// No installed marketplace can begin with a dot, so stages never collide with
+// a namespace directory.
+const StagePrefix = ".admin-stage-"
+
+// IsStageName reports whether base names a transaction-owned stage directory.
+func IsStageName(base string) bool {
+	return filepath.Base(base) == base && strings.HasPrefix(base, StagePrefix) && len(base) > len(StagePrefix)
+}
+
+// BackupPath is where a transaction parks a provider's previous root. It
+// encodes the typed address (plugin@marketplace is unambiguous because '@' is
+// not a legal name byte) rather than nesting under the live namespace.
+func (h Home) BackupPath(transactionID string, p pluginid.Provider) (string, error) {
+	if !transactionIDGrammar.MatchString(transactionID) {
+		return "", fmt.Errorf("invalid administrative transaction id")
+	}
+	if err := p.Validate(); err != nil {
+		return "", err
+	}
+	return filepath.Join(h.PluginsDir(), ".admin-"+transactionID+"-"+p.Plugin+"@"+p.Marketplace+"-before"), nil
 }

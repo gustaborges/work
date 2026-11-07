@@ -1,10 +1,9 @@
 package cli
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
-
-	fixtures "github.com/gustaborges/work/tests/fixtures/plugins"
 )
 
 func TestPluginExplicitHelpExitZero(t *testing.T) {
@@ -12,9 +11,14 @@ func TestPluginExplicitHelpExitZero(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
 	}
-	for _, want := range []string{"install", "list"} {
+	for _, want := range []string{"list", "marketplace", "enable", "disable", "uninstall"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help missing %q:\n%s", want, out)
+		}
+	}
+	for _, retired := range []string{"  install ", "  update "} {
+		if strings.Contains(out, retired) {
+			t.Errorf("help advertises a retired command %q:\n%s", retired, out)
 		}
 	}
 }
@@ -26,108 +30,35 @@ func TestPluginJSONOnParentIsUsage(t *testing.T) {
 	}
 }
 
-func TestPluginInstallLocalPinnedAndList(t *testing.T) {
-	home := t.TempDir()
-	src := fixtures.Prepare(t, "specific-starter")
-
-	out, errb, code := runWorkHome(t, home, "plugin", "install", src)
-	if code != 0 {
-		t.Fatalf("install: exit = %d\nstderr: %s", code, errb)
-	}
-	if !strings.Contains(out, "work: installed specific-starter (local-pinned)") {
-		t.Errorf("install stdout = %q", out)
-	}
-	if !strings.Contains(out, "specific-starter (starter)") {
-		t.Errorf("install stdout missing component line: %q", out)
-	}
-
-	out, _, code = runWorkHome(t, home, "plugin", "list")
-	if code != 0 {
-		t.Fatalf("list: exit = %d", code)
-	}
-	if !strings.Contains(out, "specific-starter") || !strings.Contains(out, "local-pinned") {
-		t.Errorf("list output = %q", out)
-	}
-
-	out, _, code = runWorkHome(t, home, "plugin", "list", "--json")
-	if code != 0 {
-		t.Fatalf("list --json: exit = %d", code)
-	}
-	for _, want := range []string{`"alias": "specific-starter"`, `"origin": "local-pinned"`, `"role": "starter"`} {
-		if !strings.Contains(out, want) {
-			t.Errorf("json output missing %q:\n%s", want, out)
+func TestPluginRetiredCommandsAreUsageErrors(t *testing.T) {
+	for _, args := range [][]string{
+		{"plugin", "install", "./x"}, {"plugin", "install", "--embedded"}, {"plugin", "update", "--check"}, {"plugin", "update", "--all"},
+		{"marketplace", "add", "x"},
+	} {
+		home := t.TempDir()
+		_, errb, code := runWorkHome(t, home, args...)
+		if code != 2 || !strings.Contains(errb, "usage") {
+			t.Errorf("%v: exit = %d, stderr %q", args, code, errb)
 		}
 	}
 }
 
-func TestPluginListEmpty(t *testing.T) {
+func TestPluginListEmptyHomeIsPureAndUsesTheEnvelope(t *testing.T) {
 	out, _, code := runWork(t, "plugin", "list")
-	if code != 0 {
-		t.Fatalf("exit = %d, want 0", code)
+	if code != 0 || out != "" {
+		t.Fatalf("plugin list on an empty home: exit %d, %q", code, out)
 	}
-	if strings.TrimSpace(out) != "" {
-		t.Errorf("expected empty output before any install, got %q", out)
-	}
-
 	out, _, code = runWork(t, "plugin", "list", "--json")
 	if code != 0 {
-		t.Fatalf("exit = %d, want 0", code)
+		t.Fatalf("exit = %d", code)
 	}
-	if strings.TrimSpace(out) != "[]" {
-		t.Errorf("expected [], got %q", out)
+	var env map[string]any
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatal(err, out)
 	}
-}
-
-func TestPluginInstallAliasConflictExit32(t *testing.T) {
-	home := t.TempDir()
-	srcA := fixtures.Prepare(t, "specific-starter")
-	srcB := fixtures.Prepare(t, "colliding-starter")
-
-	if _, _, code := runWorkHome(t, home, "plugin", "install", srcA, "--as", "x"); code != 0 {
-		t.Fatalf("first install: exit = %d", code)
-	}
-	_, errb, code := runWorkHome(t, home, "plugin", "install", srcB, "--as", "x")
-	if code != 32 {
-		t.Fatalf("exit = %d, want 32\nstderr: %s", code, errb)
-	}
-	if !strings.Contains(errb, "plugin-alias-conflict") {
-		t.Errorf("stderr missing token: %s", errb)
-	}
-}
-
-func TestPluginInstallInvalidManifestExit31(t *testing.T) {
-	home := t.TempDir()
-	_, errb, code := runWorkHome(t, home, "plugin", "install",
-		"../../tests/fixtures/plugins/invalid-manifest")
-	if code != 31 {
-		t.Fatalf("exit = %d, want 31\nstderr: %s", code, errb)
-	}
-	if !strings.Contains(errb, "plugin-invalid") {
-		t.Errorf("stderr missing token: %s", errb)
-	}
-}
-
-func TestPluginInstallLinkWithRemoteIsUsage(t *testing.T) {
-	_, errb, code := runWork(t, "plugin", "install", "https://example.com/x.git", "--link")
-	if code != 2 {
-		t.Fatalf("exit = %d, want 2\nstderr: %s", code, errb)
-	}
-}
-
-func TestPluginInstallRejectsJSON(t *testing.T) {
-	src := fixtures.Prepare(t, "specific-starter")
-	_, _, code := runWork(t, "plugin", "install", src, "--json")
-	if code != 2 {
-		t.Fatalf("exit = %d, want 2", code)
-	}
-}
-
-func TestPluginInstallMissingSourceIsUsage(t *testing.T) {
-	_, errb, code := runWork(t, "plugin", "install")
-	if code != 2 {
-		t.Fatalf("exit = %d, want 2\nstderr: %s", code, errb)
-	}
-	if !strings.Contains(errb, "missing SOURCE argument") {
-		t.Errorf("stderr lacks the usage message: %q", errb)
+	for _, k := range []string{"installed", "available", "catalog_errors"} {
+		if v, ok := env[k].([]any); !ok || len(v) != 0 {
+			t.Errorf("%s must be present, non-null and empty: %v", k, env[k])
+		}
 	}
 }

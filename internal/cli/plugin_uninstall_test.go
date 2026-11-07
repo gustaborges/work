@@ -12,7 +12,7 @@ import (
 func TestAdminUninstallGrammar(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "absent")
 	t.Setenv("WORK_HOME", home)
-	for _, args := range [][]string{{}, {"--yes"}, {"a"}, {"a", "--yes", "--json"}, {"a/clone", "--yes"}, {"a", "--all", "--yes"}} {
+	for _, args := range [][]string{{}, {"--yes"}, {"a"}, {"a@m", "--yes", "--json", "x"}, {"a/clone", "--yes"}, {"a@m", "--all", "--yes"}, {"a@m@n"}, {"a b@m"}} {
 		cmd := newRootCmd()
 		var out, ui bytes.Buffer
 		cmd.SetOut(&out)
@@ -32,7 +32,7 @@ func TestAdminUninstallGrammar(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	for _, word := range []string{"PLUGIN", "--yes", "--remove-policy-references"} {
+	for _, word := range []string{"PLUGIN@MARKETPLACE", "--yes", "--remove-policy-references"} {
 		if !strings.Contains(out.String(), word) {
 			t.Fatal(word, out.String())
 		}

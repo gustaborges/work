@@ -19,6 +19,7 @@ import (
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/work"
 	"github.com/gustaborges/work/internal/workhome"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 	fixtures "github.com/gustaborges/work/tests/fixtures/plugins"
 )
 
@@ -108,7 +109,7 @@ func TestStatusPurity(t *testing.T) {
 				source := filepath.Join(home.PluginsDir(), "manual", "source")
 				os.MkdirAll(source, 0o755)
 				os.WriteFile(filepath.Join(source, "linker"+suffix), spy, 0o755)
-				registry.Save(home.RegistryFile(), &registry.Registry{Components: []registry.Component{{Alias: "manual", Name: "linker", Role: "linker", Entrypoint: "linker"}}})
+				registry.Save(home.RegistryFile(), installfx.Reg(nil, registry.Component{Provider: installfx.P("manual"), Name: "linker", Role: "linker", Entrypoint: "linker"}))
 			}
 			if kind == "corrupt" {
 				os.WriteFile(home.DBFile(), []byte("corrupt index"), 0o600)

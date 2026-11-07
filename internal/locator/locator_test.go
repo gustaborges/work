@@ -10,7 +10,9 @@ import (
 
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/gittest"
+	"github.com/gustaborges/work/internal/pluginid"
 	"github.com/gustaborges/work/internal/registry"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 	"github.com/gustaborges/work/tests/fixtures/locators"
 )
 
@@ -42,11 +44,12 @@ func setMatches(t *testing.T, paths ...string) {
 // installAs, and returns Deps with Policy in the given ref order.
 func newDeps(t *testing.T, pluginsDir string, roots []string, refs ...policyEntry) Deps {
 	t.Helper()
-	reg := &registry.Registry{}
+	reg := registry.New()
 	var policy []string
 	for _, e := range refs {
-		locators.Install(t, reg, pluginsDir, e.alias, e.name, e.fixture, e.accepts)
-		policy = append(policy, e.alias+"/"+e.name)
+		p := installfx.P(e.alias)
+		locators.Install(t, reg, pluginsDir, p, e.name, e.fixture, e.accepts)
+		policy = append(policy, pluginid.Ref{Provider: p, Name: e.name}.String())
 	}
 	return Deps{PluginsDir: pluginsDir, Policy: policy, Roots: roots, Registry: reg}
 }
@@ -267,35 +270,42 @@ func TestEligibleFalseWhenNoIntersection(t *testing.T) {
 }
 
 func TestAvailableComponentRequiresRepositoryLocatorRole(t *testing.T) {
-	reg := &registry.Registry{Components: []registry.Component{
-		{Alias: "a", Name: "b", Role: registry.RoleStarter},
-	}}
-	if _, ok := availableComponent(reg, "a/b"); ok {
+	reg := installfx.Reg(nil, registry.Component{Provider: installfx.P("a"), Name: "b", Role: registry.RoleStarter, Entrypoint: "b"})
+	if _, ok := availableComponent(reg, "a@m/b"); ok {
 		t.Fatal("want unavailable: wrong role")
 	}
 }
 
 func TestAvailableComponentRejectsMalformedRef(t *testing.T) {
-	reg := &registry.Registry{Components: []registry.Component{
-		{Alias: "a", Name: "b", Role: registry.RoleRepositoryLocator},
-	}}
-	if _, ok := availableComponent(reg, "no-slash"); ok {
-		t.Fatal("want unavailable: malformed ref")
+	reg := installfx.Reg(nil, registry.Component{Provider: installfx.P("a"), Name: "b", Role: registry.RoleRepositoryLocator, Entrypoint: "b"})
+	for _, ref := range []string{"no-slash", "a/b", "a@m", "a@m/b/c", ""} {
+		if _, ok := availableComponent(reg, ref); ok {
+			t.Fatalf("want unavailable: malformed ref %q", ref)
+		}
+	}
+	if _, ok := availableComponent(reg, "a@m/b"); !ok {
+		t.Fatal("the qualified reference must resolve")
+	}
+	if _, ok := availableComponent(reg, "a@other/b"); ok {
+		t.Fatal("a homonym in another marketplace must not resolve")
 	}
 }
 
 func TestDisabledLocatorUnavailable(t *testing.T) {
-	off := false
-	r := &registry.Registry{Packages: []registry.Package{{Alias: "a", Enabled: &off}}, Components: []registry.Component{{Alias: "a", Name: "locator", Role: registry.RoleRepositoryLocator}}}
-	if _, ok := availableComponent(r, "a/locator"); ok {
+	r := installfx.Reg([]string{"a"}, registry.Component{Provider: installfx.P("a"), Name: "locator", Role: registry.RoleRepositoryLocator, Entrypoint: "l"})
+	if _, ok := availableComponent(r, "a@m/locator"); ok {
 		t.Fatal("disabled Locator available")
 	}
 	if len(r.Components) != 1 {
 		t.Fatal("raw inventory changed")
 	}
+	installfx.SetPackageEnabled(r, "a", true)
+	if _, ok := availableComponent(r, "a@m/locator"); !ok {
+		t.Fatal("enabled Locator unavailable")
+	}
 	r.Packages = nil
-	if _, ok := availableComponent(r, "a/locator"); !ok {
-		t.Fatal("ownerless Locator unavailable")
+	if _, ok := availableComponent(r, "a@m/locator"); ok {
+		t.Fatal("ownerless Locator available")
 	}
 }
 
@@ -303,12 +313,11 @@ func TestAdminPolicyTraversalSkipsUnavailableAndStopsOnResult(t *testing.T) {
 	repo := gittest.Repo(t)
 	setMatches(t, repo)
 	d := newDeps(t, t.TempDir(), nil, entry("disabled", "boom", "name"), entry("empty", "empty", "name"), entry("match", "ok", "name"), entry("later", "boom", "name"))
-	off := false
-	d.Registry.UpsertPackage(registry.Package{Alias: "disabled", Enabled: &off})
-	d.Policy = append([]string{"missing/clone"}, d.Policy...)
+	installfx.SetPackageEnabled(d.Registry, "disabled", false)
+	d.Policy = append([]string{"missing@m/clone"}, d.Policy...)
 	var calls []string
 	d.Guard = func(_ context.Context, c registry.Component, invoke func() error) error {
-		calls = append(calls, c.Alias)
+		calls = append(calls, c.Provider.Plugin)
 		return invoke()
 	}
 	if _, err := Resolve(context.Background(), d, Reference{Name: "demo"}); err != nil {

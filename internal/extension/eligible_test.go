@@ -7,9 +7,10 @@ import (
 	"github.com/gustaborges/work/internal/plugin"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/work"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 )
 
-var starterComp = registry.Component{Alias: "acme", Name: "pr-starter", Role: registry.RoleStarter}
+var starterComp = registry.Component{Provider: installfx.P("acme"), Name: "pr-starter", Role: registry.RoleStarter, Entrypoint: "s"}
 
 func subject(mode string, links map[string]string, meta map[string]any) Subject {
 	st := &work.State{
@@ -33,13 +34,13 @@ func subject(mode string, links map[string]string, meta map[string]any) Subject 
 
 func linker(name string, automatic bool, on []plugin.Subscription, inputs ...string) registry.Component {
 	return registry.Component{
-		Alias: "acme", Name: name, Role: plugin.RoleLinker, Key: "github.pull_request",
+		Provider: installfx.P("acme"), Name: name, Role: plugin.RoleLinker, Key: "github.pull_request", Entrypoint: "e",
 		Discover: &plugin.Discover{Automatic: automatic, On: on}, Inputs: inputs,
 	}
 }
 
 func importer(name string, on []plugin.Subscription, inputs ...string) registry.Component {
-	return registry.Component{Alias: "acme", Name: name, Role: plugin.RoleImporter, On: on, Inputs: inputs}
+	return registry.Component{Provider: installfx.P("acme"), Name: name, Role: plugin.RoleImporter, On: on, Inputs: inputs, Entrypoint: "e"}
 }
 
 var startFinalized = []plugin.Subscription{{Event: plugin.EventStartFinalized}}
@@ -62,13 +63,13 @@ func TestEligibleTruthTable(t *testing.T) {
 		{"automatic linker, no restriction", linker("l", true, startFinalized, "work:worktree_path"), subject("new", nil, nil), true},
 		{"linker not automatic", linker("l", false, startFinalized), subject("new", nil, nil), false},
 		{"linker automatic without on", linker("l", true, nil), subject("new", nil, nil), false},
-		{"linker without a key is inert", registry.Component{Alias: "acme", Name: "l", Role: plugin.RoleLinker,
+		{"linker without a key is inert", registry.Component{Provider: installfx.P("acme"), Name: "l", Role: plugin.RoleLinker,
 			Discover: &plugin.Discover{Automatic: true, On: startFinalized}}, subject("new", nil, nil), false},
-		{"legacy linker without activation data", registry.Component{Alias: "acme", Name: "l", Role: plugin.RoleLinker}, subject("new", nil, nil), false},
+		{"legacy linker without activation data", registry.Component{Provider: installfx.P("acme"), Name: "l", Role: plugin.RoleLinker}, subject("new", nil, nil), false},
 		{"other event", linker("l", true, []plugin.Subscription{{Event: "start:other"}}), subject("new", nil, nil), false},
 		{"restricted by bare name, matches", importer("i", []plugin.Subscription{{Event: plugin.EventStartFinalized, Starters: []string{"pr-starter"}}}), subject("new", nil, nil), true},
-		{"restricted by alias/name, matches", importer("i", []plugin.Subscription{{Event: plugin.EventStartFinalized, Starters: []string{"acme/pr-starter"}}}), subject("new", nil, nil), true},
-		{"restricted by alias/name, other alias", importer("i", []plugin.Subscription{{Event: plugin.EventStartFinalized, Starters: []string{"other/pr-starter"}}}), subject("new", nil, nil), false},
+		{"restricted by qualified reference, matches", importer("i", []plugin.Subscription{{Event: plugin.EventStartFinalized, Starters: []string{"acme@m/pr-starter"}}}), subject("new", nil, nil), true},
+		{"restricted by qualified reference, other provider", importer("i", []plugin.Subscription{{Event: plugin.EventStartFinalized, Starters: []string{"other@m/pr-starter"}}}), subject("new", nil, nil), false},
 		{"restricted to another starter", importer("i", []plugin.Subscription{{Event: plugin.EventStartFinalized, Starters: []string{"else"}}}), subject("new", nil, nil), false},
 		{"any listed starter matches", importer("i", []plugin.Subscription{{Event: plugin.EventStartFinalized, Starters: []string{"else", "pr-starter"}}}), subject("new", nil, nil), true},
 		{"importer without on", importer("i", nil), subject("new", nil, nil), false},
@@ -83,7 +84,7 @@ func TestEligibleTruthTable(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			reg := &registry.Registry{Components: []registry.Component{tc.comp}}
+			reg := installfx.Reg(nil, tc.comp)
 			got := Eligible(reg, tc.comp.Role, plugin.EventStartFinalized, tc.subj)
 			if (len(got) == 1) != tc.want {
 				t.Fatalf("eligible = %v, want %v", names(got), tc.want)
@@ -93,13 +94,11 @@ func TestEligibleTruthTable(t *testing.T) {
 }
 
 func TestEligibleOnlyReturnsTheAskedRole(t *testing.T) {
-	reg := &registry.Registry{Components: []registry.Component{
-		linker("l", true, startFinalized), importer("i", startFinalized), starterComp,
-	}}
-	if got := names(Eligible(reg, plugin.RoleLinker, plugin.EventStartFinalized, subject("new", nil, nil))); !slices.Equal(got, []string{"acme/l"}) {
+	reg := installfx.Reg(nil, linker("l", true, startFinalized), importer("i", startFinalized), starterComp)
+	if got := names(Eligible(reg, plugin.RoleLinker, plugin.EventStartFinalized, subject("new", nil, nil))); !slices.Equal(got, []string{"acme@m/l"}) {
 		t.Errorf("linkers = %v", got)
 	}
-	if got := names(Eligible(reg, plugin.RoleImporter, plugin.EventStartFinalized, subject("new", nil, nil))); !slices.Equal(got, []string{"acme/i"}) {
+	if got := names(Eligible(reg, plugin.RoleImporter, plugin.EventStartFinalized, subject("new", nil, nil))); !slices.Equal(got, []string{"acme@m/i"}) {
 		t.Errorf("importers = %v", got)
 	}
 	if got := Eligible(reg, plugin.RoleStarter, plugin.EventStartFinalized, subject("new", nil, nil)); len(got) != 0 {
@@ -108,15 +107,15 @@ func TestEligibleOnlyReturnsTheAskedRole(t *testing.T) {
 }
 
 func TestEligibleOrderIsBytewiseAndIgnoresRegistryOrder(t *testing.T) {
-	mk := func(alias, name string) registry.Component {
+	mk := func(plugin, name string) registry.Component {
 		c := linker(name, true, startFinalized)
-		c.Alias = alias
+		c.Provider = installfx.P(plugin)
 		return c
 	}
 	comps := []registry.Component{mk("b", "z"), mk("a", "linker2"), mk("a", "linker"), mk("B", "x")}
-	want := []string{"B/x", "a/linker", "a/linker2", "b/z"}
+	want := []string{"B@m/x", "a@m/linker", "a@m/linker2", "b@m/z"}
 	for range 3 {
-		reg := &registry.Registry{Components: slices.Clone(comps)}
+		reg := installfx.Reg(nil, slices.Clone(comps)...)
 		if got := names(Eligible(reg, plugin.RoleLinker, plugin.EventStartFinalized, subject("new", nil, nil))); !slices.Equal(got, want) {
 			t.Fatalf("order = %v, want %v", got, want)
 		}
@@ -128,7 +127,7 @@ func TestEligibleDeliversOnlyResolvedInputsByBareKey(t *testing.T) {
 	c := importer("i", startFinalized,
 		"link:github.pull_request", "work:start_mode:optional", "work:slug:optional",
 		"meta:github.pull_request.number:optional", "meta:missing.key:optional")
-	reg := &registry.Registry{Components: []registry.Component{c}}
+	reg := installfx.Reg(nil, c)
 	subj := subject("contribution", map[string]string{"github.pull_request": "https://x"}, map[string]any{"github.pull_request.number": float64(7)})
 
 	got := Eligible(reg, plugin.RoleImporter, plugin.EventStartFinalized, subj)
@@ -153,7 +152,7 @@ func TestEligibleDeliversOnlyResolvedInputsByBareKey(t *testing.T) {
 func TestEligibleWorkFacts(t *testing.T) {
 	c := linker("l", true, startFinalized,
 		"work:worktree_path", "work:start_mode", "work:branch", "work:base_branch", "work:slug")
-	reg := &registry.Registry{Components: []registry.Component{c}}
+	reg := installfx.Reg(nil, c)
 	got := Eligible(reg, plugin.RoleLinker, plugin.EventStartFinalized, subject("new", nil, nil))
 	if len(got) != 1 {
 		t.Fatal("not eligible")
@@ -169,7 +168,7 @@ func TestEligibleWorkFacts(t *testing.T) {
 func TestEligibleIsPure(t *testing.T) {
 	c := importer("i", startFinalized, "link:github.pull_request")
 	subj := subject("new", map[string]string{"github.pull_request": "u"}, nil)
-	reg := &registry.Registry{Components: []registry.Component{c}}
+	reg := installfx.Reg(nil, c)
 	Eligible(reg, plugin.RoleImporter, plugin.EventStartFinalized, subj)
 	if len(subj.State.Links) != 1 || len(reg.Components) != 1 {
 		t.Errorf("Eligible mutated its arguments")
@@ -177,17 +176,22 @@ func TestEligibleIsPure(t *testing.T) {
 }
 
 func TestDisabledExtensionsExcluded(t *testing.T) {
-	off := false
-	r := &registry.Registry{Packages: []registry.Package{{Alias: "acme", Enabled: &off}}, Components: []registry.Component{importer("one", startFinalized), linker("two", true, startFinalized)}}
+	r := installfx.Reg([]string{"acme"}, importer("one", startFinalized), linker("two", true, startFinalized))
 	for _, role := range []string{plugin.RoleImporter, plugin.RoleLinker} {
 		if got := Eligible(r, role, plugin.EventStartFinalized, subject("new", nil, nil)); len(got) != 0 {
 			t.Fatalf("%+v", got)
 		}
-		r.Packages = nil
+		installfx.SetPackageEnabled(r, "acme", true)
 		if got := Eligible(r, role, plugin.EventStartFinalized, subject("new", nil, nil)); len(got) != 1 {
-			t.Fatal("ownerless default")
+			t.Fatal("an enabled provider must be eligible")
 		}
-		r.Packages = []registry.Package{{Alias: "acme", Enabled: &off}}
+		installfx.SetPackageEnabled(r, "acme", false)
+	}
+	// A component whose package is not installed is never eligible.
+	orphan := installfx.Reg(nil, importer("one", startFinalized))
+	orphan.Packages = nil
+	if got := Eligible(orphan, plugin.RoleImporter, plugin.EventStartFinalized, subject("new", nil, nil)); len(got) != 0 {
+		t.Fatalf("ownerless component was eligible: %+v", got)
 	}
 }
 

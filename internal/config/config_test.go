@@ -24,9 +24,11 @@ func TestLoadMissingReturnsDefault(t *testing.T) {
 func TestRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sub", "work.json")
 	in := &Config{
+		Schema:               Schema,
 		Workspace:            "/home/u/work",
 		RepositoryRoots:      []string{"/src"},
-		RepositoryResolution: RepositoryResolution{Locators: []string{"work-reference/filesystem-repository-locator"}},
+		RepositoryResolution: RepositoryResolution{Locators: []string{"work-reference@builtin/filesystem-repository-locator"}},
+		Marketplaces:         []Marketplace{{RegistrationID: "0123456789abcdef0123456789abcdef", Name: "team", Kind: KindGit, Source: "https://example.org/t.git", Branch: "main"}},
 	}
 	if err := Save(path, in); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -65,7 +67,7 @@ func TestSaveIsAtomicNoPartialOnMarshalPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Overwrite with a valid new config; the directory must hold exactly one file.
-	if err := Save(path, &Config{Workspace: "/x", RepositoryRoots: []string{}, RepositoryResolution: RepositoryResolution{Locators: []string{}}}); err != nil {
+	if err := Save(path, &Config{Schema: Schema, Workspace: "/x", RepositoryRoots: []string{}, RepositoryResolution: RepositoryResolution{Locators: []string{}}}); err != nil {
 		t.Fatal(err)
 	}
 	entries, _ := os.ReadDir(filepath.Dir(path))
@@ -81,4 +83,37 @@ func contains(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+func TestStrictCurrentSchema(t *testing.T) {
+	id := "0123456789abcdef0123456789abcdef"
+	valid := `{"schema":1,"workspace":"","repository_roots":[],"repository_resolution":{"locators":[]},"marketplaces":[]}`
+	if _, err := Decode([]byte(valid)); err != nil {
+		t.Fatalf("valid config rejected: %v", err)
+	}
+	cases := map[string]string{
+		"missing schema":    `{"workspace":"","repository_roots":[],"repository_resolution":{"locators":[]}}`,
+		"future schema":     `{"schema":2,"workspace":""}`,
+		"unknown field":     `{"schema":1,"workspace":"","extra":true}`,
+		"trailing":          valid + `{}`,
+		"reserved name":     `{"schema":1,"marketplaces":[{"registration_id":"` + id + `","name":"BuiltIn","kind":"local","source":"/x"}]}`,
+		"builtin id":        `{"schema":1,"marketplaces":[{"registration_id":"builtin","name":"team","kind":"local","source":"/x"}]}`,
+		"bad kind":          `{"schema":1,"marketplaces":[{"registration_id":"` + id + `","name":"team","kind":"svn","source":"/x"}]}`,
+		"git without brach": `{"schema":1,"marketplaces":[{"registration_id":"` + id + `","name":"team","kind":"git","source":"/x"}]}`,
+		"local with branch": `{"schema":1,"marketplaces":[{"registration_id":"` + id + `","name":"team","kind":"local","source":"/x","branch":"main"}]}`,
+		"case duplicate":    `{"schema":1,"marketplaces":[{"registration_id":"` + id + `","name":"team","kind":"local","source":"/x"},{"registration_id":"fedcba9876543210fedcba9876543210","name":"TEAM","kind":"local","source":"/y"}]}`,
+		"id duplicate":      `{"schema":1,"marketplaces":[{"registration_id":"` + id + `","name":"a","kind":"local","source":"/x"},{"registration_id":"` + id + `","name":"b","kind":"local","source":"/y"}]}`,
+	}
+	for name, doc := range cases {
+		if _, err := Decode([]byte(doc)); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	path := filepath.Join(t.TempDir(), "work.json")
+	if err := os.WriteFile(path, []byte(cases["unknown field"]), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); diag.ExitCode(err) != diag.BootstrapFailed.Code {
+		t.Errorf("Load(unknown field) exit = %d", diag.ExitCode(err))
+	}
 }

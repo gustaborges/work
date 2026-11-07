@@ -26,7 +26,7 @@ grep '"status": "in-progress"' $WS/in-progress/src_add-retry-logic/work-state.js
 grep '"start_mode": "new"' $WS/in-progress/src_add-retry-logic/work-state.json
 grep '"branch": "add-retry-logic"' $WS/in-progress/src_add-retry-logic/work-state.json
 grep '"base_branch": "main"' $WS/in-progress/src_add-retry-logic/work-state.json
-grep '"branch_convention": "freeform"' $WS/in-progress/src_add-retry-logic/work-state.json
+grep '"branch_convention": "work-reference@builtin/freeform"' $WS/in-progress/src_add-retry-logic/work-state.json
 grep '"starter": "local-path-starter"' $WS/in-progress/src_add-retry-logic/work-state.json
 
 # Worktree HEAD is the new branch.
@@ -40,9 +40,9 @@ exec git -C $WORK/src status --porcelain
 ! stdout .
 
 # First run performed the offline bootstrap (binary name is .exe on Windows).
-exists $WORK/dothome/plugins/work-reference/plugin.json
-[!windows] exists $WORK/dothome/plugins/work-reference/source/starter
-[windows] exists $WORK/dothome/plugins/work-reference/source/starter.exe
+exists $WORK/dothome/plugins/builtin/work-reference/source/plugin.json
+[!windows] exists $WORK/dothome/plugins/builtin/work-reference/source/starter
+[windows] exists $WORK/dothome/plugins/builtin/work-reference/source/starter.exe
 exists $WORK/dothome/state/registry.json
 grep 'filesystem-repository-locator' $WORK/dothome/config/work.json
 

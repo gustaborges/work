@@ -87,7 +87,7 @@ func PublishLink(ctx context.Context, p PublishParams) (PublishResult, error) {
 		if latest.Key != p.Component.Key {
 			return result, diag.New(diag.ManualComponentUnavailable, "the selected manual Linker's key has changed; select it again")
 		}
-	} else if semconv.ValidatePublished(reg.PluginNameOf(p.Component.Alias), p.Component.Key) != nil {
+	} else if semconv.ValidatePublished(p.Component.Provider.Plugin, p.Component.Key) != nil {
 		return result, failure(fmt.Errorf("invalid published key"))
 	}
 	current, err := publicationContext(ctx, p.Expected)

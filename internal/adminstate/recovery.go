@@ -1,17 +1,19 @@
 package adminstate
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/lockfile"
-	"github.com/gustaborges/work/internal/plugin"
+	"github.com/gustaborges/work/internal/pluginid"
 	"github.com/gustaborges/work/internal/workhome"
 )
 
@@ -46,12 +48,14 @@ func loadJournal(h workhome.Home, id string) (*Journal, error) {
 		return nil, recoveryError(err)
 	}
 	var j Journal
-	if json.Unmarshal(b, &j) != nil || j.Schema != 1 || j.ID != id || (j.Phase != "prepared" && j.Phase != "committed") || j.Operation == "" || len(j.Files)+len(j.Moves) == 0 {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	if dec.Decode(&j) != nil || dec.More() || j.Schema != ControlSchema || j.ID != id || (j.Phase != "prepared" && j.Phase != "committed") || j.Operation == "" || len(j.Files)+len(j.Moves) == 0 {
 		return nil, recoveryError(errors.New("malformed transaction journal"))
 	}
 	names := map[string]bool{}
 	for _, f := range j.Files {
-		if statePath(h, f.Name) == "" || names[f.Name] {
+		if !slices.Contains(imageNames, f.Name) || names[f.Name] {
 			return nil, recoveryError(errors.New("unsafe journal image"))
 		}
 		names[f.Name] = true
@@ -61,16 +65,16 @@ func loadJournal(h workhome.Home, id string) (*Journal, error) {
 			}
 		}
 	}
-	names = map[string]bool{}
+	seen := map[pluginid.Provider]bool{}
 	for _, m := range j.Moves {
-		validStage := filepath.Base(m.Stage) == m.Stage && strings.HasPrefix(m.Stage, ".admin-stage-") && m.AfterDigest != ""
+		validStage := workhome.IsStageName(m.Stage) && m.AfterDigest != ""
 		if m.Remove {
 			validStage = m.Stage == "" && m.AfterDigest == ""
 		}
-		if plugin.ValidateAlias(m.Alias) != nil || names[m.Alias] || !validStage || (m.BeforeExists != (m.BeforeDigest != "")) {
+		if m.Provider.Validate() != nil || seen[m.Provider] || !validStage || (m.BeforeExists != (m.BeforeDigest != "")) {
 			return nil, recoveryError(errors.New("unsafe package journal"))
 		}
-		names[m.Alias] = true
+		seen[m.Provider] = true
 	}
 	return &j, nil
 }
@@ -93,7 +97,7 @@ func recoverLocked(h workhome.Home) ([]string, error) {
 		if err != nil {
 			return nil, recoveryError(err)
 		}
-		if err = saveJSON(h.AdministrationFile(), Control{Schema: 1, Epoch: c.Epoch + 1, Status: "stable"}); err != nil {
+		if err = saveJSON(h.AdministrationFile(), Control{Schema: ControlSchema, Epoch: c.Epoch + 1, Status: "stable"}); err != nil {
 			return nil, recoveryError(err)
 		}
 		recovered = append(recovered, j.Operation)
@@ -104,7 +108,7 @@ func recoverLocked(h workhome.Home) ([]string, error) {
 	// Unreferenced evidence is cleanup-only. It can never restore live state.
 	entries, err := os.ReadDir(h.AdministrationDir())
 	if errors.Is(err, os.ErrNotExist) {
-		return recovered, sweepOrphanStages(h)
+		return recovered, collectOrphans(h)
 	}
 	if err != nil {
 		return recovered, recoveryError(err)
@@ -135,7 +139,7 @@ func recoverLocked(h workhome.Home) ([]string, error) {
 		}
 		recovered = append(recovered, j.Operation)
 	}
-	return recovered, sweepOrphanStages(h)
+	return recovered, collectOrphans(h)
 }
 func exists(path string) bool { _, err := os.Lstat(path); return err == nil }
 func verifyTree(path, want string) error {
@@ -159,8 +163,14 @@ func restoreBeforeContext(ctx context.Context, h workhome.Home, j *Journal) erro
 			return err
 		}
 		m := j.Moves[i]
-		dest := filepath.Join(h.PluginsDir(), m.Alias)
-		backup := backupPath(h, j.ID, m.Alias)
+		dest, err := h.PackageRoot(m.Provider)
+		if err != nil {
+			return err
+		}
+		backup, err := h.BackupPath(j.ID, m.Provider)
+		if err != nil {
+			return err
+		}
 		if m.BeforeExists {
 			if exists(backup) {
 				if err := verifyTree(backup, m.BeforeDigest); err != nil {
@@ -173,6 +183,9 @@ func restoreBeforeContext(ctx context.Context, h workhome.Home, j *Journal) erro
 					if err := os.RemoveAll(dest); err != nil {
 						return err
 					}
+				}
+				if err := ensureNamespace(h, m.Provider.Marketplace); err != nil {
+					return err
 				}
 				if err := os.Rename(backup, dest); err != nil {
 					return err
@@ -187,6 +200,7 @@ func restoreBeforeContext(ctx context.Context, h workhome.Home, j *Journal) erro
 			if err := os.RemoveAll(dest); err != nil {
 				return err
 			}
+			pruneNamespace(h, m.Provider.Marketplace)
 		}
 	}
 	for _, f := range j.Files {
@@ -209,7 +223,10 @@ func restoreAfterContext(ctx context.Context, h workhome.Home, j *Journal) error
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		dest := filepath.Join(h.PluginsDir(), m.Alias)
+		dest, err := h.PackageRoot(m.Provider)
+		if err != nil {
+			return err
+		}
 		if m.Remove {
 			if _, err := os.Lstat(dest); !errors.Is(err, os.ErrNotExist) {
 				return errors.New("committed removal has unexpected package evidence")
@@ -232,7 +249,11 @@ func restoreAfterContext(ctx context.Context, h workhome.Home, j *Journal) error
 }
 func cleanup(h workhome.Home, j *Journal) error {
 	for _, m := range j.Moves {
-		paths := []string{backupPath(h, j.ID, m.Alias)}
+		backup, err := h.BackupPath(j.ID, m.Provider)
+		if err != nil {
+			return err
+		}
+		paths := []string{backup}
 		if !m.Remove {
 			paths = append(paths, filepath.Join(h.PluginsDir(), m.Stage))
 		}
@@ -240,6 +261,9 @@ func cleanup(h workhome.Home, j *Journal) error {
 			if err := os.RemoveAll(p); err != nil {
 				return err
 			}
+		}
+		if m.Remove {
+			pruneNamespace(h, m.Provider.Marketplace)
 		}
 	}
 	dir, err := h.TransactionDir(j.ID)
@@ -262,32 +286,20 @@ func reportRecovery(ctx context.Context, operations []string) {
 	}
 }
 
-func sweepOrphanStages(h workhome.Home) error {
-	entries, err := os.ReadDir(h.PluginsDir())
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return recoveryError(err)
-	}
-	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), ".admin-stage-") {
-			if err := os.RemoveAll(filepath.Join(h.PluginsDir(), e.Name())); err != nil {
-				return recoveryError(err)
-			}
-		}
-	}
-	return nil
-}
-
 // recoveryCommand maps a journal operation label to the command the user can
 // rerun. Labels that are not direct user commands (automatic setup, start)
 // fall back to generic wording rather than naming a command nobody typed.
 func recoveryCommand(operation string) string {
 	words := strings.Fields(operation)
+	if len(words) >= 4 && words[0] == "work" && words[1] == "plugin" && words[2] == "marketplace" {
+		switch words[3] {
+		case "add", "upgrade":
+			return "work plugin marketplace " + words[3]
+		}
+	}
 	if len(words) >= 3 && words[0] == "work" {
 		switch words[1] + " " + words[2] {
-		case "plugin install", "plugin enable", "plugin disable", "plugin update", "plugin uninstall", "repository policy", "repository root", "convention set":
+		case "plugin enable", "plugin disable", "plugin uninstall", "repository policy", "repository root", "convention set":
 			return "work " + words[1] + " " + words[2]
 		}
 	}

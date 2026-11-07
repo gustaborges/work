@@ -5,11 +5,11 @@
 bootstrapseed
 
 work repository locator list
-stdout 'work-reference/filesystem-repository-locator'
+stdout 'work-reference@builtin/filesystem-repository-locator'
 stdout '\(in policy\)'
 
 work repository locator list --json
-stdout '"ref": "work-reference/filesystem-repository-locator"'
+stdout '"ref": "work-reference@builtin/filesystem-repository-locator"'
 stdout '"accepts"'
 stdout '"name"'
 stdout '"git_fetch_urls"'
@@ -19,10 +19,10 @@ stdout '"in_policy": true'
 registerlocator acme corp-index name query
 
 work repository locator list
-stdout 'acme/corp-index'
+stdout 'acme@m/corp-index'
 
 work repository locator list --json
-stdout '"ref": "acme/corp-index"'
+stdout '"ref": "acme@m/corp-index"'
 stdout '"in_policy": false'
 
 # Purity: listing twice in a row does not change work.json.

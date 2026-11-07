@@ -1,0 +1,23 @@
+{
+  "name": "gamma",
+  "version": "1.0.0",
+  "components": [
+    {
+      "name": "run-gamma",
+      "role": "linker",
+      "key": "fixture.gamma",
+      "entrypoint": "bin/tool",
+      "manual": {
+        "display_name": "gamma"
+      }
+    }
+  ],
+  "conventions": [
+    {
+      "name": "freeform",
+      "prefixes": [
+        "{slug}"
+      ]
+    }
+  ]
+}

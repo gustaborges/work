@@ -19,7 +19,7 @@ func manualProviders(reg *registry.Registry, role string) []registry.Component {
 		if c.Manual == nil || strings.TrimSpace(c.Manual.DisplayName) == "" {
 			continue
 		}
-		if role == plugin.RoleLinker && semconv.ValidatePublished(reg.PluginNameOf(c.Alias), c.Key) != nil {
+		if role == plugin.RoleLinker && semconv.ValidatePublished(c.Provider.Plugin, c.Key) != nil {
 			continue
 		}
 		out = append(out, c)

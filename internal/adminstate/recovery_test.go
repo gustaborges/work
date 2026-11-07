@@ -8,13 +8,10 @@ import (
 	"testing"
 
 	"github.com/gustaborges/work/internal/diag"
-	"github.com/gustaborges/work/internal/registry"
+	"github.com/gustaborges/work/internal/pluginid"
+	"github.com/gustaborges/work/internal/repoconv"
 	"github.com/gustaborges/work/internal/workhome"
 )
-
-func testPackage(alias string) registry.Package {
-	return registry.Package{Alias: alias, Origin: registry.OriginLocalPinned, Reference: "fixture"}
-}
 
 // A real process termination bypasses compensation and defers.
 func TestAdminInterrupt(t *testing.T) {
@@ -83,22 +80,24 @@ func TestAdminInterruptPackageMoves(t *testing.T) {
 		h := workhome.At(root)
 		point := os.Getenv("WORK_TEST_ADMIN_POINT")
 		_ = withWrite(context.Background(), h, "work plugin disable a b", func(s *Session) error {
-			for _, alias := range []string{"a", "b"} {
-				stage, err := os.MkdirTemp(h.PluginsDir(), ".admin-stage-")
+			for _, p := range []pluginid.Provider{prov("a", "m"), prov("b", "n")} {
+				stage, err := s.NewStage()
 				if err != nil {
 					return err
 				}
-				if err = os.WriteFile(filepath.Join(stage, "new"), []byte(alias+"after"), 0600); err != nil {
+				if err = os.WriteFile(filepath.Join(stage, "new"), []byte(p.Plugin+"after"), 0600); err != nil {
 					return err
 				}
-				if err = s.Replace(alias, stage); err != nil {
+				if err = s.Replace(p, stage); err != nil {
 					return err
 				}
-				s.Registry.UpsertPackage(testPackage(alias))
+				s.Registry.UpsertPackage(testPackage(p))
 			}
 			s.Config.Workspace = "after"
-			s.Memory.Set("identity", "after")
+			s.Memory.Set("identity", repoconv.NewReference(pluginid.BuiltinRegistrationID, pluginid.Ref{Provider: prov("a", "builtin"), Name: "after"}))
 			s.Lifecycle.Initialized = true
+			s.Catalogs.Catalogs = s.Catalogs.Catalogs[:0]
+			s.Persist("catalogs")
 			return nil
 		}, func(p string) error {
 			if p == point {
@@ -108,20 +107,14 @@ func TestAdminInterruptPackageMoves(t *testing.T) {
 		})
 		os.Exit(78)
 	}
-	for _, point := range []string{"prepared", "pending", "move-backup:a", "move-publish:a", "move-backup:b", "move-publish:b", "json:config", "json:registry", "json:memory", "json:lifecycle", "before-commit", "committed", "stable", "cleanup"} {
+	for _, point := range []string{"prepared", "pending", "move-backup:a@m", "move-publish:a@m", "move-backup:b@n", "move-publish:b@n", "json:config", "json:registry", "json:memory", "json:lifecycle", "json:catalogs", "before-commit", "committed", "stable", "cleanup"} {
 		t.Run(point, func(t *testing.T) {
 			h := workhome.At(t.TempDir())
 			if err := h.EnsureLayout(); err != nil {
 				t.Fatal(err)
 			}
-			for _, alias := range []string{"a", "b"} {
-				dest := filepath.Join(h.PluginsDir(), alias)
-				if err := os.MkdirAll(dest, 0700); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(filepath.Join(dest, "old"), []byte(alias+"before"), 0600); err != nil {
-					t.Fatal(err)
-				}
+			for _, p := range []pluginid.Provider{prov("a", "m"), prov("b", "n")} {
+				seedRoot(t, h, p, "old", p.Plugin+"before")
 			}
 			cmd := exec.Command(os.Args[0], "-test.run=^TestAdminInterruptPackageMoves$")
 			cmd.Env = append(os.Environ(), "WORK_TEST_ADMIN_MOVE_HOME="+h.Root(), "WORK_TEST_ADMIN_POINT="+point)
@@ -132,14 +125,15 @@ func TestAdminInterruptPackageMoves(t *testing.T) {
 				t.Fatal(err)
 			}
 			committed := point == "committed" || point == "stable" || point == "cleanup"
-			for _, alias := range []string{"a", "b"} {
-				name, want := "old", alias+"before"
+			for _, p := range []pluginid.Provider{prov("a", "m"), prov("b", "n")} {
+				name, want := "old", p.Plugin+"before"
 				if committed {
-					name, want = "new", alias+"after"
+					name, want = "new", p.Plugin+"after"
 				}
-				b, err := os.ReadFile(filepath.Join(h.PluginsDir(), alias, name))
+				root, _ := h.PackageRoot(p)
+				b, err := os.ReadFile(filepath.Join(root, name))
 				if err != nil || string(b) != want {
-					t.Fatalf("package %s: %q %v", alias, b, err)
+					t.Fatalf("package %s: %q %v", p, b, err)
 				}
 			}
 			s, err := Read(context.Background(), h)
@@ -153,19 +147,30 @@ func TestAdminInterruptPackageMoves(t *testing.T) {
 			if err != nil || len(entries) != 2 {
 				t.Fatalf("uncollected package evidence: %v %v", entries, err)
 			}
+			for _, e := range entries {
+				if e.Name() != "m" && e.Name() != "n" {
+					t.Fatalf("stray entry %q", e.Name())
+				}
+			}
 		})
 	}
 }
 
 func TestAdminRecoveryUnsafeRemovalJournal(t *testing.T) {
-	for _, m := range []Move{
-		{Alias: "../outside", Remove: true},
-		{Alias: "a", Remove: true, Stage: ".admin-stage-owned"},
-		{Alias: "a", Remove: true, AfterDigest: "unexpected"},
-		{Alias: "a", Remove: true, BeforeExists: true},
-		{Alias: "a", Remove: true, BeforeDigest: "unexpected"},
+	good := prov("a", "m")
+	for name, m := range map[string]Move{
+		"path-shaped plugin":      {Provider: pluginid.Provider{Marketplace: "m", Plugin: "../outside"}, Remove: true},
+		"path-shaped marketplace": {Provider: pluginid.Provider{Marketplace: "../x", Plugin: "a"}, Remove: true},
+		"empty address":           {Remove: true},
+		"stage on removal":        {Provider: good, Remove: true, Stage: ".admin-stage-owned"},
+		"after digest on removal": {Provider: good, Remove: true, AfterDigest: "unexpected"},
+		"exists without digest":   {Provider: good, Remove: true, BeforeExists: true},
+		"digest without exists":   {Provider: good, Remove: true, BeforeDigest: "unexpected"},
+		"foreign stage":           {Provider: good, Stage: "../escape", AfterDigest: "d"},
+		"unowned stage name":      {Provider: good, Stage: "plain", AfterDigest: "d"},
+		"replacement no digest":   {Provider: good, Stage: ".admin-stage-x"},
 	} {
-		t.Run(m.Alias+m.Stage+m.AfterDigest+m.BeforeDigest, func(t *testing.T) {
+		t.Run(name, func(t *testing.T) {
 			h := workhome.At(t.TempDir())
 			id := "0123456789abcdef0123456789abcdef"
 			dir, err := h.TransactionDir(id)
@@ -175,7 +180,7 @@ func TestAdminRecoveryUnsafeRemovalJournal(t *testing.T) {
 			if err := os.MkdirAll(dir, 0700); err != nil {
 				t.Fatal(err)
 			}
-			j := Journal{Schema: 1, ID: id, Operation: "work plugin uninstall a --yes", Phase: "prepared", Moves: []Move{m}}
+			j := Journal{Schema: 1, ID: id, Operation: "work plugin remove a@m --yes", Phase: "prepared", Moves: []Move{m}}
 			if err := saveJSON(filepath.Join(dir, "journal.json"), j); err != nil {
 				t.Fatal(err)
 			}

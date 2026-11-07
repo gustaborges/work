@@ -13,7 +13,6 @@ import (
 
 	"github.com/gustaborges/work/internal/bootstrap"
 	"github.com/gustaborges/work/internal/config"
-	"github.com/gustaborges/work/internal/convention"
 	"github.com/gustaborges/work/internal/create"
 	"github.com/gustaborges/work/internal/projection"
 	"github.com/gustaborges/work/internal/work/verify"
@@ -77,7 +76,7 @@ func TestStartMachinePortionUnderBudget(t *testing.T) {
 		Branch:          "perf-check",
 		BaseRefname:     "refs/heads/main",
 		BaseBranchShort: "main",
-		Convention:      convention.Freeform,
+		Convention:      "work-reference@builtin/freeform",
 		Starter:         "local-path-starter",
 	})
 	elapsed := time.Since(start)

@@ -1,7 +1,9 @@
 package contract
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -10,9 +12,9 @@ import (
 	"testing"
 
 	"github.com/gustaborges/work/internal/diag"
+	"github.com/gustaborges/work/internal/marketplace"
 	"github.com/gustaborges/work/internal/plugin"
 	"github.com/gustaborges/work/internal/plugininstall"
-	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/semconv"
 	fixtures "github.com/gustaborges/work/tests/fixtures/plugins"
 )
@@ -128,16 +130,35 @@ func TestEveryManifestRuleHasAViolatingFixture(t *testing.T) {
 			if _, err := plugin.Parse(raw); err == nil {
 				t.Fatalf("%s parsed; it must violate %q", r.fixture, r.rule)
 			}
-			// Through the install pipeline the same refusal is plugin-invalid (31).
-			_, err = plugininstall.Install(t.TempDir(), &registry.Registry{}, fixtures.Prepare(t, r.fixture), plugininstall.Options{})
-			if diag.Token(err) != diag.PluginInvalid.Token {
-				t.Errorf("install token = %q, want %q (%v)", diag.Token(err), diag.PluginInvalid.Token, err)
+			// Marketplace discovery rejects the same manifest for the whole offer.
+			dir := fixtures.Prepare(t, r.fixture)
+			catalog := `{"schema":1,"name":"m","plugins":[{"name":"x","path":"plugins/x"}]}`
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, "marketplace.json"), []byte(catalog), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(filepath.Join(root, "plugins"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.CopyFS(filepath.Join(root, "plugins", "x"), os.DirFS(dir)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := marketplace.CaptureLocal(context.Background(), root, filepath.Join(t.TempDir(), "stage"), marketplace.CaptureOptions{}); !errors.Is(err, marketplace.ErrInvalid) {
+				t.Errorf("discovery error = %v, want ErrInvalid", err)
 			}
 		})
 	}
 
 	t.Run("runtime not on PATH", func(t *testing.T) {
-		_, err := plugininstall.Install(t.TempDir(), &registry.Registry{}, fixtures.Prepare(t, "invalid-runtime"), plugininstall.Options{})
+		raw, rerr := os.ReadFile(filepath.Join(fixtures.Prepare(t, "invalid-runtime"), "plugin.json"))
+		if rerr != nil {
+			t.Fatal(rerr)
+		}
+		m, perr := plugin.Parse(raw)
+		if perr != nil {
+			t.Fatalf("invalid-runtime must be a valid manifest: %v", perr)
+		}
+		err := plugininstall.PreflightRuntimes(m)
 		if diag.Token(err) != diag.PluginInstallFailed.Token {
 			t.Errorf("token = %q, want %q (%v)", diag.Token(err), diag.PluginInstallFailed.Token, err)
 		}

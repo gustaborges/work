@@ -2,7 +2,7 @@
 
 **Input**: [plan.md](plan.md), [spec.md](spec.md), research.md, data-model.md, contracts/, quickstart.md and ADR-0030.
 **Created/revised**: 2026-11-07
-**Status**: Planning through tasks only; every task is unchecked future work.
+**Status**: Milestone M1 (T001–T021) implemented and validated; M2–M4 remain pending.
 **Scope correction**: The CLI is unreleased. Existing development plugins/state may break. Implement one purposeful current marketplace model and delete superseded code/tests; no compatibility readers/providers/selectors/adapters, migration/adoption flows, old-journal conversion, old-executable fences or compatibility-only suites.
 
 ## Format and execution rules
@@ -26,8 +26,8 @@
 
 **Independent validation:** Fixture setup must be self-contained, disposable, and usable without external accounts.
 
-- [ ] T001 Record the intended marketplace baseline, native-platform evidence slots and complete release gate in specs/009-marketplace-distribution/checklists/implementation.md; verify PRD FR-79 and ADR-0030 require one current model and deletion of compatibility scaffolding. (FR-001, FR-024)
-- [ ] T002 [P] Create valid single/multiple/homonymous Git/local catalogs and invalid path/schema/name/symlink fixtures in tests/fixtures/marketplaces/; keep fixture package runtimes native or explicitly available. (FR-001, FR-004, FR-025)
+- [X] T001 Record the intended marketplace baseline, native-platform evidence slots and complete release gate in specs/009-marketplace-distribution/checklists/implementation.md; verify PRD FR-79 and ADR-0030 require one current model and deletion of compatibility scaffolding. (FR-001, FR-024)
+- [X] T002 [P] Create valid single/multiple/homonymous Git/local catalogs and invalid path/schema/name/symlink fixtures in tests/fixtures/marketplaces/; keep fixture package runtimes native or explicitly available. (FR-001, FR-004, FR-025)
 
 ### Phase 2 — Shared identity and administrative foundations
 
@@ -35,15 +35,15 @@
 
 **Independent validation:** Current schema/address/recovery/lease cases prove strict validation, pure inspection, exact rollback/commit completion and zero live-stage collection.
 
-- [ ] T003 [P] Add one composed provider/contribution/address grammar, safe portable names, hex-only capture storage and invalid-address tests in internal/pluginid/identity_test.go and internal/workhome/marketplace_test.go. (FR-004, FR-006, FR-024, FR-025)
-- [ ] T004 [P] Add strict current-schema rejection, finite image/address validation and prepared/committed transaction checkpoints in internal/adminstate/marketplace_recovery_test.go; include no prior-format or conversion cases. (FR-013, FR-014, FR-024)
-- [ ] T005 [P] Add deterministic live/dead capture/stage lease, orphan cleanup, cancellation, and unchanged-operation tests in internal/adminstate/lease_test.go. (FR-013, FR-014, FR-024)
-- [ ] T006 Implement the single composed provider/contribution/address model and portable storage resolution in internal/pluginid/identity.go and internal/workhome/workhome.go; remove alias address variants rather than keeping wrappers. (FR-004, FR-006, FR-025)
-- [ ] T007 Replace config, registry and convention memory with one strict current schema-1 shape in internal/config/config.go, internal/registry/registry.go and internal/repoconv/repoconv.go; remove earlier-shape decoders and alternate provider records. (FR-002, FR-006, FR-019, FR-024)
-- [ ] T008 Replace finite administrative load/serialization/no-op comparison and package moves with current catalog images and composed addresses in internal/adminstate/snapshot.go and internal/adminstate/transaction.go; include no schema conversion or old-binary fencing. (FR-002, FR-013, FR-014, FR-024)
-- [ ] T009 Implement one current journal validator, prepared rollback, committed replay, nested owned moves and cleanup in internal/adminstate/recovery.go; delete superseded alias move/recovery helpers and fallback decoders. (FR-013, FR-014, FR-024)
-- [ ] T010 Implement separate process-held per-plan object leases and nonblocking orphan collection in internal/adminstate/lease.go; acquire/validate under administration, release locks before lease-record cleanup, and protect live stages outside journals. (FR-013, FR-014)
-- [ ] T011 Verify fresh-home pure inspection/checks, strict rejection of malformed/unsupported current state and byte/epoch-preserving no-ops in tests/integration/marketplace_state_test.go and tests/integration/admin_purity_test.go; no earlier executable is required. (FR-014, FR-024)
+- [X] T003 [P] Add one composed provider/contribution/address grammar, safe portable names, hex-only capture storage and invalid-address tests in internal/pluginid/identity_test.go and internal/workhome/marketplace_test.go. (FR-004, FR-006, FR-024, FR-025)
+- [X] T004 [P] Add strict current-schema rejection, finite image/address validation and prepared/committed transaction checkpoints in internal/adminstate/marketplace_recovery_test.go; include no prior-format or conversion cases. (FR-013, FR-014, FR-024)
+- [X] T005 [P] Add deterministic live/dead capture/stage lease, orphan cleanup, cancellation, and unchanged-operation tests in internal/adminstate/lease_test.go. (FR-013, FR-014, FR-024)
+- [X] T006 Implement the single composed provider/contribution/address model and portable storage resolution in internal/pluginid/identity.go and internal/workhome/workhome.go; remove alias address variants rather than keeping wrappers. (FR-004, FR-006, FR-025)
+- [X] T007 Replace config, registry and convention memory with one strict current schema-1 shape in internal/config/config.go, internal/registry/registry.go and internal/repoconv/repoconv.go; remove earlier-shape decoders and alternate provider records. (FR-002, FR-006, FR-019, FR-024)
+- [X] T008 Replace finite administrative load/serialization/no-op comparison and package moves with current catalog images and composed addresses in internal/adminstate/snapshot.go and internal/adminstate/transaction.go; include no schema conversion or old-binary fencing. (FR-002, FR-013, FR-014, FR-024)
+- [X] T009 Implement one current journal validator, prepared rollback, committed replay, nested owned moves and cleanup in internal/adminstate/recovery.go; delete superseded alias move/recovery helpers and fallback decoders. (FR-013, FR-014, FR-024)
+- [X] T010 Implement separate process-held per-plan object leases and nonblocking orphan collection in internal/adminstate/lease.go; acquire/validate under administration, release locks before lease-record cleanup, and protect live stages outside journals. (FR-013, FR-014)
+- [X] T011 Verify fresh-home pure inspection/checks, strict rejection of malformed/unsupported current state and byte/epoch-preserving no-ops in tests/integration/marketplace_state_test.go and tests/integration/admin_purity_test.go; no earlier executable is required. (FR-014, FR-024)
 
 ### Phase 3 — US1: Sources and fixed discovery
 
@@ -51,16 +51,16 @@
 
 **Independent validation:** Register a non-Git source and local file:// Git source; disconnect origins and browse unchanged stored offers with zero installation or policy change.
 
-- [ ] T012 [P] [US1] Add strict schema/duplicate-key/full-manifest/portable-name/path-overlap/containment tests and canonical digest-vector checks in internal/marketplace/catalog_test.go and internal/marketplace/digest_test.go. (FR-001, FR-002, FR-025)
-- [ ] T013 [P] [US1] Add local pre/post-content capture, source mutation, exact Git revision/branch, unavailable commit, and snapshot cleanup scenarios in internal/marketplace/source_test.go. (FR-003, FR-007, FR-014, FR-025)
-- [ ] T014 [US1] Implement strict marketplace.json parsing, complete static entry validation, portable collision detection, and self-contained path validation in internal/marketplace/catalog.go. (FR-001, FR-002, FR-025)
-- [ ] T015 [US1] Implement the current package/catalog/capture digest algorithms and vector checks in internal/marketplace/digest.go using specs/009-marketplace-distribution/contracts/digest-vectors.json; use a separate owned-root journal digest where its scope requires it. (FR-003, FR-005, FR-025)
-- [ ] T016 [US1] Extend recorded-default/explicit branch discovery, one revision resolution, and exact committed-tree materialization in internal/gitx/gitx.go; add context cancellation and safe error projection without HEAD fallback. (FR-002, FR-003, FR-007)
-- [ ] T017 [US1] Implement coherent local capture, fixed Git view, and code-owned builtin provider resolution/resources in internal/marketplace/source.go, internal/marketplace/capture.go, seed/marketplace.json, and seed/embed.go; prepare outside administration and publish only complete leased captures. (FR-003, FR-005, FR-014, FR-025)
-- [ ] T018 [US1] Implement source registration/refresh, source-instance continuity, exact-source idempotence, builtin reservation, atomic config/catalog publication and independent upgrade results in internal/marketplaceadmin/sources.go; registration leaves default policy unhandled. (FR-002, FR-003, FR-013, FR-015)
-- [ ] T019 [US1] Implement pure safe source/catalog projection with virtual builtin, missing-catalog diagnostics, optional display names, and complete installed/enabled totals in internal/marketplaceadmin/inventory.go. (FR-002, FR-003, FR-015, FR-020, FR-026)
-- [ ] T020 [US1] Implement source add/list/upgrade and intended errors 57–61 in internal/cli/plugin_marketplace.go and internal/diag/diag.go; use current-purpose names and safe streams without compatibility tokens or command aliases. (FR-002, FR-020, FR-023, FR-026)
-- [ ] T021 [US1] Verify zero-install registration, source collision, official-name spoofing, offline/missing catalogs, no-op refresh, source totals, display-name changes, and independent batch outcomes in tests/integration/marketplace_sources_test.go and tests/contract/marketplace_cli_test.go. (FR-001, FR-002, FR-003, FR-015, FR-017, FR-020, FR-023)
+- [X] T012 [P] [US1] Add strict schema/duplicate-key/full-manifest/portable-name/path-overlap/containment tests and canonical digest-vector checks in internal/marketplace/catalog_test.go and internal/marketplace/digest_test.go. (FR-001, FR-002, FR-025)
+- [X] T013 [P] [US1] Add local pre/post-content capture, source mutation, exact Git revision/branch, unavailable commit, and snapshot cleanup scenarios in internal/marketplace/source_test.go. (FR-003, FR-007, FR-014, FR-025)
+- [X] T014 [US1] Implement strict marketplace.json parsing, complete static entry validation, portable collision detection, and self-contained path validation in internal/marketplace/catalog.go. (FR-001, FR-002, FR-025)
+- [X] T015 [US1] Implement the current package/catalog/capture digest algorithms and vector checks in internal/marketplace/digest.go using specs/009-marketplace-distribution/contracts/digest-vectors.json; use a separate owned-root journal digest where its scope requires it. (FR-003, FR-005, FR-025)
+- [X] T016 [US1] Extend recorded-default/explicit branch discovery, one revision resolution, and exact committed-tree materialization in internal/gitx/gitx.go; add context cancellation and safe error projection without HEAD fallback. (FR-002, FR-003, FR-007)
+- [X] T017 [US1] Implement coherent local capture, fixed Git view, and code-owned builtin provider resolution/resources in internal/marketplace/source.go, internal/marketplace/capture.go, seed/marketplace.json, and seed/embed.go; prepare outside administration and publish only complete leased captures. (FR-003, FR-005, FR-014, FR-025)
+- [X] T018 [US1] Implement source registration/refresh, source-instance continuity, exact-source idempotence, builtin reservation, atomic config/catalog publication and independent upgrade results in internal/marketplaceadmin/sources.go; registration leaves default policy unhandled. (FR-002, FR-003, FR-013, FR-015)
+- [X] T019 [US1] Implement pure safe source/catalog projection with virtual builtin, missing-catalog diagnostics, optional display names, and complete installed/enabled totals in internal/marketplaceadmin/inventory.go. (FR-002, FR-003, FR-015, FR-020, FR-026)
+- [X] T020 [US1] Implement source add/list/upgrade and intended errors 57–61 in internal/cli/plugin_marketplace.go and internal/diag/diag.go; use current-purpose names and safe streams without compatibility tokens or command aliases. (FR-002, FR-020, FR-023, FR-026)
+- [X] T021 [US1] Verify zero-install registration, source collision, official-name spoofing, offline/missing catalogs, no-op refresh, source totals, display-name changes, and independent batch outcomes in tests/integration/marketplace_sources_test.go and tests/contract/marketplace_cli_test.go. (FR-001, FR-002, FR-003, FR-015, FR-017, FR-020, FR-023)
 
 ## Milestone M2 — Independent copies and composed identity
 

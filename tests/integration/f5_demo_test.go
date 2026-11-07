@@ -83,10 +83,10 @@ func TestF5RoadmapJourney(t *testing.T) {
 		t.Errorf("step 2: the Linker's value was not upserted over the Starter's: %q", got)
 	}
 	prov := provenanceOf(t, workHome, a.workID)
-	if p := prov["meta/github.pull_request.number"]; p.SourceComponent != "context-suite/starter" || p.SourceOperation != "start" {
+	if p := prov["meta/github.pull_request.number"]; p.SourceComponent != "context-suite@suite/starter" || p.SourceOperation != "start" {
 		t.Errorf("step 1: metadata provenance = %+v", p)
 	}
-	if p := prov["links/github.pull_request"]; p.SourceComponent != "context-suite/linker" || p.SourceOperation != "discover" {
+	if p := prov["links/github.pull_request"]; p.SourceComponent != "context-suite@suite/linker" || p.SourceOperation != "discover" {
 		t.Errorf("step 2: link provenance = %+v", p)
 	}
 
@@ -97,7 +97,7 @@ func TestF5RoadmapJourney(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(a.dir, "worktree", "notes")); !os.IsNotExist(err) {
 		t.Errorf("step 3: output leaked into the worktree: %v", err)
 	}
-	if !strings.Contains(a.stderr, `warning: extension-output-refused: context-suite/importer2 (import)`) ||
+	if !strings.Contains(a.stderr, `warning: extension-output-refused: context-suite@suite/importer2 (import)`) ||
 		!strings.Contains(a.stderr, `"notes/context.md"`) {
 		t.Errorf("step 4: the colliding Importer was not refused:\n%s", a.stderr)
 	}
@@ -108,7 +108,7 @@ func TestF5RoadmapJourney(t *testing.T) {
 	// Step 5: an automatic extension fails; the start still ends with a
 	// warning, a usable Work and exit 0 (runContextStart fails on non-zero).
 	b := runContextStart(t, bin, env, ws, "failing", "linker-exit1,linker2-none,importer-empty,importer2-empty")
-	if !strings.Contains(b.stderr, "warning: extension-failed: context-suite/linker (discover)") {
+	if !strings.Contains(b.stderr, "warning: extension-failed: context-suite@suite/linker (discover)") {
 		t.Errorf("step 5: no warning for the failed extension:\n%s", b.stderr)
 	}
 	if _, err := os.Stat(filepath.Join(b.dir, "worktree")); err != nil {

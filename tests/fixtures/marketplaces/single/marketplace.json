@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "name": "solo",
+  "plugins": [
+    {
+      "name": "sample",
+      "path": "plugins/sample",
+      "description": "Sample plugin"
+    }
+  ]
+}

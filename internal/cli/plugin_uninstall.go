@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/gustaborges/work/internal/diag"
-	"github.com/gustaborges/work/internal/plugin"
 	"github.com/gustaborges/work/internal/pluginadmin"
 	"github.com/gustaborges/work/internal/present"
 	"github.com/gustaborges/work/internal/workhome"
@@ -15,24 +14,21 @@ import (
 
 func newPluginUninstallCmd() *cobra.Command {
 	var yes, remove bool
-	cmd := &cobra.Command{Use: "uninstall <PLUGIN...>", Short: "Uninstall a reviewed set of plugin packages", SilenceErrors: true, SilenceUsage: true,
+	cmd := &cobra.Command{Use: "uninstall <PLUGIN@MARKETPLACE...>", Short: "Remove a reviewed set of installed plugins", SilenceErrors: true, SilenceUsage: true,
 		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) == 0 {
-				return diag.New(diag.Usage, "supply at least one exact installed plugin alias")
-			}
-			for _, a := range args {
-				if plugin.ValidateAlias(a) != nil {
-					return diag.New(diag.Usage, "supply exact installed plugin aliases")
-				}
-			}
-			return nil
+			_, err := parseProviders(args)
+			return err
 		}, RunE: func(cmd *cobra.Command, args []string) error {
+			providers, err := parseProviders(args)
+			if err != nil {
+				return err
+			}
 			if cmd.Flags().Changed("json") {
 				return diag.New(diag.Usage, "--json is not accepted on plugin uninstall")
 			}
 			interactive := present.IsInteractive()
 			if !interactive && !yes {
-				return diag.New(diag.Usage, "noninteractive uninstall requires explicit aliases and --yes")
+				return diag.New(diag.Usage, "noninteractive removal requires explicit plugins and --yes")
 			}
 			home, err := workhome.Resolve()
 			if err != nil {
@@ -41,7 +37,7 @@ func newPluginUninstallCmd() *cobra.Command {
 			if err = mutationPreflight(cmd, home); err != nil {
 				return err
 			}
-			plan, err := pluginadmin.PlanUninstall(cmd.Context(), home, args)
+			plan, err := pluginadmin.PlanUninstall(cmd.Context(), home, providers)
 			if err != nil {
 				return err
 			}
@@ -49,7 +45,7 @@ func newPluginUninstallCmd() *cobra.Command {
 			dependencies := plan.PolicyReferences()
 			if len(dependencies) > 0 && !remove {
 				if !interactive {
-					return diag.New(diag.PluginPolicyDependency, "uninstall removes policy Locators; explicitly approve --remove-policy-references")
+					return diag.New(diag.PluginPolicyDependency, "removal drops policy Locators; explicitly approve --remove-policy-references")
 				}
 				approved, err := present.Confirm(cmd.Context(), pio, present.ConfirmSpec{Title: "Remove policy references", Impact: safeRemovalReferences(dependencies), Accept: "Remove references", Reject: "Cancel"})
 				if err != nil {
@@ -62,23 +58,24 @@ func newPluginUninstallCmd() *cobra.Command {
 			}
 			if !yes {
 				var impact strings.Builder
-				fmt.Fprintf(&impact, "Uninstall plugins: %s\n", strings.Join(plan.Aliases(), ", "))
+				fmt.Fprintf(&impact, "Remove plugins: %s\n", strings.Join(pluginadmin.ProviderNames(plan.Providers()), ", "))
 				if len(dependencies) > 0 {
 					fmt.Fprintf(&impact, "Policy references removed:\n%s\n", safeRemovalReferences(dependencies))
 				}
 				for _, effect := range plan.ConventionEffects() {
-					fmt.Fprintf(&impact, "Convention %s: available %t → %t; enabled owners: %s → %s\n", effect.Name, effect.AvailableBefore, effect.AvailableAfter, joinOrNone(effect.OwnersBefore), joinOrNone(effect.OwnersAfter))
+					fmt.Fprintf(&impact, "Convention %s: available %t → %t\n", effect.Name, effect.AvailableBefore, effect.AvailableAfter)
 				}
-				for _, alias := range plan.Aliases() {
-					fmt.Fprintf(&impact, "Owned content removed: %s\n", pluginadmin.SafeText(filepath.Join(home.PluginsDir(), alias)))
+				for _, p := range plan.Providers() {
+					root, _ := home.PackageRoot(p)
+					fmt.Fprintf(&impact, "Owned content removed: %s\n", pluginadmin.SafeText(filepath.Clean(root)))
 				}
-				equivalent := append([]string{"plugin", "uninstall"}, plan.Aliases()...)
+				equivalent := append([]string{"plugin", "uninstall"}, pluginadmin.ProviderNames(plan.Providers())...)
 				equivalent = append(equivalent, "--yes")
 				if remove {
 					equivalent = append(equivalent, "--remove-policy-references")
 				}
 				fmt.Fprintf(&impact, "Equivalent: %s\n", safeCommand(equivalent))
-				impact.WriteString("Remembered conventions and existing Works are retained. Linked sources are retained.")
+				impact.WriteString("Remembered conventions and existing Works are retained. The marketplace source and sibling plugins are untouched.")
 				accepted, err := present.Confirm(cmd.Context(), pio, present.ConfirmSpec{Title: "Uninstall plugins", Impact: impact.String(), Accept: "Uninstall", Reject: "Cancel"})
 				if err != nil {
 					return err
@@ -87,16 +84,16 @@ func newPluginUninstallCmd() *cobra.Command {
 					return diag.New(diag.Cancelled, "plugin uninstall declined")
 				}
 			}
-			aliases, err := pluginadmin.Uninstall(cmd.Context(), home, plan, remove)
-			for _, a := range aliases {
-				fmt.Fprintf(cmd.OutOrStdout(), "work: uninstalled %s\n", a)
+			removed, err := pluginadmin.Uninstall(cmd.Context(), home, plan, remove)
+			for _, p := range removed {
+				fmt.Fprintf(cmd.OutOrStdout(), "work: removed %s\n", pluginadmin.SafeText(p.String()))
 			}
 			return err
 		}}
 	cmd.Flags().BoolVar(&yes, "yes", false, "confirm uninstalling the selected plugins (does not approve dependency removal)")
 	cmd.Flags().BoolVar(&remove, "remove-policy-references", false, "approve removing exactly the reviewed policy references owned by the selected plugins")
 	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
-		return diag.Wrap(diag.Usage, err, "invalid uninstall flags; run `work plugin uninstall <alias...> [--yes] [--remove-policy-references]`")
+		return diag.Wrap(diag.Usage, err, "invalid uninstall flags; run `work plugin uninstall <plugin@marketplace...> [--yes] [--remove-policy-references]`")
 	})
 	return cmd
 }

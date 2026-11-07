@@ -14,10 +14,10 @@ func TestAdminInvocationBlocksMaintenance(t *testing.T) {
 	h := workhome.At(t.TempDir())
 	ctx := context.Background()
 	if err := WithWrite(ctx, h, "install", func(s *Session) error {
-		p := testPackage("a")
+		p := testPackage(prov("a", "m"))
 		p.ContentDigest = "blue"
 		s.Registry.UpsertPackage(p)
-		s.Registry.UpsertComponent(registry.Component{Alias: "a", Name: "run", Role: "starter"})
+		s.Registry.UpsertComponent(registry.Component{Provider: prov("a", "m"), Name: "run", Role: "starter", Entrypoint: "run"})
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -43,7 +43,7 @@ func TestAdminInvocationBlocksMaintenance(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := WithWrite(ctx, h, "replace", func(s *Session) error {
-		p, _ := s.Registry.PackageByAlias("a")
+		p, _ := s.Registry.PackageByProvider(prov("a", "m"))
 		p.ContentDigest = "green"
 		s.Registry.UpsertPackage(p)
 		return nil

@@ -33,7 +33,7 @@ func TestF6RoadmapJourney(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.env = append(h.env, "WORK_CD_FILE="+handoff)
-	h.run(t, h.dir, 0, "link", "manual/linker", value)
+	h.run(t, h.dir, 0, "link", "manual-suite@manual/linker", value)
 	if _, err := os.Stat(h.log); !os.IsNotExist(err) {
 		t.Fatal("link launched a plugin", err)
 	}
@@ -41,8 +41,8 @@ func TestF6RoadmapJourney(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, ui = h.run(t, h.dir, 0, "import", "manual/importer")
-	if out != "work: imported "+h.id+" manual/importer 4\n" {
+	out, ui = h.run(t, h.dir, 0, "import", "manual-suite@manual/importer")
+	if out != "work: imported "+h.id+" manual-suite@manual/importer 4\n" {
 		t.Fatal(out, ui)
 	}
 	for _, rel := range []string{"notes/context.md", "refs/source.txt"} {
@@ -74,7 +74,7 @@ func TestF6RoadmapJourney(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &view); err != nil || view.Links["github.pull_request"] != value || ui != "" {
 		t.Fatal(out, ui, err)
 	}
-	for _, args := range [][]string{{"status"}, {"link", "manual/linker", "unused"}, {"import", "manual/importer"}} {
+	for _, args := range [][]string{{"status"}, {"link", "manual-suite@manual/linker", "unused"}, {"import", "manual-suite@manual/importer"}} {
 		out, ui = h.run(t, h.root, 21, args...)
 		if out != "" || strings.Count(ui, "error: target-not-found:") != 1 {
 			t.Fatal(out, ui)

@@ -13,6 +13,7 @@ import (
 	"github.com/gustaborges/work/internal/plugin"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/work"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 )
 
 func TestPublishConcurrentUpdates(t *testing.T) {
@@ -22,7 +23,7 @@ func TestPublishConcurrentUpdates(t *testing.T) {
 	q.Component.Key = "other.link"
 	q.Value = "newer"
 	q.Reload = func() (*registry.Registry, error) {
-		return &registry.Registry{Components: []registry.Component{q.Component}}, nil
+		return installfx.Reg(nil, q.Component), nil
 	}
 	start := make(chan struct{})
 	results := make(chan error, 2)
@@ -109,7 +110,7 @@ func TestPublishRevalidatesAfterLockWait(t *testing.T) {
 	for _, action := range []string{"archive", "disable", "remove", "key-change", "unrelated-update"} {
 		t.Run(action, func(t *testing.T) {
 			p := publication(t)
-			reg := &registry.Registry{Components: []registry.Component{p.Component}}
+			reg := installfx.Reg(nil, p.Component)
 			ready := make(chan struct{})
 			p.Reload = func() (*registry.Registry, error) { <-ready; return reg, nil }
 			release, err := lockfile.Acquire(p.Home.WorkLockPath(p.Expected.State.Work.ID))
@@ -131,8 +132,7 @@ func TestPublishRevalidatesAfterLockWait(t *testing.T) {
 				work.Write(p.Expected.SnapshotPath, st)
 				want = 22
 			case "disable":
-				disabled := false
-				reg.Packages = []registry.Package{{Alias: p.Component.Alias, Enabled: &disabled}}
+				installfx.SetPackageEnabled(reg, p.Component.Provider.Plugin, false)
 				want = 39
 			case "remove":
 				reg.Components = nil
@@ -164,9 +164,8 @@ func TestPublishRevalidatesAfterLockWait(t *testing.T) {
 
 func TestPublishProviderDisabledUnderLock(t *testing.T) {
 	p := publication(t)
-	disabled := false
 	p.Reload = func() (*registry.Registry, error) {
-		return &registry.Registry{Packages: []registry.Package{{Alias: p.Component.Alias, Enabled: &disabled}}, Components: []registry.Component{p.Component}}, nil
+		return installfx.Reg([]string{p.Component.Provider.Plugin}, p.Component), nil
 	}
 	_, err := PublishLink(context.Background(), p)
 	if diag.ExitCode(err) != 39 {
@@ -175,7 +174,7 @@ func TestPublishProviderDisabledUnderLock(t *testing.T) {
 	p.Reload = func() (*registry.Registry, error) {
 		c := p.Component
 		c.Role = plugin.RoleImporter
-		return &registry.Registry{Components: []registry.Component{c}}, nil
+		return installfx.Reg(nil, c), nil
 	}
 	_, err = PublishLink(context.Background(), p)
 	if diag.ExitCode(err) != 39 {

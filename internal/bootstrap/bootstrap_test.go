@@ -1,15 +1,19 @@
 package bootstrap
 
 import (
-	"encoding/json"
+	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
+	"runtime"
+	"sync"
 	"testing"
 
+	"github.com/gustaborges/work/internal/adminstate"
 	"github.com/gustaborges/work/internal/config"
-	"github.com/gustaborges/work/internal/plugin"
-	"github.com/gustaborges/work/internal/plugininstall"
+	"github.com/gustaborges/work/internal/marketplace"
+	"github.com/gustaborges/work/internal/pluginid"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/workhome"
 	"github.com/gustaborges/work/seed"
@@ -23,259 +27,318 @@ func testHome(t *testing.T) workhome.Home {
 	return workhome.At(filepath.Join(t.TempDir(), "dotwork"))
 }
 
-func assertRegistered(t *testing.T, h workhome.Home) {
+func read(t *testing.T, h workhome.Home) *adminstate.Snapshot {
 	t.Helper()
-	reg, err := registry.Load(h.RegistryFile())
+	s, err := adminstate.Read(context.Background(), h)
 	if err != nil {
-		t.Fatalf("registry.Load: %v", err)
+		t.Fatal(err)
 	}
-	starters := reg.ByRole(registry.RoleStarter)
-	locators := reg.ByRole(registry.RoleRepositoryLocator)
-	if len(starters) != 1 || starters[0].Name != componentStarter {
+	return s
+}
+
+// assertInstalled checks the one converged end state: an enabled, independent
+// copy with builtin provenance, its declarations, wrapper metadata and policy.
+func assertInstalled(t *testing.T, h workhome.Home, wantPolicy int) {
+	t.Helper()
+	s := read(t, h)
+	pkg, ok := s.Registry.PackageByProvider(Provider)
+	if !ok || !pkg.Enabled || pkg.ID() != "work-reference@builtin" {
+		t.Fatalf("package = %+v, %v", pkg, ok)
+	}
+	pv := pkg.Provenance
+	if pv.Kind != pluginid.KindBuiltin || pv.RegistrationID != pluginid.BuiltinRegistrationID || pv.Path != seed.ReferencePath {
+		t.Errorf("provenance = %+v", pv)
+	}
+	snap, err := marketplace.BuiltinSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, _ := snap.Offer.Entry(Provider.Plugin)
+	if pkg.ContentDigest != entry.PackageDigest || pv.CatalogDigest != snap.Offer.CatalogDigest || pv.Revision != snap.Revision {
+		t.Errorf("package facts do not match the offer: %+v", pkg)
+	}
+	starters, locators := s.Registry.ByRole(registry.RoleStarter), s.Registry.ByRole(registry.RoleRepositoryLocator)
+	if len(starters) != 1 || starters[0].Name != "local-path-starter" || starters[0].StarterLayer != registry.LayerFallback {
 		t.Errorf("starters = %+v", starters)
 	}
-	if starters[0].StarterLayer != registry.LayerFallback {
-		t.Errorf("starter layer = %q, want fallback", starters[0].StarterLayer)
-	}
-	if len(locators) != 1 || locators[0].Name != componentLocator {
+	if len(locators) != 1 || locators[0].Name != "filesystem-repository-locator" || locators[0].Provider != Provider {
 		t.Errorf("locators = %+v", locators)
 	}
-	if _, ok := reg.ConventionByName(conventionName); !ok {
-		t.Errorf("convention %q not registered", conventionName)
+	if _, ok := s.Registry.ConventionByRef(pluginid.Ref{Provider: Provider, Name: "freeform"}); !ok {
+		t.Error("freeform convention not registered under the provider")
 	}
-
-	cfg, err := config.Load(h.ConfigFile())
-	if err != nil {
-		t.Fatalf("config.Load: %v", err)
+	if s.Inspection[pkg.ID()] != "ready" {
+		t.Errorf("inspection = %v", s.Inspection)
 	}
 	count := 0
-	for _, l := range cfg.RepositoryResolution.Locators {
+	for _, l := range s.Config.RepositoryResolution.Locators {
 		if l == LocatorPolicyEntry {
 			count++
 		}
 	}
-	if count != 1 {
-		t.Errorf("policy has %d entries for the seed locator, want 1: %v", count, cfg.RepositoryResolution.Locators)
+	if count != wantPolicy {
+		t.Errorf("policy has %d seed entries, want %d: %v", count, wantPolicy, s.Config.RepositoryResolution.Locators)
 	}
-
-	src := filepath.Join(h.PluginsDir(), Alias, "source")
-	for _, name := range binaryNames() {
-		if _, err := os.Stat(filepath.Join(src, name)); err != nil {
-			t.Errorf("missing binary %s: %v", name, err)
+	if !s.Lifecycle.Initialized || !s.Lifecycle.PolicyHandled || s.Lifecycle.Removed {
+		t.Errorf("lifecycle = %+v", s.Lifecycle)
+	}
+	root, _ := h.PackageRoot(Provider)
+	for _, f := range []string{".install-meta.json", filepath.Join("source", "plugin.json")} {
+		if _, err := os.Stat(filepath.Join(root, f)); err != nil {
+			t.Errorf("missing %s: %v", f, err)
 		}
 	}
+	ext := ""
+	if runtime.GOOS == "windows" {
+		ext = ".exe"
+	}
+	info, err := os.Stat(filepath.Join(root, "source", "starter"+ext))
+	if err != nil || (runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0) {
+		t.Errorf("starter entrypoint = %v, %v", info, err)
+	}
 }
 
-func TestEnsureSeedHappyPath(t *testing.T) {
+func stray(t *testing.T, h workhome.Home) {
+	t.Helper()
+	entries, _ := os.ReadDir(h.PluginsDir())
+	for _, e := range entries {
+		if e.Name() != pluginid.Builtin {
+			t.Errorf("stray entry %q under plugins/", e.Name())
+		}
+	}
+	if left, _ := os.ReadDir(h.AdministrationDir()); len(left) != 0 {
+		t.Errorf("journal evidence left behind: %v", left)
+	}
+}
+
+func TestFreshSetupInstallsThroughTheCommonEntryAndSeedsPolicyOnce(t *testing.T) {
 	h := testHome(t)
 	if err := EnsureSeed(h); err != nil {
-		t.Fatalf("EnsureSeed: %v", err)
+		t.Fatal(err)
 	}
-	assertRegistered(t, h)
+	assertInstalled(t, h, 1)
+	stray(t, h)
 }
 
-func TestEnsureSeedIdempotent(t *testing.T) {
+func TestSetupRunsOnceAndLaterRunsAreByteIdenticalNoOps(t *testing.T) {
 	h := testHome(t)
-	for i := range 5 {
+	if err := EnsureSeed(h); err != nil {
+		t.Fatal(err)
+	}
+	files := []string{h.ConfigFile(), h.RegistryFile(), h.LifecycleFile(), h.AdministrationFile()}
+	before := map[string]string{}
+	for _, f := range files {
+		b, _ := os.ReadFile(f)
+		before[f] = string(b)
+	}
+	for range 3 {
 		if err := EnsureSeed(h); err != nil {
-			t.Fatalf("EnsureSeed #%d: %v", i, err)
+			t.Fatal(err)
 		}
 	}
-	assertRegistered(t, h)
-
-	// The digest guard means no re-extraction once current.
-	metaPath := filepath.Join(h.PluginsDir(), Alias, ".install-meta.json")
-	before, err := os.Stat(metaPath)
-	if err != nil {
-		t.Fatal(err)
+	for _, f := range files {
+		if b, _ := os.ReadFile(f); string(b) != before[f] {
+			t.Errorf("%s changed on a repeated setup", filepath.Base(f))
+		}
 	}
-	if err := EnsureSeed(h); err != nil {
-		t.Fatal(err)
-	}
-	after, _ := os.Stat(metaPath)
-	if !before.ModTime().Equal(after.ModTime()) {
-		t.Errorf("install metadata was rewritten on a no-op EnsureSeed")
-	}
+	assertInstalled(t, h, 1)
 }
 
-func TestEnsureSeedRepairsStaleDigest(t *testing.T) {
+func TestNeverRepairsOrResurrectsAnInstalledCopy(t *testing.T) {
 	h := testHome(t)
 	if err := EnsureSeed(h); err != nil {
 		t.Fatal(err)
 	}
-	metaPath := filepath.Join(h.PluginsDir(), Alias, ".install-meta.json")
-	if err := os.WriteFile(metaPath, []byte(`{"origin":"embedded-seed","content_digest":"stale","installed_at":"2020-01-01T00:00:00Z"}`), 0o644); err != nil {
+	root, _ := h.PackageRoot(Provider)
+	if err := os.RemoveAll(filepath.Join(root, "source")); err != nil {
 		t.Fatal(err)
 	}
-
-	if err := EnsureSeed(h); err != nil {
-		t.Fatalf("EnsureSeed (repair): %v", err)
+	regBefore, _ := os.ReadFile(h.RegistryFile())
+	for range 2 {
+		if err := EnsureSeed(h); err != nil {
+			t.Fatal(err)
+		}
 	}
-	// Digest restored.
-	data, _ := os.ReadFile(metaPath)
-	var m map[string]string
-	_ = json.Unmarshal(data, &m)
-	if m["content_digest"] == "stale" {
-		t.Errorf("stale digest not repaired")
+	if _, err := os.Stat(filepath.Join(root, "source")); !os.IsNotExist(err) {
+		t.Error("setup silently repaired missing content")
 	}
-	assertRegistered(t, h)
+	if regAfter, _ := os.ReadFile(h.RegistryFile()); string(regAfter) != string(regBefore) {
+		t.Error("setup rewrote the registry")
+	}
+	if s := read(t, h); s.Inspection["work-reference@builtin"] != "content-unavailable" {
+		t.Errorf("inspection = %v", s.Inspection)
+	}
 }
 
-func TestEnsureSeedRepairsPartialPluginDir(t *testing.T) {
+func TestDisabledAndRemovedDefaultsStayThatWay(t *testing.T) {
 	h := testHome(t)
 	if err := EnsureSeed(h); err != nil {
 		t.Fatal(err)
 	}
-	// Remove a binary to simulate an interrupted extraction.
-	src := filepath.Join(h.PluginsDir(), Alias, "source")
-	if err := os.Remove(filepath.Join(src, binaryNames()[0])); err != nil {
+	if err := adminstate.WithWrite(context.Background(), h, "work plugin disable work-reference@builtin", func(s *adminstate.Session) error {
+		p, _ := s.Registry.PackageByProvider(Provider)
+		p.Enabled = false
+		s.Registry.UpsertPackage(p)
+		return nil
+	}); err != nil {
 		t.Fatal(err)
 	}
-
 	if err := EnsureSeed(h); err != nil {
-		t.Fatalf("EnsureSeed (repair partial): %v", err)
+		t.Fatal(err)
 	}
-	assertRegistered(t, h)
+	if s := read(t, h); s.Registry.PackageEnabled(Provider) {
+		t.Fatal("setup re-enabled a disabled default")
+	}
+
+	// A deliberate removal is recorded outside the package and is never undone.
+	if err := adminstate.WithWrite(context.Background(), h, "work plugin remove", func(s *adminstate.Session) error {
+		if err := s.Remove(Provider); err != nil {
+			return err
+		}
+		s.Registry.RemoveProvider(Provider)
+		s.Lifecycle.MarkRemoved()
+		s.Persist("lifecycle")
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := EnsureSeed(h); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := read(t, h)
+	if _, ok := s.Registry.PackageByProvider(Provider); ok || !s.Lifecycle.Removed {
+		t.Fatalf("removed default came back: %+v", s.Lifecycle)
+	}
+	if root, _ := h.PackageRoot(Provider); func() bool { _, err := os.Stat(root); return err == nil }() {
+		t.Error("removed default's content came back")
+	}
 }
 
-func TestEnsureSeedDoesNotDuplicatePolicyEntry(t *testing.T) {
+func TestRegistrationBeforeFirstSetupDoesNotHandlePolicy(t *testing.T) {
 	h := testHome(t)
-	if err := h.EnsureLayout(); err != nil {
+	if err := adminstate.WithWrite(context.Background(), h, "work plugin marketplace add", func(s *adminstate.Session) error {
+		s.Config.Marketplaces = append(s.Config.Marketplaces, config.Marketplace{RegistrationID: "0123456789abcdef0123456789abcdef", Name: "team", Kind: config.KindLocal, Source: "/src"})
+		return nil
+	}); err != nil {
 		t.Fatal(err)
 	}
-	// Pre-seed config already has the locator entry.
-	cfg := config.Default()
-	cfg.RepositoryResolution.Locators = []string{LocatorPolicyEntry}
-	if err := config.Save(h.ConfigFile(), cfg); err != nil {
-		t.Fatal(err)
+	if s := read(t, h); s.Lifecycle.PolicyHandled || s.Lifecycle.Initialized {
+		t.Fatalf("registration marked lifecycle: %+v", s.Lifecycle)
 	}
-
 	if err := EnsureSeed(h); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := config.Load(h.ConfigFile())
-	if len(got.RepositoryResolution.Locators) != 1 {
-		t.Errorf("policy entries = %v, want exactly one", got.RepositoryResolution.Locators)
-	}
+	assertInstalled(t, h, 1)
 }
 
-func TestRegisterComponentsUsesSharedEntryBuilder(t *testing.T) {
-	h := testHome(t)
-	if err := EnsureSeed(h); err != nil {
-		t.Fatalf("EnsureSeed: %v", err)
-	}
-	reg, err := registry.Load(h.RegistryFile())
-	if err != nil {
-		t.Fatal(err)
-	}
-	manifest, err := plugin.Parse(seed.ManifestJSON())
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, c := range manifest.Components {
-		want := plugininstall.ComponentEntry(Alias, c)
-		var got registry.Component
-		for _, r := range reg.Components {
-			if r.Alias == Alias && r.Name == c.Name {
-				got = r
+func TestExplicitPolicyChoiceIsPreservedAcrossFirstSetup(t *testing.T) {
+	for _, name := range []string{"explicit empty policy", "explicit nonempty policy"} {
+		t.Run(name, func(t *testing.T) {
+			h := testHome(t)
+			other := "other@team/locator"
+			if err := adminstate.WithWrite(context.Background(), h, "work repository policy replace", func(s *adminstate.Session) error {
+				if name == "explicit nonempty policy" {
+					s.Config.RepositoryResolution.Locators = []string{other}
+				}
+				s.Lifecycle.PolicyHandled = true
+				s.Persist("lifecycle")
+				return nil
+			}); err != nil {
+				t.Fatal(err)
 			}
-		}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("component %s: registry has %+v, ComponentEntry builds %+v", c.Name, got, want)
-		}
+			if err := EnsureSeed(h); err != nil {
+				t.Fatal(err)
+			}
+			s := read(t, h)
+			want := []string{}
+			if name == "explicit nonempty policy" {
+				want = []string{other}
+			}
+			if fmt.Sprint(s.Config.RepositoryResolution.Locators) != fmt.Sprint(want) {
+				t.Fatalf("policy = %v, want %v", s.Config.RepositoryResolution.Locators, want)
+			}
+			if _, ok := s.Registry.PackageByProvider(Provider); !ok || !s.Lifecycle.Initialized {
+				t.Fatal("the default package must still be installed")
+			}
+		})
 	}
 }
 
-func TestDisabledSeedSurvivesIntegrityAndRepair(t *testing.T) {
-	h := testHome(t)
-	if err := EnsureSeed(h); err != nil {
-		t.Fatal(err)
-	}
-	r, err := registry.Load(h.RegistryFile())
-	if err != nil {
-		t.Fatal(err)
-	}
-	off := false
-	r.UpsertPackage(registry.Package{Alias: Alias, Enabled: &off, Conventions: []string{conventionName}})
-	if err := registry.Save(h.RegistryFile(), r); err != nil {
-		t.Fatal(err)
-	}
-	before, _ := os.ReadFile(filepath.Join(h.PluginsDir(), Alias, ".install-meta.json"))
-	if err := EnsureSeed(h); err != nil {
-		t.Fatal(err)
-	}
-	after, _ := os.ReadFile(filepath.Join(h.PluginsDir(), Alias, ".install-meta.json"))
-	if string(before) != string(after) {
-		t.Fatal("disabled seed reinstalled")
-	}
-	if err := os.Remove(filepath.Join(h.PluginsDir(), Alias, "source", binaryNames()[0])); err != nil {
-		t.Fatal(err)
-	}
-	if err := EnsureSeed(h); err != nil {
-		t.Fatal(err)
-	}
-	r, err = registry.Load(h.RegistryFile())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if r.PackageEnabled(Alias) {
-		t.Fatal("repair lost disablement")
+func TestInterruptedSetupRollsBackAndConverges(t *testing.T) {
+	t.Cleanup(func() { installCheckpoint = nil })
+	for _, phase := range []string{"staged", "staged-complete", "dest-backed-up", "renamed", "registered"} {
+		t.Run(phase, func(t *testing.T) {
+			h := testHome(t)
+			installCheckpoint = func(p string) error {
+				if p == phase {
+					return fmt.Errorf("injected interruption at %s", p)
+				}
+				return nil
+			}
+			if err := EnsureSeed(h); err == nil {
+				t.Skipf("phase %q is not reached on a fresh home", phase)
+			}
+			installCheckpoint = nil
+			if s, err := adminstate.Read(context.Background(), h); err != nil || s.Lifecycle.Initialized || len(s.Registry.Packages) != 0 {
+				t.Fatalf("a failed setup left partial state: %+v %v", s, err)
+			}
+			if err := EnsureSeed(h); err != nil {
+				t.Fatalf("recovery: %v", err)
+			}
+			assertInstalled(t, h, 1)
+			stray(t, h)
+		})
 	}
 }
 
-func TestAdminSeedPreservesDisabledAndPolicy(t *testing.T) {
+func TestConcurrentSetupInstallsOnce(t *testing.T) {
 	h := testHome(t)
-	if err := EnsureSeed(h); err != nil {
-		t.Fatal(err)
+	const goroutines = 12
+	var wg sync.WaitGroup
+	errs := make([]error, goroutines)
+	for i := range goroutines {
+		wg.Go(func() { errs[i] = EnsureSeed(h) })
 	}
-	reg, err := registry.Load(h.RegistryFile())
-	if err != nil {
-		t.Fatal(err)
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("goroutine %d: %v", i, err)
+		}
 	}
-	p, ok := reg.PackageByAlias(Alias)
-	if !ok {
-		t.Fatal("seed has no owned package")
-	}
-	b := false
-	p.Enabled = &b
-	reg.UpsertPackage(p)
-	if err = registry.Save(h.RegistryFile(), reg); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := config.Load(h.ConfigFile())
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg.RepositoryResolution.Locators = []string{}
-	if err = config.Save(h.ConfigFile(), cfg); err != nil {
-		t.Fatal(err)
-	}
-	if err = os.Remove(filepath.Join(h.PluginsDir(), Alias, "source", binaryNames()[0])); err != nil {
-		t.Fatal(err)
-	}
-	if err = EnsureSeed(h); err != nil {
-		t.Fatal(err)
-	}
-	reg, _ = registry.Load(h.RegistryFile())
-	if reg.PackageEnabled(Alias) {
-		t.Fatal("repair enabled disabled package")
-	}
-	cfg, _ = config.Load(h.ConfigFile())
-	if len(cfg.RepositoryResolution.Locators) != 0 {
-		t.Fatal("repair reseeded policy")
-	}
+	assertInstalled(t, h, 1)
+	stray(t, h)
 }
-func TestAdminSeedExistingConfiguration(t *testing.T) {
+
+func TestSetupCollectsAnOrphanStage(t *testing.T) {
 	h := testHome(t)
-	cfg := config.Default()
-	if err := config.Save(h.ConfigFile(), cfg); err != nil {
+	orphan := filepath.Join(h.PluginsDir(), workhome.StagePrefix+"deadbeef")
+	if err := os.MkdirAll(filepath.Join(orphan, "source"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := EnsureSeed(h); err != nil {
 		t.Fatal(err)
 	}
-	cfg, _ = config.Load(h.ConfigFile())
-	if len(cfg.RepositoryResolution.Locators) != 0 {
-		t.Fatal("existing explicit empty policy replaced")
+	if _, err := os.Stat(orphan); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("orphan stage not collected: %v", err)
+	}
+	assertInstalled(t, h, 1)
+}
+
+func TestMalformedLifecycleIsRejectedNotConverted(t *testing.T) {
+	h := testHome(t)
+	if err := os.MkdirAll(h.StateDir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bad := []byte(`{"schema":1,"initialized":true,"policy_seeded":true,"removed":false}`)
+	if err := os.WriteFile(h.LifecycleFile(), bad, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureSeed(h); err == nil {
+		t.Fatal("an earlier-shape lifecycle was accepted")
+	}
+	if got, _ := os.ReadFile(h.LifecycleFile()); string(got) != string(bad) {
+		t.Fatal("the unsupported file was converted or deleted")
 	}
 }

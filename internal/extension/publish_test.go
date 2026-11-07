@@ -15,6 +15,7 @@ import (
 	"github.com/gustaborges/work/internal/work"
 	"github.com/gustaborges/work/internal/workcontext"
 	"github.com/gustaborges/work/internal/workhome"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 )
 
 func publication(t *testing.T) PublishParams {
@@ -33,7 +34,7 @@ func publication(t *testing.T) PublishParams {
 	}
 	c := manualLink("manual")
 	return PublishParams{Home: workhome.At(filepath.Join(t.TempDir(), "home")), Expected: expected, Component: c, Operation: OpLink, Value: " exact $;\n\ttext ", Reload: func() (*registry.Registry, error) {
-		return &registry.Registry{Components: []registry.Component{c}}, nil
+		return installfx.Reg(nil, c), nil
 	}}
 }
 func TestPublishExactAndCurrentSource(t *testing.T) {
@@ -51,7 +52,7 @@ func TestPublishExactAndCurrentSource(t *testing.T) {
 			t.Fatal(result, err)
 		}
 	}
-	if len(entries) != 2 || entries[1].SourceOperation != "link" || entries[1].SourceComponent != "manual/linker" || entries[0].RecordedAt == entries[1].RecordedAt {
+	if len(entries) != 2 || entries[1].SourceOperation != "link" || entries[1].SourceComponent != "manual@m/linker" || entries[0].RecordedAt == entries[1].RecordedAt {
 		t.Fatal(entries)
 	}
 	p.Record = func(workcontext.Context, projection.Provenance) error { return errors.New("index unavailable") }
@@ -86,7 +87,7 @@ func TestPublishRefusalsLeaveBytes(t *testing.T) {
 			c := p.Component
 			c.Key = "another.key"
 			p.Reload = func() (*registry.Registry, error) {
-				return &registry.Registry{Components: []registry.Component{c}}, nil
+				return installfx.Reg(nil, c), nil
 			}
 		}},
 		{"lock failure", 43, func(t *testing.T, p *PublishParams) { os.WriteFile(p.Home.Root(), []byte("file"), 0600) }},

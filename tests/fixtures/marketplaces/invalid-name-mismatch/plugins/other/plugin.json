@@ -1,0 +1,23 @@
+{
+  "name": "other",
+  "version": "1.0.0",
+  "components": [
+    {
+      "name": "run-other",
+      "role": "linker",
+      "key": "fixture.other",
+      "entrypoint": "bin/tool",
+      "manual": {
+        "display_name": "other"
+      }
+    }
+  ],
+  "conventions": [
+    {
+      "name": "freeform",
+      "prefixes": [
+        "{slug}"
+      ]
+    }
+  ]
+}

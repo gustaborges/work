@@ -3,6 +3,7 @@ package present
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -133,6 +134,30 @@ func (m *catalogModel) item() (CatalogItem, bool) {
 	}
 	return CatalogItem{}, false
 }
+
+// tabIDs lists the tabs that have something to show: Installed always, Official
+// only when offered, and the install form only when the spec defines fields.
+func (m *catalogModel) tabIDs() []int {
+	ids := []int{0}
+	if len(m.data.Official) > 0 {
+		ids = append(ids, 1)
+	}
+	if len(m.spec.Fields) > 0 {
+		ids = append(ids, 2)
+	}
+	return ids
+}
+
+// shiftTab moves to the next (delta=1) or previous (delta=-1) visible tab.
+func (m *catalogModel) shiftTab(delta int) {
+	ids := m.tabIDs()
+	at := slices.Index(ids, m.tab)
+	if at < 0 {
+		at = 0
+	}
+	m.selectTab(ids[(at+delta+len(ids))%len(ids)])
+}
+
 func (m *catalogModel) selectTab(tab int) {
 	m.closeReview()
 	m.tab = (tab + 3) % 3
@@ -292,9 +317,9 @@ func (m *catalogModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.editingForm {
 				switch key {
 				case "left", "shift+tab":
-					m.selectTab(m.tab - 1)
+					m.shiftTab(-1)
 				case "right":
-					m.selectTab(m.tab + 1)
+					m.shiftTab(1)
 				case "enter", "tab", "down":
 					m.editingForm = true
 				case "esc":
@@ -353,16 +378,18 @@ func (m *catalogModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "q":
 				return m, tea.Quit
 			case "left", "shift+tab":
-				m.selectTab(m.tab - 1)
+				m.shiftTab(-1)
 			case "right", "tab":
-				m.selectTab(m.tab + 1)
+				m.shiftTab(1)
 			case "r":
 				m.notice = ""
 				m.problem = ""
 				return m, m.load()
 			case "i":
-				m.selectTab(2)
-				m.editingForm = true
+				if len(m.spec.Fields) > 0 {
+					m.selectTab(2)
+					m.editingForm = true
+				}
 			case "/":
 				m.searching = true
 			case "up", "k":
@@ -624,8 +651,13 @@ func (m *catalogModel) itemDetails(item CatalogItem) string {
 		b.WriteString(item.Name + "\n\n")
 	}
 	b.WriteString(item.Details)
+	labelWidth := 9
 	for _, p := range item.Properties {
-		b.WriteString("\n" + m.th.Muted.Render(fmt.Sprintf("%-9s", p.Label)) + p.Value)
+		labelWidth = max(labelWidth, ansi.StringWidth(p.Label)+1)
+	}
+	for _, p := range item.Properties {
+		pad := strings.Repeat(" ", labelWidth-ansi.StringWidth(p.Label))
+		b.WriteString("\n" + m.th.Muted.Render(p.Label+pad) + p.Value)
 	}
 	for _, section := range item.Sections {
 		b.WriteString("\n\n" + m.th.Text.Bold(true).Render(section.Title) + "\n" + section.Content)
@@ -643,16 +675,20 @@ func (m *catalogModel) View() tea.View {
 	if m.screen == catalogReview && m.review != nil {
 		title += " › " + m.review.Title
 	}
-	tabs := []string{fmt.Sprintf("Installed (%d)", len(m.data.Installed)), "Official", "Install plugin"}
-	for i, s := range tabs {
-		if i == m.tab {
-			tabs[i] = m.th.Primary.Bold(true).Underline(true).Render("[" + s + "]")
+	labels := []string{fmt.Sprintf("Installed (%d)", len(m.data.Installed)), "Official", "Install plugin"}
+	tabs := []string{}
+	for _, id := range m.tabIDs() {
+		if id == m.tab {
+			tabs = append(tabs, m.th.Primary.Bold(true).Underline(true).Render("["+labels[id]+"]"))
 		} else {
-			tabs[i] = m.th.Muted.Render(s)
+			tabs = append(tabs, m.th.Muted.Render(labels[id]))
 		}
 	}
 	header := m.th.Text.Bold(true).Render(title) + "\n\n" + strings.Join(tabs, "   ") + "\n\n"
 	footer := "↑↓ select · Enter details · Space toggle · ←→ tabs\n/ search · i install · r refresh · Esc close"
+	if len(m.spec.Fields) == 0 {
+		footer = "↑↓ select · Enter details · Space toggle\n/ search · r refresh · Esc close"
+	}
 	var body string
 	statusText := m.notice
 	if m.problem != "" {

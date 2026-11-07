@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "name": "x",
+  "plugins": [
+    {
+      "name": "Sample",
+      "path": "plugins/a"
+    },
+    {
+      "name": "sample",
+      "path": "plugins/b"
+    }
+  ]
+}

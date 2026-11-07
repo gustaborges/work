@@ -1,34 +1,30 @@
-# US1 keeps exact policy membership and convention memory on package toggles.
+# Package toggles keep exact policy membership and convention memory.
 preparepluginfixture admin-suite SOURCE
-work plugin install $SOURCE --as outside
-work plugin install $SOURCE --as ordered
-work repository policy add ordered/clone
-stdout '^work: policy now ordered/clone$'
+installplugin outside $SOURCE
+installplugin ordered $SOURCE
+work repository policy add admin-suite@ordered/clone
+stdout '^work: policy now admin-suite@ordered/clone$'
 cp $WORK_HOME/config/work.json before.json
-work plugin disable ordered ordered
-stdout '^work: disabled ordered$'
+work plugin disable admin-suite@ordered admin-suite@ordered
+stdout '^work: disabled admin-suite@ordered$'
 work plugin list --json
 stdout '"enabled": false'
 stdout '"version": "release-blue"'
 work repository policy list --json
 stdout '"unavailable_reason": "package-disabled"'
-work plugin enable ordered
-stdout '^work: enabled ordered$'
+work plugin enable admin-suite@ordered
+stdout '^work: enabled admin-suite@ordered$'
 cmp $WORK_HOME/config/work.json before.json
-work plugin disable outside
+work plugin disable admin-suite@outside
 cmp $WORK_HOME/config/work.json before.json
 cp $WORK_HOME/state/registry.json registry-before.json
-! work plugin disable ordered missing
+! work plugin disable admin-suite@ordered missing@ordered
 stderr '^error: usage:'
 cmp $WORK_HOME/state/registry.json registry-before.json
-! work plugin enable ordered --json
+! work plugin enable admin-suite@ordered --json
 stderr '^error: usage:'
 cmp $WORK_HOME/state/registry.json registry-before.json
-
-# Native remote fixture retrieval is entirely offline and pins a local Git SHA.
-preparepluginremote admin-suite REMOTE
-work plugin install $REMOTE --as remote
-work plugin list --json
-stdout '"origin": "remote-pinned"'
-stdout '"version": "release-blue"'
-cmp $WORK_HOME/config/work.json before.json
+# A bare name is not an address: there is no global alias.
+! work plugin disable admin-suite
+stderr '^error: usage:'
+cmp $WORK_HOME/state/registry.json registry-before.json

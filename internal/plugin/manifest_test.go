@@ -59,8 +59,8 @@ func TestParseValid(t *testing.T) {
 			{"name":"l","role":"linker","key":"a.pr","entrypoint":"l","discover":{"automatic":true,"on":[{"event":"start:finalized"}]}}]}`,
 		"automatic without on is accepted": `{"name":"p","version":"1","conventions":[],"components":[
 			{"name":"l","role":"linker","key":"a.pr","entrypoint":"l","discover":{"automatic":true}}]}`,
-		"starters by name and alias/name": `{"name":"p","version":"1","conventions":[],"components":[
-			{"name":"i","role":"importer","entrypoint":"i","on":[{"event":"start:finalized","starters":["s","other/s"]}]}]}`,
+		"starters by name and qualified reference": `{"name":"p","version":"1","conventions":[],"components":[
+			{"name":"i","role":"importer","entrypoint":"i","on":[{"event":"start:finalized","starters":["s","other@market/s"]}]}]}`,
 		"own private linker key": `{"name":"acme-tools","version":"1","conventions":[],"components":[
 			{"name":"l","role":"linker","key":"plugin.acme-tools.build_id","entrypoint":"l","manual":{"display_name":"L"}}]}`,
 		"dotted plugin publishing a public key": `{"name":"foo.bar","version":"1","conventions":[],"components":[
@@ -150,8 +150,11 @@ func TestParseInvalid(t *testing.T) {
 		"blank starters entry": {
 			imp(`"on":[{"event":"start:finalized","starters":[" "]}]`), "starters entry",
 		},
-		"malformed alias/name starters entry": {
-			imp(`"on":[{"event":"start:finalized","starters":["a/"]}]`), "starters entry",
+		"malformed qualified starters entry": {
+			imp(`"on":[{"event":"start:finalized","starters":["a@m/"]}]`), "starters entry",
+		},
+		"retired alias form": {
+			imp(`"on":[{"event":"start:finalized","starters":["other/s"]}]`), "starters entry",
 		},
 		"empty manual display_name": {
 			imp(`"manual":{"display_name":" "}`), "display_name",
@@ -223,24 +226,11 @@ func TestParseRejectsStarterPatternThatDoesNotCompile(t *testing.T) {
 	}
 }
 
-func TestParseRejectsNameThatIsNotAValidAlias(t *testing.T) {
-	for _, name := range []string{"..", ".", "a/b", `a\b`, ".hidden", "x.old", "with space", "-lead"} {
+func TestParseRejectsNameThatIsNotAPortableName(t *testing.T) {
+	for _, name := range []string{"..", ".", "a/b", `a\b`, ".hidden", "x.old", "with space", "-lead", "con", "a@b", "trail."} {
 		in := `{"name":"` + strings.ReplaceAll(name, `\`, `\\`) + `","version":"1","conventions":[],"components":[]}`
 		if _, err := Parse([]byte(in)); err == nil {
 			t.Errorf("name %q accepted, want an alias error", name)
-		}
-	}
-}
-
-func TestValidateAlias(t *testing.T) {
-	for _, ok := range []string{"a", "work-reference", "github_plugin", "p1.2", "A-b.c", "x.olds"} {
-		if err := ValidateAlias(ok); err != nil {
-			t.Errorf("ValidateAlias(%q) = %v, want nil", ok, err)
-		}
-	}
-	for _, bad := range []string{"", " ", "..", ".", "a/b", "a b", ".x", "_x", "x.old", "é"} {
-		if err := ValidateAlias(bad); err == nil {
-			t.Errorf("ValidateAlias(%q) = nil, want an error", bad)
 		}
 	}
 }

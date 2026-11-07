@@ -3,10 +3,10 @@ package contract
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/gustaborges/work/internal/plugininstall"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/work"
 	"github.com/gustaborges/work/internal/workhome"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 	fixtures "github.com/gustaborges/work/tests/fixtures/plugins"
 	"os"
 	"os/exec"
@@ -25,11 +25,9 @@ func TestManualImportProtocolAndResults(t *testing.T) {
 	if err := home.EnsureLayout(); err != nil {
 		t.Fatal(err)
 	}
-	reg := &registry.Registry{}
-	if _, err := plugininstall.Install(home.PluginsDir(), reg, fixtures.Prepare(t, "manual-suite"), plugininstall.Options{Alias: "manual"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.Save(home.RegistryFile(), reg); err != nil {
+	installfx.InstallAs(t, home, "suite", fixtures.Prepare(t, "manual-suite"), true)
+	reg, err := registry.Load(home.RegistryFile())
+	if err != nil {
 		t.Fatal(err)
 	}
 	for _, mode := range []string{"ok", "omitted", "empty", "exit1", "garbage", "overflow", "null", "mixed", "worktree", "snapshot", "apply", "launch"} {
@@ -75,7 +73,7 @@ func TestManualImportProtocolAndResults(t *testing.T) {
 				registry.Save(home.RegistryFile(), reg)
 				t.Cleanup(func() { reg.Components = saved; registry.Save(home.RegistryFile(), reg) })
 			}
-			cmd := exec.Command(bin, "import", "manual/importer")
+			cmd := exec.Command(bin, "import", "manual-suite@suite/importer")
 			cmd.Dir = dir
 			var out, ui bytes.Buffer
 			cmd.Stdout = &out
@@ -91,7 +89,7 @@ func TestManualImportProtocolAndResults(t *testing.T) {
 				t.Fatal(code, want, ui.String())
 			}
 			if want == 0 {
-				if out.String() != "work: imported opaque-id manual/importer "+count+"\n" {
+				if out.String() != "work: imported opaque-id manual-suite@suite/importer "+count+"\n" {
 					t.Fatal(out.String())
 				}
 			} else if out.Len() != 0 || strings.Count(ui.String(), "error:") != 1 {

@@ -10,31 +10,42 @@ import (
 	"testing"
 
 	"github.com/gustaborges/work/internal/adminstate"
-	"github.com/gustaborges/work/internal/registry"
+	"github.com/gustaborges/work/internal/pluginid"
+	"github.com/gustaborges/work/internal/repoconv"
 	"github.com/gustaborges/work/internal/workhome"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 )
+
+// recoveryProviders sit in different marketplaces so a journal exercises two
+// typed addresses and two namespace directories.
+var recoveryProviders = []pluginid.Provider{{Marketplace: "m", Plugin: "a"}, {Marketplace: "n", Plugin: "b"}}
+
+func recoveryReference(name string) repoconv.Reference {
+	return repoconv.NewReference(installfx.RegistrationID("m"), pluginid.Ref{Provider: recoveryProviders[0], Name: name})
+}
 
 func cumulativeRecoveryWrite(home workhome.Home, checkpoint func(string) error) error {
 	return adminstate.WithWriteOptions(context.Background(), home, "work plugin disable a b", func(s *adminstate.Session) error {
-		for _, alias := range []string{"a", "b"} {
-			stage, err := os.MkdirTemp(home.PluginsDir(), ".admin-stage-")
+		for _, p := range recoveryProviders {
+			stage, err := s.NewStage()
 			if err != nil {
 				return err
 			}
-			if err := os.WriteFile(filepath.Join(stage, "after"), []byte(alias+" after"), 0600); err != nil {
+			if err := os.WriteFile(filepath.Join(stage, "after"), []byte(p.Plugin+" after"), 0600); err != nil {
 				return err
 			}
-			if err := s.Replace(alias, stage); err != nil {
+			if err := s.Replace(p, stage); err != nil {
 				return err
 			}
-			p, _ := s.Registry.PackageByAlias(alias)
-			p.Version = "after"
-			s.Registry.UpsertPackage(p)
+			pkg, _ := s.Registry.PackageByProvider(p)
+			pkg.Version = "after"
+			s.Registry.UpsertPackage(pkg)
 		}
 		s.Config.Workspace = "after"
-		s.Memory.Set("identity", "after")
+		s.Memory.Set("identity", recoveryReference("after"))
 		s.Lifecycle.Initialized = true
-		s.Lifecycle.PolicySeeded = true
+		s.Lifecycle.PolicyHandled = true
+		s.Persist("catalogs")
 		return nil
 	}, adminstate.WriteOptions{Checkpoint: checkpoint})
 }
@@ -44,20 +55,25 @@ func cumulativeRecoverySetup(t *testing.T, home workhome.Home) {
 	if err := home.EnsureLayout(); err != nil {
 		t.Fatal(err)
 	}
-	for _, alias := range []string{"a", "b"} {
-		path := filepath.Join(home.PluginsDir(), alias)
+	for _, p := range recoveryProviders {
+		path, err := home.PackageRoot(p)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if err := os.MkdirAll(path, 0700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(path, "before"), []byte(alias+" before"), 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(path, "before"), []byte(p.Plugin+" before"), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if err := adminstate.WithWrite(context.Background(), home, "fixture", func(s *adminstate.Session) error {
 		s.Config.Workspace = "before"
-		s.Memory.Set("identity", "before")
-		for _, alias := range []string{"a", "b"} {
-			s.Registry.UpsertPackage(registry.Package{Alias: alias, Origin: registry.OriginLocalPinned, Reference: "fixture", Version: "before"})
+		s.Memory.Set("identity", recoveryReference("before"))
+		for _, p := range recoveryProviders {
+			pkg := installfx.Package(p, true)
+			pkg.Version = "before"
+			s.Registry.UpsertPackage(pkg)
 		}
 		return nil
 	}); err != nil {
@@ -68,7 +84,7 @@ func cumulativeRecoverySetup(t *testing.T, home workhome.Home) {
 func cumulativeRecoveryState(t *testing.T, home workhome.Home) map[string]map[string]string {
 	t.Helper()
 	out := map[string]map[string]string{"plugins": adminTree(t, home.PluginsDir())}
-	for name, path := range map[string]string{"config": home.ConfigFile(), "registry": home.RegistryFile(), "memory": home.BranchConventionsFile(), "lifecycle": home.ReferencePackageFile()} {
+	for name, path := range map[string]string{"config": home.ConfigFile(), "registry": home.RegistryFile(), "memory": home.BranchConventionsFile(), "lifecycle": home.LifecycleFile(), "catalogs": home.CatalogsFile()} {
 		out[name] = adminTree(t, path)
 	}
 	return out
@@ -95,7 +111,7 @@ func TestAdminRecoveryCumulativeInterruptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	after := cumulativeRecoveryState(t, expectedHome)
-	for _, point := range []string{"prepared", "pending", "move-backup:a", "move-publish:a", "move-backup:b", "move-publish:b", "json:config", "json:registry", "json:memory", "json:lifecycle", "before-commit", "committed", "stable", "cleanup"} {
+	for _, point := range []string{"prepared", "pending", "move-backup:a@m", "move-publish:a@m", "move-backup:b@n", "move-publish:b@n", "json:config", "json:registry", "json:memory", "json:lifecycle", "json:catalogs", "before-commit", "committed", "stable", "cleanup"} {
 		t.Run(point, func(t *testing.T) {
 			home := workhome.At(adminHome(h))
 			if err := os.RemoveAll(home.Root()); err != nil {
@@ -116,11 +132,11 @@ func TestAdminRecoveryCumulativeInterruptions(t *testing.T) {
 					t.Fatal(out, ui)
 				}
 			}
-			h.run(t, h.root, 2, "plugin", "update", "a")
+			h.run(t, h.root, 2, "plugin", "uninstall", "a")
 			if !reflect.DeepEqual(interrupted, adminTree(t, home.Root())) {
 				t.Fatal("read or invalid confirmation recovered state")
 			}
-			out, ui := h.run(t, h.root, 2, "plugin", "enable", "missing")
+			out, ui := h.run(t, h.root, 2, "plugin", "enable", "missing@m")
 			if out != "" || !strings.Contains(ui, "recovered interrupted administrative operation") {
 				t.Fatal(out, ui)
 			}
@@ -155,13 +171,13 @@ func TestAdminRecoveryReadAndStatus(t *testing.T) {
 	}
 	h.run(t, h.dir, 0, "status", "--json")
 	// Invalid option grammar must not enter recovery at all.
-	h.run(t, h.root, 2, "plugin", "install", "https://example.test/plugin", "--link")
-	h.run(t, h.root, 31, "plugin", "install", "missing-source", "--as", "../escape")
+	h.run(t, h.root, 2, "plugin", "marketplace", "add", filepath.Join(h.root, "dir"), "--branch", "main")
+	h.run(t, h.root, 2, "plugin", "marketplace", "add")
 	if !reflect.DeepEqual(before, adminTree(t, home)) {
 		t.Fatal("read recovered or changed pending state")
 	}
 	// A valid mutating invocation reaches recovery before source lookup.
-	h.run(t, h.root, 54, "plugin", "install", filepath.Join(h.root, "missing-source"))
+	h.run(t, h.root, 54, "plugin", "marketplace", "add", filepath.Join(h.root, "missing-source"))
 	// A damaged intermediate config cannot hide recovery from a fully
 	// specified start invocation.
 	if err := os.WriteFile(filepath.Join(home, "config", "work.json"), []byte("{"), 0600); err != nil {

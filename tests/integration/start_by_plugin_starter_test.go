@@ -14,24 +14,35 @@ package integration
 import (
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
+	"github.com/gustaborges/work/internal/workhome"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 	fixtures "github.com/gustaborges/work/tests/fixtures/plugins"
+	"strings"
 )
 
 // installPluginFixture runs `work plugin install <fixture-dir>` to
 // completion (not through the pty — install itself is non-interactive) so a
 // later `work start` pty session sees it already registered.
+// installPluginFixture publishes a fixture plugin into the Work home the binary
+// runs against, as <manifest-name>@suite, through the production journal.
 func installPluginFixture(t *testing.T, bin string, env []string, fixture string) {
 	t.Helper()
-	dir := fixtures.Prepare(t, fixture)
-	cmd := exec.Command(bin, "plugin", "install", dir)
-	cmd.Env = env
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("plugin install %s: %v\n%s", fixture, err, out)
+	installPluginFixtureIn(t, env, "suite", fixture)
+}
+
+// installPluginFixtureIn is installPluginFixture with an explicit marketplace.
+func installPluginFixtureIn(t *testing.T, env []string, marketplace, fixture string) {
+	t.Helper()
+	root := ""
+	for _, e := range env {
+		if v, ok := strings.CutPrefix(e, "WORK_HOME="); ok {
+			root = v
+		}
 	}
+	installfx.InstallAs(t, workhome.At(root), marketplace, fixtures.Prepare(t, fixture), true)
 }
 
 // TestStartByPluginStarterFullJourney: specific-starter's pattern
