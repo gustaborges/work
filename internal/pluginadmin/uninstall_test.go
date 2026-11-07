@@ -230,7 +230,7 @@ func TestUninstallInterruptedProcessRecovers(t *testing.T) {
 				t.Fatal(err)
 			}
 			if point != "stable" {
-				if _, err := adminstate.Read(ctx, h); diag.ExitCode(err) != 54 || !strings.Contains(err.Error(), "plugin uninstall") {
+				if _, err := adminstate.Read(ctx, h); diag.ExitCode(err) != 54 || !strings.Contains(err.Error(), "plugin remove") {
 					t.Fatalf("pending read = %v", err)
 				}
 			}

@@ -42,5 +42,5 @@ func BuiltinSnapshot() (*Snapshot, error) {
 	if offer.Name != pluginid.Builtin {
 		return nil, fmt.Errorf("builtin distribution must publish the %q namespace", pluginid.Builtin)
 	}
-	return &Snapshot{Offer: offer, Source: BuiltinSource, Revision: offer.CaptureDigest()}, nil
+	return &Snapshot{Offer: offer, Source: BuiltinSource, Revision: offer.CaptureDigest(), view: builtinView{}}, nil
 }

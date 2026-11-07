@@ -213,7 +213,7 @@ func TestImportHelpGrammarAndGroup(t *testing.T) {
 
 func TestAdminHubDirectInventoryAndFlags(t *testing.T) {
 	for _, path := range [][]string{
-		{"plugin", "list"}, {"plugin", "enable"}, {"plugin", "disable"}, {"plugin", "uninstall"}, {"plugin", "marketplace", "add"}, {"plugin", "marketplace", "list"}, {"plugin", "marketplace", "upgrade"},
+		{"plugin", "add"}, {"plugin", "list"}, {"plugin", "enable"}, {"plugin", "disable"}, {"plugin", "remove"}, {"plugin", "marketplace", "add"}, {"plugin", "marketplace", "list"}, {"plugin", "marketplace", "upgrade"},
 		{"repository", "locator", "list"}, {"repository", "policy", "list"}, {"repository", "policy", "add"}, {"repository", "policy", "remove"}, {"repository", "policy", "move"}, {"repository", "policy", "replace"},
 		{"repository", "root", "list"}, {"repository", "root", "add"}, {"repository", "root", "remove"}, {"repository", "root", "replace"}, {"convention", "show"}, {"convention", "set"},
 	} {
@@ -222,7 +222,7 @@ func TestAdminHubDirectInventoryAndFlags(t *testing.T) {
 			t.Fatalf("missing direct action %v: %v", path, err)
 		}
 	}
-	for name, flags := range map[string][]string{"uninstall": {"yes", "remove-policy-references"}, "marketplace add": {"branch"}} {
+	for name, flags := range map[string][]string{"add": {"marketplace", "yes", "remove-policy-references"}, "remove": {"marketplace", "yes", "remove-policy-references"}, "marketplace add": {"branch"}} {
 		cmd, _, _ := newRootCmd().Find(strings.Fields("plugin " + name))
 		for _, flag := range flags {
 			if cmd.Flags().Lookup(flag) == nil {

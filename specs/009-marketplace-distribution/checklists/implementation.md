@@ -29,6 +29,28 @@
 
 M1 also performs the identity cutover the later milestones build on: the alias-keyed registry, direct-source installers, link/embedded publishing and the update machinery are removed, and the administrative journal, lifecycle and convention memory take their one current shape. The reference package is installed by first-use setup as `work-reference@builtin`. New publication (resolved-entry install, qualified add/remove, update) arrives in M2/M3; until then tests that need an installed provider use `tests/fixtures/installfx`, which writes through the production journal and registration code.
 
+### M2 — Independent copies and composed identity
+
+| Area | Evidence |
+| --- | --- |
+| Private-key grammar (relative, qualified, core-only storage; dotted names) and ownership | `internal/semconv/provider_test.go`, `internal/plugin/manifest_test.go` |
+| Starter filters: self-package, exact external, unique and ambiguous global | `internal/extension/provider_test.go` |
+| Private inputs and publications bound to the providing source instance | `internal/extension/provider_test.go`, `internal/starter/bind_test.go`, `tests/contract/manual_import_protocol_test.go` |
+| Resolved-entry preparation, selected-only copy, no-op / reinstall boundary, drift, exact Git commit, builtin | `internal/pluginadmin/marketplace_install_test.go` |
+| No standalone publisher in the installer package | `TestInstallerExposesNoStandalonePublisher` |
+| Provider-owned conventions, policy and retained memory | `internal/registry/provider_test.go`, `internal/repoconfig/provider_test.go` |
+| Per-provider and per-source-instance invocation guard | `internal/adminstate/invocation_test.go` |
+| `plugin add|list|remove|enable|disable` grammar, retired forms fail as usage before any state | `internal/cli/plugin_remove_test.go`, `tests/integration/marketplace_install_test.go` |
+| JSON/receipt contracts for add, list `--available`, remove | `tests/contract/provider_identity_test.go` |
+
+Behavior worth knowing when reading the evidence:
+
+- First-use setup and `plugin add work-reference@builtin` share one preparation and registration path (`plugininstall.Prepare`/`Publish`).
+- An explicit add of the reference settles first-use setup and policy (`initialized` and `policy_handled`) without inserting a Locator, so a later setup neither reinstalls it nor seeds the default policy. The broader lifecycle matrix remains M3 (T054–T057).
+- Reinstall (changed fixed content, including an equal opaque version) keeps enablement and needs `--yes` or an interactive acceptance; dropping policy Locators needs `--remove-policy-references` separately.
+- Private values are stored under `plugin.<plugin>@<marketplace>~<registration_id>.<local>`; `work status` currently prints stored keys as written.
+- `plugin remove` is the former uninstall (journal label `work plugin remove`); `plugin update` arrives in M3.
+
 ### Commands run (fill in with real outcomes)
 
 | Command | Platform | Outcome |
@@ -37,6 +59,9 @@ M1 also performs the identity cutover the later milestones build on: the alias-k
 | `go test ./internal/adminstate ./internal/pluginadmin ./internal/bootstrap` | linux/amd64 | passed |
 | `go test -race ./internal/adminstate ./internal/marketplaceadmin` | linux/amd64 | passed |
 | `go test ./...` | linux/amd64 | see M1 completion record below |
+| `go test -count=1 ./...` (after M2) | linux/amd64 | passed |
+| `go vet ./...`, `gofmt -l .`, `go tool staticcheck ./...` (after M2) | linux/amd64 | clean |
+| `go test -race ./internal/adminstate ./internal/marketplaceadmin ./internal/pluginadmin ./internal/extension ./internal/semconv ./internal/starter` | linux/amd64 | passed |
 
 ## Native platform evidence slots (T076)
 
@@ -52,7 +77,7 @@ Cross-compilation (`make release`) is not execution evidence.
 
 Public delivery requires all of: M1–M4 complete; every P01–P12 / S01–S12 case verified; current-only code, tests and docs; native three-OS outcomes recorded above; and the owner-authorized real initial `work` publication evidenced (T071, T072). Local fixtures do not satisfy the publication gate.
 
-- [ ] M2 complete
+- [x] M2 complete
 - [ ] M3 complete
 - [ ] M4 complete
 - [ ] Owner-confirmed official origin recorded (T071)

@@ -11,12 +11,12 @@ func TestPluginExplicitHelpExitZero(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
 	}
-	for _, want := range []string{"list", "marketplace", "enable", "disable", "uninstall"} {
+	for _, want := range []string{"add", "list", "marketplace", "enable", "disable", "remove"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help missing %q:\n%s", want, out)
 		}
 	}
-	for _, retired := range []string{"  install ", "  update "} {
+	for _, retired := range []string{"  install ", "  uninstall ", "  update "} {
 		if strings.Contains(out, retired) {
 			t.Errorf("help advertises a retired command %q:\n%s", retired, out)
 		}

@@ -320,14 +320,14 @@ func validateActivation(c Component, pluginName string) error {
 	if c.Manual != nil && strings.TrimSpace(c.Manual.DisplayName) == "" {
 		return fmt.Errorf("manual.display_name must be a non-empty string")
 	}
-	if err := validateInputs(c.Inputs); err != nil {
+	if err := validateInputs(pluginName, c.Inputs); err != nil {
 		return err
 	}
 	if d := c.Discover; d != nil {
 		if err := validateSubscriptions("discover.on", d.On, d.On != nil); err != nil {
 			return err
 		}
-		if err := validateInputs(d.Inputs); err != nil {
+		if err := validateInputs(pluginName, d.Inputs); err != nil {
 			return fmt.Errorf("discover: %w", err)
 		}
 	}
@@ -366,13 +366,20 @@ func validStarterRef(s string) bool {
 }
 
 // validateInputs parses every entry and rejects a key repeated in any
-// namespace: the delivered document is keyed by the bare key.
-func validateInputs(inputs []string) error {
+// namespace: the delivered document is keyed by the bare key. A relative
+// private key must name the declaring plugin; reading another provider's data
+// takes the explicit qualified spelling.
+func validateInputs(declarer string, inputs []string) error {
 	seen := map[string]string{}
 	for _, raw := range inputs {
 		in, err := ParseInput(raw)
 		if err != nil {
 			return err
+		}
+		if in.Source != SourceWork {
+			if err := semconv.ValidateOwnInput(declarer, in.Key); err != nil {
+				return fmt.Errorf("inputs entry %q: %w", raw, err)
+			}
 		}
 		if prev, dup := seen[in.Key]; dup {
 			return fmt.Errorf("inputs entries %q and %q name the same key %q", prev, raw, in.Key)

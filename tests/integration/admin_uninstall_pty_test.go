@@ -21,7 +21,7 @@ func TestAdminUninstallInteractiveDependencyReview(t *testing.T) {
 		}
 	}
 	before := adminTree(t, home)
-	c := newConsoleIn(t, dir, bin, env, "plugin", "uninstall", "admin-suite@a", "--yes")
+	c := newConsoleIn(t, dir, bin, env, "plugin", "remove", "admin-suite@a", "--yes")
 	c.expect("Remove policy references")
 	c.expect("admin-suite@a/clone")
 	c.send("n")
@@ -31,7 +31,7 @@ func TestAdminUninstallInteractiveDependencyReview(t *testing.T) {
 	if !reflect.DeepEqual(before, adminTree(t, home)) {
 		t.Fatal("dependency refusal changed home")
 	}
-	c = newConsoleIn(t, dir, bin, env, "plugin", "uninstall", "admin-suite@a")
+	c = newConsoleIn(t, dir, bin, env, "plugin", "remove", "admin-suite@a")
 	c.expect("Remove policy references")
 	c.expect("admin-suite@a/clone")
 	c.send("y")
@@ -44,7 +44,7 @@ func TestAdminUninstallInteractiveDependencyReview(t *testing.T) {
 	if strings.Contains(c.screen(), "work: removed") || !reflect.DeepEqual(before, adminTree(t, home)) {
 		t.Fatal("uninstall refusal changed home")
 	}
-	c = newConsoleIn(t, dir, bin, env, "plugin", "uninstall", "admin-suite@a")
+	c = newConsoleIn(t, dir, bin, env, "plugin", "remove", "admin-suite@a")
 	c.expect("Remove policy references")
 	c.send("y")
 	c.expect("Remove plugins")

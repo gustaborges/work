@@ -290,6 +290,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		if verr := starter.ValidateResponse(ref, comp.Provider.Plugin); verr != nil {
 			return present.Fatal(verr)
 		}
+		ref = starter.Bind(ref, comp, reg)
 		starterBaseBranch = ref.BaseBranch
 		starterStartModes = ref.StartModes
 		starterMeta = ref.Meta

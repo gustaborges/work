@@ -132,7 +132,7 @@ func TestAdminRecoveryCumulativeInterruptions(t *testing.T) {
 					t.Fatal(out, ui)
 				}
 			}
-			h.run(t, h.root, 2, "plugin", "uninstall", "a")
+			h.run(t, h.root, 2, "plugin", "remove", "a")
 			if !reflect.DeepEqual(interrupted, adminTree(t, home.Root())) {
 				t.Fatal("read or invalid confirmation recovered state")
 			}

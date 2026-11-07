@@ -9,16 +9,13 @@ import (
 	"context"
 	"errors"
 	"os"
-	"path/filepath"
 	"slices"
 
 	"github.com/gustaborges/work/internal/adminstate"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/marketplace"
-	"github.com/gustaborges/work/internal/plugin"
 	"github.com/gustaborges/work/internal/pluginid"
 	"github.com/gustaborges/work/internal/plugininstall"
-	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/workhome"
 )
 
@@ -92,33 +89,15 @@ func EnsureSeedLocked(h workhome.Home, s *adminstate.Session) error {
 }
 
 // installLocked publishes the builtin reference entry as an independent managed
-// copy and registers it as enabled. The copy comes from the code-owned offer
-// through the same tree and registration steps every marketplace entry uses.
+// copy and registers it as enabled. It resolves the code-owned offer and runs
+// the same validation, copy and registration every marketplace entry goes
+// through, so the default has no installation path of its own.
 func installLocked(h workhome.Home, s *adminstate.Session, snap *marketplace.Snapshot) error {
-	entry, ok := snap.Offer.Entry(Provider.Plugin)
-	if !ok {
+	entry, err := snap.Resolve(pluginid.BuiltinRegistrationID, Provider.Plugin)
+	if err != nil {
 		return errors.New("the included offer does not contain the reference package")
 	}
-	tree, err := marketplace.BuiltinView().PackageTree(entry.Path)
-	if err != nil {
-		return err
-	}
-	raw, err := tree.ReadFile("plugin.json")
-	if err != nil {
-		return err
-	}
-	manifest, err := plugin.Parse(raw)
-	if err != nil {
-		return err
-	}
-	spec := plugininstall.Spec{
-		Provider: Provider, Manifest: manifest, Enabled: true, ContentDigest: entry.PackageDigest,
-		Provenance: registry.Provenance{
-			RegistrationID: pluginid.BuiltinRegistrationID, Kind: pluginid.KindBuiltin, Source: pluginid.Builtin,
-			MarketplaceName: Provider.Marketplace, PluginName: Provider.Plugin, Path: entry.Path,
-			Revision: snap.Revision, CatalogDigest: snap.Offer.CatalogDigest,
-		},
-	}
+	defer entry.Close()
 	stage, err := s.NewStage()
 	if err != nil {
 		return err
@@ -132,19 +111,16 @@ func installLocked(h workhome.Home, s *adminstate.Session, snap *marketplace.Sna
 	if err = checkpoint("staged"); err != nil {
 		return err
 	}
-	if err = tree.CopyTo(filepath.Join(stage, "source")); err != nil {
-		return err
-	}
-	if err = plugininstall.WriteMeta(stage, spec); err != nil {
+	prepared, err := plugininstall.Prepare(entry, stage)
+	if err != nil {
 		return err
 	}
 	if err = checkpoint("staged-complete"); err != nil {
 		return err
 	}
-	if err = s.Replace(Provider, stage); err != nil {
+	if _, err = prepared.Publish(s, true); err != nil {
 		return err
 	}
 	transferred = true
-	_, err = plugininstall.Register(s.Registry, spec)
-	return err
+	return nil
 }

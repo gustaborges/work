@@ -63,6 +63,10 @@ func TestParseValid(t *testing.T) {
 			{"name":"i","role":"importer","entrypoint":"i","on":[{"event":"start:finalized","starters":["s","other@market/s"]}]}]}`,
 		"own private linker key": `{"name":"acme-tools","version":"1","conventions":[],"components":[
 			{"name":"l","role":"linker","key":"plugin.acme-tools.build_id","entrypoint":"l","manual":{"display_name":"L"}}]}`,
+		"dotted plugin owning its escaped private key": `{"name":"foo.bar","version":"1","conventions":[],"components":[
+			{"name":"l","role":"linker","key":"plugin.foo%2Ebar.x","entrypoint":"l","manual":{"display_name":"L"}}]}`,
+		"own and explicitly qualified private inputs": `{"name":"p","version":"1","conventions":[],"components":[
+			{"name":"i","role":"importer","entrypoint":"i","on":[{"event":"start:finalized"}],"inputs":["meta:plugin.p.build_id","link:plugin.other@personal.pr:optional"]}]}`,
 		"dotted plugin publishing a public key": `{"name":"foo.bar","version":"1","conventions":[],"components":[
 			{"name":"l","role":"linker","key":"github.pull_request","entrypoint":"l","manual":{"display_name":"L"}}]}`,
 		"empty components and conventions": `{"name":"p","version":"1","components":[],"conventions":[]}`,
@@ -183,8 +187,17 @@ func TestParseInvalid(t *testing.T) {
 		"linker key private to another plugin": {
 			lnk(`"key":"plugin.other.pr","manual":{"display_name":"L"}`), "private to plugin",
 		},
-		"dotted plugin cannot own a private key": {
-			`{"name":"foo.bar","version":"1","conventions":[],"components":[{"name":"l","role":"linker","entrypoint":"l","key":"plugin.foo.bar.x","manual":{"display_name":"L"}}]}`, "dot in its name",
+		"dotted plugin must use the escaped owner": {
+			`{"name":"foo.bar","version":"1","conventions":[],"components":[{"name":"l","role":"linker","entrypoint":"l","key":"plugin.foo.bar.x","manual":{"display_name":"L"}}]}`, "private to plugin",
+		},
+		"qualified private publication": {
+			lnk(`"key":"plugin.p@market.x","manual":{"display_name":"L"}`), "qualified",
+		},
+		"relative private input of another plugin": {
+			imp(`"on":[{"event":"start:finalized"}],"inputs":["meta:plugin.other.build_id"]`), "belongs to plugin",
+		},
+		"storage spelling is core-only": {
+			imp(`"on":[{"event":"start:finalized"}],"inputs":["meta:plugin.p@m~0123456789abcdef0123456789abcdef.x"]`), "core storage",
 		},
 		"unknown field inside on": {
 			imp(`"on":[{"event":"start:finalized","priority":1}]`), "unknown field",

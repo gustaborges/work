@@ -88,6 +88,6 @@ func CaptureLocal(ctx context.Context, src, stage string, opts CaptureOptions) (
 	}
 	return &Snapshot{
 		Offer: offer, Source: Source{Kind: pluginid.KindLocal, Source: root},
-		Revision: offer.CaptureDigest(), Dir: stage, closer: func() { _ = os.RemoveAll(stage) },
+		Revision: offer.CaptureDigest(), Dir: stage, view: dirView{root: stage}, closer: func() { _ = os.RemoveAll(stage) },
 	}, nil
 }

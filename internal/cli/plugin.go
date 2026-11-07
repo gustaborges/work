@@ -8,7 +8,7 @@ import (
 func newPluginCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "plugin",
-		Short:         "Register marketplaces and inspect, enable, disable and remove plugins",
+		Short:         "Register marketplaces and add, inspect, enable, disable and remove plugins",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Args:          noArgsUsage,
@@ -19,6 +19,6 @@ func newPluginCmd() *cobra.Command {
 			return runPluginHub(cmd)
 		},
 	}
-	cmd.AddCommand(newPluginListCmd(), newPluginEnableCmd(), newPluginDisableCmd(), newPluginUninstallCmd(), newPluginMarketplaceCmd())
+	cmd.AddCommand(newPluginAddCmd(), newPluginListCmd(), newPluginRemoveCmd(), newPluginEnableCmd(), newPluginDisableCmd(), newPluginMarketplaceCmd())
 	return cmd
 }

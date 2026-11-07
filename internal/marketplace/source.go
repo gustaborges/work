@@ -36,6 +36,7 @@ type Snapshot struct {
 	// paths) for local and Git views; empty for the in-memory builtin view.
 	Dir string
 
+	view   View
 	closer func()
 }
 
@@ -130,7 +131,7 @@ func OpenGit(ctx context.Context, source, branch, commit, scratch string) (*Snap
 	}
 	return &Snapshot{
 		Offer: offer, Source: Source{Kind: pluginid.KindGit, Source: source, Branch: branch},
-		Revision: commit, Dir: dir, closer: func() { _ = os.RemoveAll(dir) },
+		Revision: commit, Dir: dir, view: dirView{root: dir, exec: exec}, closer: func() { _ = os.RemoveAll(dir) },
 	}, nil
 }
 

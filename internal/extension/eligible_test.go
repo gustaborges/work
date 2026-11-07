@@ -6,6 +6,7 @@ import (
 
 	"github.com/gustaborges/work/internal/plugin"
 	"github.com/gustaborges/work/internal/registry"
+	"github.com/gustaborges/work/internal/semconv"
 	"github.com/gustaborges/work/internal/work"
 	"github.com/gustaborges/work/tests/fixtures/installfx"
 )
@@ -84,7 +85,7 @@ func TestEligibleTruthTable(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			reg := installfx.Reg(nil, tc.comp)
+			reg := installfx.Reg(nil, tc.comp, starterComp)
 			got := Eligible(reg, tc.comp.Role, plugin.EventStartFinalized, tc.subj)
 			if (len(got) == 1) != tc.want {
 				t.Fatalf("eligible = %v, want %v", names(got), tc.want)
@@ -196,8 +197,11 @@ func TestDisabledExtensionsExcluded(t *testing.T) {
 }
 
 func TestResolveInputsTypedPresenceAndMissing(t *testing.T) {
-	s := subject("new", nil, map[string]any{"plugin.acme.null": nil, "plugin.acme.number": float64(42)})
-	inputs, missing, err := ResolveInputs([]string{"work:worktree_path", "work:start_mode", "work:branch", "work:base_branch", "work:slug", "meta:plugin.acme.null:optional", "meta:plugin.acme.number", "meta:plugin.acme.absent:optional", "link:z.missing", "link:a.missing"}, s)
+	acme := installfx.P("acme")
+	stored := func(local string) string { return semconv.StorageKey(acme, installfx.RegistrationID("m"), local) }
+	s := subject("new", nil, map[string]any{stored("null"): nil, stored("number"): float64(42)})
+	reg := installfx.Reg(nil, importer("one", startFinalized))
+	inputs, missing, err := ResolveInputs(reg, acme, []string{"work:worktree_path", "work:start_mode", "work:branch", "work:base_branch", "work:slug", "meta:plugin.acme.null:optional", "meta:plugin.acme.number", "meta:plugin.acme.absent:optional", "link:z.missing", "link:a.missing"}, s)
 	if err != nil || !slices.Equal(missing, []string{"link:a.missing", "link:z.missing"}) {
 		t.Fatal(missing, err)
 	}
@@ -207,7 +211,7 @@ func TestResolveInputsTypedPresenceAndMissing(t *testing.T) {
 	if v, ok := inputs["plugin.acme.null"]; !ok || v != nil {
 		t.Fatal(inputs)
 	}
-	if _, _, err := ResolveInputs([]string{"invalid"}, s); err == nil {
+	if _, _, err := ResolveInputs(reg, acme, []string{"invalid"}, s); err == nil {
 		t.Fatal("malformed declaration accepted")
 	}
 }

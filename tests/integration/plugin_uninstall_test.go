@@ -39,7 +39,7 @@ func TestAdminUninstallHomonymsAndWorkRetention(t *testing.T) {
 		if len(args) == 3 && args[1] == "admin-suite@two" {
 			code = 52
 		}
-		out, _ := h.run(t, h.root, code, append([]string{"plugin", "uninstall"}, args...)...)
+		out, _ := h.run(t, h.root, code, append([]string{"plugin", "remove"}, args...)...)
 		if out != "" {
 			t.Fatal("premature receipt", out)
 		}
@@ -47,7 +47,7 @@ func TestAdminUninstallHomonymsAndWorkRetention(t *testing.T) {
 			t.Fatal("refusal changed home")
 		}
 	}
-	out, _ := h.run(t, h.root, 0, "plugin", "uninstall", "admin-suite@two", "admin-suite@one", "admin-suite@one", "--yes", "--remove-policy-references")
+	out, _ := h.run(t, h.root, 0, "plugin", "remove", "admin-suite@two", "admin-suite@one", "admin-suite@one", "--yes", "--remove-policy-references")
 	if out != "work: removed admin-suite@one\nwork: removed admin-suite@two\n" {
 		t.Fatal(out)
 	}
@@ -113,10 +113,10 @@ func TestAdminUninstallNativeRecovery(t *testing.T) {
 			}
 			before := adminTree(t, home.Root())
 			out, ui := h.run(t, h.root, 54, "plugin", "list", "--json")
-			if out != "" || !strings.Contains(ui, "plugin uninstall") {
+			if out != "" || !strings.Contains(ui, "plugin remove") {
 				t.Fatal(out, ui)
 			}
-			h.run(t, h.root, 2, "plugin", "uninstall", "admin-suite@a", "admin-suite")
+			h.run(t, h.root, 2, "plugin", "remove", "admin-suite@a", "admin-suite")
 			if !reflect.DeepEqual(before, adminTree(t, home.Root())) {
 				t.Fatal("pure read or invalid grammar recovered state")
 			}
@@ -124,7 +124,7 @@ func TestAdminUninstallNativeRecovery(t *testing.T) {
 			if point == "committed" {
 				want = 2
 			}
-			out, ui = h.run(t, h.root, want, "plugin", "uninstall", "admin-suite@a", "admin-suite@b", "--yes", "--remove-policy-references")
+			out, ui = h.run(t, h.root, want, "plugin", "remove", "admin-suite@a", "admin-suite@b", "--yes", "--remove-policy-references")
 			if !strings.Contains(ui, "recovered interrupted administrative operation") {
 				t.Fatal(ui)
 			}

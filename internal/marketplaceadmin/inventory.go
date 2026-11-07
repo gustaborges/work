@@ -72,11 +72,8 @@ func List(s *adminstate.Snapshot) []Source {
 	return out
 }
 
-// storedMatches ties stored discovery to the exact registered descriptor, so a
-// hand-edited or mismatched catalog is unavailable rather than silently usable
-// for a different source.
 func storedMatches(c *marketplace.Stored, m config.Marketplace) bool {
-	return c.Namespace == m.Name && c.Source.Kind == m.Kind && c.Source.Source == m.Source && c.Source.Branch == m.Branch
+	return pluginadmin.StoredMatches(c, m)
 }
 
 func display(v string) *string {

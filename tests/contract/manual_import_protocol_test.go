@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"github.com/gustaborges/work/internal/registry"
+	"github.com/gustaborges/work/internal/semconv"
 	"github.com/gustaborges/work/internal/work"
 	"github.com/gustaborges/work/internal/workhome"
 	"github.com/gustaborges/work/tests/fixtures/installfx"
@@ -25,7 +26,9 @@ func TestManualImportProtocolAndResults(t *testing.T) {
 	if err := home.EnsureLayout(); err != nil {
 		t.Fatal(err)
 	}
-	installfx.InstallAs(t, home, "suite", fixtures.Prepare(t, "manual-suite"), true)
+	provider := installfx.InstallAs(t, home, "suite", fixtures.Prepare(t, "manual-suite"), true)
+	// Private values live under the key bound to the providing source instance.
+	nullableKey := semconv.StorageKey(provider, installfx.RegistrationID("suite"), "nullable")
 	reg, err := registry.Load(home.RegistryFile())
 	if err != nil {
 		t.Fatal(err)
@@ -34,10 +37,10 @@ func TestManualImportProtocolAndResults(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "in-progress", "demo")
 			os.MkdirAll(dir, 0755)
-			st := &work.State{Work: work.WorkSection{ID: "opaque-id", Status: "in-progress", StartMode: "contribution", Starter: "test", Branch: "branch", BaseBranch: "main", CreatedAt: "2026-01-01T00:00:00Z", LastAccessedAt: "2026-01-01T00:00:00Z"}, Links: map[string]string{"github.pull_request": "private reference"}, Meta: map[string]any{"plugin.manual-suite.nullable": nil, "unused": "hidden"}}
+			st := &work.State{Work: work.WorkSection{ID: "opaque-id", Status: "in-progress", StartMode: "contribution", Starter: "test", Branch: "branch", BaseBranch: "main", CreatedAt: "2026-01-01T00:00:00Z", LastAccessedAt: "2026-01-01T00:00:00Z"}, Links: map[string]string{"github.pull_request": "private reference"}, Meta: map[string]any{nullableKey: nil, "unused": "hidden"}}
 			path := filepath.Join(dir, "work-state.json")
 			if mode == "omitted" {
-				delete(st.Meta, "plugin.manual-suite.nullable")
+				delete(st.Meta, nullableKey)
 			}
 			work.Write(path, st)
 			before, _ := os.ReadFile(path)

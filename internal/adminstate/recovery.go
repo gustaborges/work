@@ -299,7 +299,7 @@ func recoveryCommand(operation string) string {
 	}
 	if len(words) >= 3 && words[0] == "work" {
 		switch words[1] + " " + words[2] {
-		case "plugin enable", "plugin disable", "plugin uninstall", "repository policy", "repository root", "convention set":
+		case "plugin add", "plugin remove", "plugin enable", "plugin disable", "repository policy", "repository root", "convention set":
 			return "work " + words[1] + " " + words[2]
 		}
 	}

@@ -162,7 +162,7 @@ func UninstallWithOptions(ctx context.Context, h workhome.Home, p *UninstallPlan
 	if len(p.references) > 0 && !removePolicy {
 		return nil, diag.New(diag.PluginPolicyDependency, "removal drops policy Locators; explicitly approve --remove-policy-references")
 	}
-	operation := "work plugin uninstall " + strings.Join(ProviderNames(p.providers), " ") + " --yes"
+	operation := "work plugin remove " + strings.Join(ProviderNames(p.providers), " ") + " --yes"
 	if removePolicy {
 		operation += " --remove-policy-references"
 	}

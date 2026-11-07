@@ -35,7 +35,7 @@ func ManualCandidates(reg *registry.Registry, role string, s Subject) []Decision
 	for _, c := range manualProviders(reg, role) {
 		d := Decision{Component: c}
 		if role == plugin.RoleImporter {
-			inputs, missing, err := ResolveInputs(c.Inputs, s)
+			inputs, missing, err := ResolveInputs(reg, c.Provider, c.Inputs, s)
 			if err != nil || len(missing) != 0 {
 				continue
 			}

@@ -65,11 +65,13 @@ stdout 'import \[IMPORTER\]'
 
 # F7 complete administrative direct inventory and automation flags.
 work plugin --help
+stdout '(?m)^  add '
 stdout 'marketplace'
 stdout 'enable'
 stdout 'disable'
-stdout 'uninstall'
+stdout '(?m)^  remove '
 ! stdout '(?m)^  install '
+! stdout '(?m)^  uninstall '
 ! stdout '(?m)^  update '
 work plugin marketplace --help
 stdout 'add'
@@ -83,9 +85,16 @@ stderr '^error: usage:'
 stderr '^error: usage:'
 ! work marketplace
 stderr '^error: usage:'
-work plugin uninstall --help
+! work plugin uninstall a@m
+stderr '^error: usage:'
+work plugin remove --help
 stdout '.*--yes'
 stdout '.*--remove-policy-references'
+stdout '.*--marketplace'
+work plugin add --help
+stdout '.*--yes'
+stdout '.*--remove-policy-references'
+stdout '.*--marketplace'
 work repository policy --help
 stdout 'add'
 stdout 'remove'
