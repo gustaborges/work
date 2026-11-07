@@ -1,6 +1,9 @@
 # ADR-0013: Data Namespaces and Work Persistent State
 
-**Status:** Accepted
+**Status:** Superseded in part for feature 009
+**Superseded by:** ADR-0024 (private provider scope only); public semantic keys, canonical snapshots, and projection ownership remain.
+
+The original decision body below is retained as historical evidence.
 
 **Date:** 2026-08-29
 

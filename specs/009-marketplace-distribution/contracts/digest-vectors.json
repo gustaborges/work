@@ -1,0 +1,89 @@
+{
+  "schema": 1,
+  "note": "Planning reference vectors; empty-domain tests framing only, not a valid plugin. Content hex preserves exact bytes. Each fields array is already in prescribed framing order.",
+  "vectors": [
+    {
+      "name": "empty-domain",
+      "algorithm": "work-package-v1",
+      "entries": [],
+      "canonical_hex": "776f726b2d7061636b6167652d76310a",
+      "digest": "sha256:517b001ac6f4019d1cd97225062053755b503213abbd00564b4aafed868ed755"
+    },
+    {
+      "name": "manifest-only",
+      "algorithm": "work-package-v1",
+      "entries": [
+        {
+          "path": "plugin.json",
+          "kind": "file",
+          "executable": false,
+          "content_hex": "7b226e616d65223a2273616d706c65222c2276657273696f6e223a2231222c22636f6d706f6e656e7473223a5b5d2c22636f6e76656e74696f6e73223a5b5d7d"
+        }
+      ],
+      "canonical_hex": "776f726b2d7061636b6167652d76310a31313a706c7567696e2e6a736f6e343a66696c65313a3036343a7b226e616d65223a2273616d706c65222c2276657273696f6e223a2231222c22636f6d706f6e656e7473223a5b5d2c22636f6e76656e74696f6e73223a5b5d7d",
+      "digest": "sha256:feb2264dbad5145f71b299b7abcd22876efcba762efea70cdb010f9b26b210ea"
+    },
+    {
+      "name": "file-link-directory",
+      "algorithm": "work-package-v1",
+      "entries": [
+        {
+          "path": "plugin.json",
+          "kind": "file",
+          "executable": false,
+          "content_hex": "7b226e616d65223a2273616d706c65222c2276657273696f6e223a2231222c22636f6d706f6e656e7473223a5b5d2c22636f6e76656e74696f6e73223a5b5d7d"
+        },
+        {
+          "path": "run",
+          "kind": "file",
+          "executable": true,
+          "content_hex": "68656c6c6f0a"
+        },
+        {
+          "path": "alias",
+          "kind": "link",
+          "executable": false,
+          "content_hex": "72756e"
+        },
+        {
+          "path": "empty",
+          "kind": "dir",
+          "executable": false,
+          "content_hex": ""
+        }
+      ],
+      "canonical_hex": "776f726b2d7061636b6167652d76310a353a616c696173343a6c696e6b313a30333a72756e353a656d707479333a646972313a30303a31313a706c7567696e2e6a736f6e343a66696c65313a3036343a7b226e616d65223a2273616d706c65222c2276657273696f6e223a2231222c22636f6d706f6e656e7473223a5b5d2c22636f6e76656e74696f6e73223a5b5d7d333a72756e343a66696c65313a31363a68656c6c6f0a",
+      "digest": "sha256:b9d69284fda15f7ba2edee2f9e36681d3d0249d9b905e105ef375ce3996b86a2"
+    },
+    {
+      "name": "single-entry-catalog",
+      "algorithm": "work-catalog-v1",
+      "fields": [
+        "1",
+        "team",
+        "Team Plugins",
+        "",
+        "1",
+        "sample",
+        "plugins/sample",
+        "",
+        "sha256:feb2264dbad5145f71b299b7abcd22876efcba762efea70cdb010f9b26b210ea"
+      ],
+      "canonical_hex": "776f726b2d636174616c6f672d76310a313a31343a7465616d31323a5465616d20506c7567696e73303a313a31363a73616d706c6531343a706c7567696e732f73616d706c65303a37313a7368613235363a66656232323634646261643531343566373162323939623761626364323238373665666362613736326566656137306364623031306639623236623231306561",
+      "digest": "sha256:29b63330970e6621dbaadc43dfcab68501abaefe2be2f2285d5c6fe8a71e0b4d"
+    },
+    {
+      "name": "single-entry-capture",
+      "algorithm": "work-capture-v1",
+      "fields": [
+        "sha256:29b63330970e6621dbaadc43dfcab68501abaefe2be2f2285d5c6fe8a71e0b4d",
+        "1",
+        "sample",
+        "plugins/sample",
+        "sha256:feb2264dbad5145f71b299b7abcd22876efcba762efea70cdb010f9b26b210ea"
+      ],
+      "canonical_hex": "776f726b2d636170747572652d76310a37313a7368613235363a32396236333333303937306536363231646261616463343364666361623638353031616261656665326265326632323835643563366665386137316530623464313a31363a73616d706c6531343a706c7567696e732f73616d706c6537313a7368613235363a66656232323634646261643531343566373162323939623761626364323238373665666362613736326566656137306364623031306639623236623231306561",
+      "digest": "sha256:874c3a41b611f6a0ee85a8078968c363a9c119ff10ab1978b906bbedb4343ed3"
+    }
+  ]
+}

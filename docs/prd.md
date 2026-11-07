@@ -2,12 +2,14 @@
 
 **A context orchestrator for local agentic development.**
 
-**Status:** Draft v3
+**Status:** Draft v4 — marketplace distribution requirements
 
 **Author:** Gustavo Carvalho
 
-**Date:** 2026-09-07
-**Supersedes:** `docs/prd.md` (v2)
+**Date:** 2026-11-07
+**Supersedes:** plugin distribution and identity requirements in v3; unrelated requirements remain in force.
+
+**Delivery status:** Target contract for feature 009; marketplace behavior is planned, not implemented. The CLI is unreleased, so breaking development plugins/state is permitted and backward-compatibility scaffolding is out of scope.
 
 ***
 
@@ -62,6 +64,10 @@ Work reduces that friction with a single extensible entry point. A plugin can re
 | Term | Definition |
 | --- | --- |
 | **Work** | A unit of work associated with a worktree, branch, dedicated directory, and local state snapshot. |
+| **Marketplace** | An explicitly published, named source offering independently selectable plugins; a valid catalog may also be empty. |
+| **Catalog snapshot** | A fixed offer obtained from a marketplace, browsable without contacting its source. |
+| **Plugin identity** | Plugin name together with marketplace namespace; plugin names may repeat across marketplaces. |
+| **Installation provenance** | Actual source, offered entry, revision, and content used; name reuse does not establish continuity. |
 | **Plugin** | An installable package that declares zero or more executable components and/or branch conventions. It is installed, updated, enabled, and removed as a unit. |
 | **Component** | An executable contribution declared in `components[]`. Its `role` determines the contract, manifest fields, and available operations. |
 | **Starter** | A component that interprets the `work start` argument, resolves the Repository Reference, and any other start data it can determine. |
@@ -115,7 +121,7 @@ Inside a Work, the user runs `work status` to inspect identity, state, branch, l
 
 ### 7.7 Manage plugins, discovery, and conventions
 
-The user enters `work plugin` to install, list, enable/disable, update, and remove packages through the TUI. `work repository` opens clone discovery management; `work convention` shows the current choice and allows changing it. Each TUI makes the equivalent direct command visible for automation.
+The user registers a marketplace, browses its catalog, and selects one plugin to install as an independent managed copy. Installed plugins and marketplaces are separate management areas. Refreshing an offer does not update installations. Removing a user-managed marketplace removes its plugins after exact impact review. All plugin and marketplace operations have equivalent TUI and direct-command effects and authorization. The plugin manager retains feedback within its session and emits one acknowledgment on normal exit. Repository and convention hubs retain direct-command guidance.
 
 ***
 
@@ -132,7 +138,7 @@ The user enters `work plugin` to install, list, enable/disable, update, and remo
 * **FR-7.** Work must create the worktree, its directory, and `work-state.json`; plugins may add other files and directories, which are not structure created or interpreted by the core.
 * **FR-8.** After materializing the structure and core state, Work must publish `start:finalized`, execute subscribed and eligible Linkers and Importers in the order defined by the architecture, and indicate to the user which extensions are running.
 * **FR-9.** When complete, the command must move the terminal to the directory of the newly created worktree.
-* **FR-10.** On first use, Work must make available, without manual installation or dependence on external tools, the components and minimum configuration needed to start a Work from a locally discoverable repository using the default strategy.
+* **FR-10.** On first required setup, Work must make available, without network access or manual installation, the components and minimum configuration needed to start a Work from a locally discoverable repository using the default strategy. Later setup must preserve disablement, deliberate removal, and user-edited or empty policy.
 * **FR-23.** On first use of a repository outside contribution mode, if more than one convention is enabled, the user must choose one and the choice must be remembered for that repository.
 * **FR-24.** On first use, Work must provide at least one branch convention by default.
 * **FR-36.** When no workspace root is configured, Work must prompt for it before the first Work creation, offer a suggested default value, persist the choice, and allow it to be changed later.
@@ -149,7 +155,7 @@ The user enters `work plugin` to install, list, enable/disable, update, and remo
 * **FR-32.** Work state, metadata, and links must be persisted in semantically distinct sections in the same canonical snapshot. Each link key keeps a single value; Starter publication, discovery, and manual association perform upserts, and the last source wins.
 * **FR-33.** The `work-state.json` snapshot must be updated atomically, versioned by schema, and controlled exclusively by the core; plugins interact with state only through public inputs and outputs.
 * **FR-34.** Work must keep `work.db` as a queryable global projection and be able to rebuild or reconcile it from Work snapshots.
-* **FR-35.** Public `meta` and `link` keys must follow Semantic Conventions; private keys must use the plugin's explicit namespace. The semantic identity of the key must not include the component that produced its value.
+* **FR-35.** Public metadata and link keys must follow Semantic Conventions; private keys must use an explicit provider namespace that distinguishes plugins from different marketplaces. Public key identity must not include its producer. Removing and re-registering a marketplace must not transfer ownership of its retained private values to a replacement source.
 * **FR-38.** `work status [work]` must present identity, state, branch, applicable location, and links currently persisted in the canonical snapshot. With no target, it must use the Work associated with the current directory. The operation is read-only, does not run extensions, and does not modify the Work or its recent access.
 * **FR-39.** Work must allow plugins to provide Repository Locators independently of Starters. A Starter should not need to know which Repository Locators are installed or configured on the machine.
 * **FR-40.** The user must be able to keep multiple Repository Locators installed and enabled and explicitly define which of them participate in the Repository Resolution Policy and in what order.
@@ -160,7 +166,7 @@ The user enters `work plugin` to install, list, enable/disable, update, and remo
 * **FR-45.** The user must be able to inspect and manage the Repository Resolution Policy through the TUI and equivalent non-interactive commands, including adding, removing, and reordering Locators. They must also be able to list installed Locators and manage repository search roots. Persisted configuration must remain inspectable and usable by automation.
 * **FR-46.** Work must allow repository search roots to be configured independently from the root where Works and their worktrees are materialized, and project them explicitly to the Repository Locators that are executed.
 * **FR-47.** When a plugin is disabled, its Repository Locators must remain referenced in the Repository Resolution Policy, but be unavailable while the plugin is disabled. The interface must make this state visible.
-* **FR-48.** Uninstalling a plugin that provides Repository Locators referenced by the Repository Resolution Policy must recognize those references and, upon explicit confirmation, remove them in the same consistent change; non-interactive mode must require explicit handling of that dependency.
+* **FR-48.** Removing plugins, directly or through marketplace removal, must identify all affected Repository Resolution Policy references and require explicit authorization to remove them in the same consistent change. Operation confirmation alone does not authorize dependency removal.
 * **FR-49.** The default locator strategy must be able to discover Git repositories in configured search roots without relying on external services. When more than one repository matches the provided reference, the user must be able to explicitly select the desired one.
 
 ### `work resume` and `work archive`
@@ -173,13 +179,41 @@ The user enters `work plugin` to install, list, enable/disable, update, and remo
 
 ### Plugin and convention management
 
-* **FR-16.** The user must be able to install a plugin from a remote source or local path as pinned content; for development, `--link` must allow linking to a local path without copying.
-* **FR-17.** The user must be able to list installed plugins.
+* **FR-16.** Every new plugin installation, reinstallation, or content replacement must select an explicitly published marketplace entry and produce an independent managed copy. Standalone installation and new linked installations are not supported.
+* **FR-17.** The user must be able to inspect installed marketplace plugins, their qualified identities, enablement, versions, and safe provenance.
 * **FR-18.** The user must be able to enable or disable a plugin without uninstalling it.
-* **FR-19.** The user must be able to check updates with `work plugin update --check` and apply them explicitly to named plugins or to all; Work commands do not check for updates automatically.
-* **FR-20.** The user must be able to uninstall a plugin.
-* **FR-21.** A plugin alias conflict during installation must fail explicitly, with no silent overwrite or rename.
+* **FR-19.** The user must be able to check and explicitly apply updates to selected plugins or all eligible plugins, applying the exact reviewed candidate. Versions are opaque; only a different version offers an update. Ordinary Work commands never check updates automatically.
+* **FR-20.** The user must be able to remove selected installed plugins without removing their marketplace or siblings, preserving existing Works and remembered convention choices.
+* **FR-21.** Marketplace names must be unique among registered sources and plugin names unique within a marketplace. Conflicting marketplace provenance must fail without overwrite or silent rename; homonymous plugins from distinct marketplaces must be independently usable.
 * **FR-25.** The user must be able to inspect and change the remembered branch convention from any clone of the repository.
+
+### Marketplace distribution
+
+* **FR-65. Independent selection.** A marketplace may offer one or many independent plugins; selecting one installs no siblings.
+* **FR-66. Mandatory offer.** An origin without an explicit valid marketplace catalog must not be installed or implicitly converted to a marketplace.
+* **FR-67. Source lifecycle.** Users must be able to register, inspect, explicitly refresh, and remove user-managed marketplaces without silently replacing a conflicting source.
+* **FR-68. Scoped names.** Homonymous plugins from different marketplaces must coexist and be executed and maintained independently, subject to genuine exclusive-contribution constraints.
+* **FR-69. Explicit selection.** Installation and maintenance must explicitly identify plugin and marketplace; no global implicit name lookup or plugin alias is offered.
+* **FR-70. Independent copies.** Changing or losing the original source must not alter installed bytes or prevent execution of a managed copy.
+* **FR-71. Independent discovery.** An obtained offer must be browsable offline without state changes; refreshing it must not change installed content, enablement, or policy.
+* **FR-72. Provenance continuity.** Installations must retain fixed content and actual provenance sufficient for independent execution and maintenance from the recorded source, without depending on the discovery snapshot or redirecting by name reuse.
+* **FR-73. Explicit maintenance.** Updates must preserve opaque version semantics and apply precisely the reviewed candidate to the selected plugin; sibling changes must not update it.
+* **FR-74. Withdrawal resilience.** Withdrawing an offered entry must not remove or disable its installed copy. Failed maintenance must preserve the previous copy.
+* **FR-75. Whole-source removal.** Removing a user-managed marketplace must remove its registration, offer, and all installed plugins, including disabled and withdrawn entries, as one recoverable publication after exact impact review and dependency authorization.
+* **FR-76. Surface parity.** Every plugin and marketplace administrative capability must be available in CLI and TUI, including filtering, multiple installed targets, check without apply, update all, and refresh all catalogs. Reads are pure; explicit checks may retrieve temporary candidates without persisting state.
+* **FR-77. Recoverable administration.** Administrative publication must be coherent and recoverable. Cancellation or failure before commitment preserves earlier state; failure after commitment reports applied change rather than claiming rollback.
+* **FR-78. Included offer.** The distribution-provided marketplace remains available offline while Work is installed. Its plugins use the same selection, copy, enablement, and individual removal rules. Initial setup installs only an entry from this offer and honors durable removal and one-time policy initialization.
+* **FR-79. Clean pre-release cutover.** Work has not been released. This feature must define one purposeful marketplace-only contract and remove superseded installation, identity, state-format, and plugin paths. Backward compatibility with earlier development plugins, state, or CLI behavior is not required; no adapters, dual readers, migration commands, or adoption flows are included.
+* **FR-80. Official online offer.** The project must offer an official online marketplace with publications independent of Work releases. Explicit registration, refresh, and removal, including removal of installed plugins, follow ordinary user-managed source rules.
+* **FR-81. Display names.** A marketplace may publish an optional display name independent of identity. Absence uses its namespace; equal display names remain distinguishable; changing it changes no identity or reference.
+* **FR-82. Local totals.** Marketplace inspection must show nonnegative installed and enabled totals from local inventory, including withdrawn entries, even with an unavailable catalog. Enabled never exceeds installed; totals do not depend on search filters and refresh after mutations.
+* **FR-83. Presentation continuity.** New screens must preserve the existing visual hierarchy, semantic colors, spacing, expressive focus and selection, and recognizable destructive actions. Focus, selection, state, and actions remain distinguishable without color and in reduced terminals.
+
+FR-65 through FR-83 correspond, in order, to proposal MKT-01 through MKT-19. A marketplace organizes distribution, not execution trust. Central aggregation, automatic discovery, inter-plugin dependency installation, whole-catalog installation, signing, payment, and protection against same-user file modification remain out of scope.
+
+### Related marketplace decisions
+
+ADR-0022 through ADR-0030 record catalog, snapshot, identity, commands, removal, administrative publication, included offer, and official online offer decisions. They replace earlier decisions only in their declared scopes; implementation is tracked in feature 009.
 
 ### Extensibility
 
@@ -190,18 +224,18 @@ The user enters `work plugin` to install, list, enable/disable, update, and remo
 * **FR-50.** In an interactive terminal, `work` with no arguments must show a static branded entry with guidance to `work --help`, without opening a selector. `work --help` must show usage, options, and exactly the available public commands, grouped by context. `work plugin`, `work repository`, and `work convention` must continue opening the hubs for their respective domains.
 * **FR-51.** In an interactive terminal, omitted selection values must be collected by the TUI and explicit values must skip only the corresponding selection. In non-interactive stdin, a missing required value must fail with actionable usage without attempting to open the TUI.
 * **FR-52.** Read commands must accept `--json` and not alter state; mutations must have stable output and exit codes. `--yes` may confirm already-determined impacts, but not choose targets or values.
-* **FR-53.** All interactive collection and selection in a journey runs in a full-screen program (alternate buffer); when it exits, the primary buffer is restored and the receipts for accepted steps are reprinted there. When a step is accepted, the active control is replaced by a compact receipt with the title, a success marker, and the accepted value; sensitive values must be redacted or omitted.
+* **FR-53.** Interactive collection and selection must run in one full-screen terminal session per journey and restore the primary buffer once. Interview journeys retain compact accepted-step receipts; the persistent plugin manager replaces feedback within its session and prints only its normal-exit acknowledgment. Sensitive values must be redacted or omitted.
 * **FR-54.** A recoverable failure attributable to the active field must appear inside that field and be replaced by the next attempt. At most one current error may remain visible, and rejected attempts must not accumulate in the terminal history.
 * **FR-55.** Active controls must respect the available terminal dimensions. Moving focus, checking options, filtering, or switching groups must not shift columns or change the height of unchanged lines.
 * **FR-56.** Selector focus must be identifiable by bold text and by a reserved-width textual indicator; color may reinforce it, but cannot be the only signal. Single and multi selectors must offer consistent movement keys, filtering where available, confirmation, and cancellation, with visible help.
-* **FR-57.** Interactive cancellation must leave a single concise human-readable result and preserve the already contracted programmatic category and exit code. Cancellation must not execute or confirm a mutation.
+* **FR-57.** Cancellation must preserve the contracted category and exit code and never confirm a mutation. Interview cancellation leaves one concise result; Back or cancellation of a plugin-manager action returns within the manager without accumulating cancellation receipts.
 * **FR-58.** Non-recoverable failures must be shown once, in user language, with a next step when known. Technical causes must remain available for explicit diagnosis, without being part of the normal human-facing output.
 * **FR-59.** The primary brand must render `WORK` as terminal art and apply, when true color and sufficient contrast are available, a gradient between primary `#11A8CD` and secondary `#8B7CF6`. Narrow or colorless terminals must receive the compact `WORK` form without broken wrapping.
 * **FR-60.** Presentation must use a single semantic theme: brand colors do not replace the meanings of success, warning, or failure; body text uses the terminal's normal color; light backgrounds, limited palettes, and monochrome mode receive readable alternatives.
 * **FR-61.** Color must be disabled in non-interactive output when `NO_COLOR` is not empty or when `TERM=dumb`. Output must remain understandable without color and must not contain control sequences in those cases.
 * **FR-62.** Interactive presentation and human diagnostics must use the configured interface channel; stable command results remain on stdout. Visual refresh must not change existing arguments, flags, error tokens, or exit codes without an explicit later contract.
 * **FR-63.** `work` with no arguments must exit successfully after the brand entry in an interactive terminal. In non-interactive use, it must preserve the existing usage failure; `work --help` must exit successfully in both modes.
-* **FR-64.** Confirmations that precede mutations must show the impact before acceptance and, once accepted, reduce to a compact receipt before the stable operation result. Going back and editing earlier steps is not part of this delivery.
+* **FR-64.** Confirmations preceding mutations must show the exact impact. Interview confirmations reduce to compact receipts; plugin-manager confirmations allow Back before commitment and show results within the same session. Authorization never expands to newly discovered targets or dependencies.
 
 ***
 
@@ -231,9 +265,9 @@ In the `work start` flow, Work resolves and presents the needed choices, creates
 
 All choices — competing Starters, start mode, convention, prefix, base branch, resumption, archiving, manual Importer, and manual Linker — use consistent, full-screen, keyboard-navigable controls. While active, recoverable errors are replaced in the field itself and selectors respect the viewport without geometry jumps; when accepted, they leave compact receipts with the chosen values. Cancellations and final failures appear once, without exposing technical chains in the normal human-facing output. `work status` uses the current Work when no explicit Work is provided; `work import` and `work link` always operate on the current Work. When that context cannot be resolved, they fail with a clear message.
 
-`work plugin`, `work repository`, and `work convention` are TUI hubs. In the direct API, the verb comes after a singular resource path: `plugin list|install|enable|disable|update|uninstall`, `repository policy list|add|remove|move|replace`, `repository locator list`, `repository root list|add|remove|replace`, and `convention show|set`. Removing a Locator from the policy only stops using it in the strategy; disabling remains a plugin-only operation. The complete surface and its cross-cutting semantics are governed by ADR-0019; the separation between journeys and interactive presentation is governed by ADR-0020, and the full-screen rendering structure by ADR-0021.
+`work plugin`, `work repository`, and `work convention` are TUI hubs. In the direct API, the verb comes after a singular resource path: `plugin add|list|enable|disable|update|remove` and `plugin marketplace add|list|upgrade|remove`, `repository policy list|add|remove|move|replace`, `repository locator list`, `repository root list|add|remove|replace`, and `convention show|set`. Removing a Locator from the policy only stops using it in the strategy; disabling remains a plugin-only operation. The marketplace surface is governed by ADR-0025; ADR-0019 continues to govern unchanged discovery and command semantics; the separation between journeys and interactive presentation is governed by ADR-0020, and the full-screen rendering structure by ADR-0021.
 
-Read commands accept `--json` and do not alter recent access, configuration, checkout, or provenance. `--yes` confirms already-determined impacts, but never chooses a target, mode, or value. There are no official command or resource aliases.
+Read commands accept `--json` and do not alter recent access, configuration, checkout, or provenance. `--yes` confirms already-determined impacts, but never chooses a target, mode, or value. There are no command, resource, or global plugin aliases. Marketplace namespaces remain visible independently of display names. The distribution-provided and official online offers have distinct identities and lifecycles.
 
 ***
 
