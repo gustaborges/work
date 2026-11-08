@@ -294,11 +294,13 @@ func writeLocatorCatalog(t *testing.T) string {
 	for path, body := range map[string]string{
 		filepath.Join(root, "plugin.json"):     manifest,
 		filepath.Join(dir, "marketplace.json"): `{"schema":1,"name":"team","plugins":[{"name":"loc","path":"plugins/loc"}]}`,
-		filepath.Join(root, "bin", "tool"):     "#!/bin/sh\nexit 0\n",
 	} {
 		if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := marketplaces.WriteEntrypoint(filepath.Join(root, "bin", "tool"), "#!/bin/sh\nexit 0\n"); err != nil {
+		t.Fatal(err)
 	}
 	return dir
 }

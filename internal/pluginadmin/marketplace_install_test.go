@@ -86,7 +86,7 @@ func writeCatalog(t *testing.T, namespace string, plugins map[string]string) str
 		if err := os.WriteFile(filepath.Join(root, "plugin.json"), []byte(manifest), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(root, "bin", "tool"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		if err := marketplaces.WriteEntrypoint(filepath.Join(root, "bin", "tool"), "#!/bin/sh\nexit 0\n"); err != nil {
 			t.Fatal(err)
 		}
 		list = append(list, listing{Name: name, Path: "plugins/" + name})

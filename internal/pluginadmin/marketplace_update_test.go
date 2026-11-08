@@ -3,6 +3,7 @@ package pluginadmin_test
 import (
 	"context"
 	"encoding/json"
+	"github.com/gustaborges/work/tests/fixtures/marketplaces"
 	"os"
 	"path/filepath"
 	"slices"
@@ -49,7 +50,7 @@ func setPlugin(t *testing.T, src, path, manifestJSON, tool string) {
 	if err := os.WriteFile(filepath.Join(root, "plugin.json"), []byte(manifestJSON), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "bin", "tool"), []byte(tool), 0o755); err != nil {
+	if err := marketplaces.WriteEntrypoint(filepath.Join(root, "bin", "tool"), tool); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -149,7 +149,9 @@ func (f *Fetched) Materialize(ctx context.Context, dest string) (map[string]bool
 			return nil, fmt.Errorf("%w: submodule", ErrUnsafeContent)
 		}
 	}
-	cmd := exec.CommandContext(ctx, "git", "archive", "--format=tar", f.Commit)
+	// The installed bytes must be the committed bytes whatever the host's
+	// line-ending configuration, or the package digest would vary per machine.
+	cmd := exec.CommandContext(ctx, "git", "-c", "core.autocrlf=false", "-c", "core.eol=lf", "archive", "--format=tar", f.Commit)
 	cmd.Dir = f.Dir
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

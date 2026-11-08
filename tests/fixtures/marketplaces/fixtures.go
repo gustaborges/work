@@ -12,6 +12,18 @@ import (
 	"testing"
 )
 
+// WriteEntrypoint writes an executable fixture entrypoint. On Windows it also
+// writes the ".exe" sibling that installation requires of native entrypoints.
+func WriteEntrypoint(path, body string) error {
+	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+		return err
+	}
+	if runtime.GOOS == "windows" {
+		return os.WriteFile(path+".exe", []byte(body), 0o755)
+	}
+	return nil
+}
+
 // Copy copies the named fixture into a fresh temporary directory and returns
 // the copy's path. Executable bits are preserved.
 func Copy(t testing.TB, name string) string {
