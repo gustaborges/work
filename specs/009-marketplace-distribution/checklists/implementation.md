@@ -88,9 +88,11 @@ Behavior worth knowing when reading the evidence:
 
 | Platform | Acceptance / path / schema / recovery | Unix PTY | Race |
 | --- | --- | --- | --- |
-| Ubuntu | | | |
-| macOS | | | |
-| Windows | | not applicable | |
+| Ubuntu (local linux/amd64, 2026-11-08) | `go test ./...` passed | passed (manager lifecycle, parity, geometry) | passed (administrative, present, concurrency/recovery journeys) |
+| macOS | pending CI run | pending CI run | not scheduled |
+| Windows | pending CI run | not applicable | not scheduled |
+
+Local gates on 2026-11-08: `gofmt`, `go vet ./...`, `go tool staticcheck ./...`, `go test ./...` and `make build` passed. Native macOS/Windows outcomes are not claimed until the CI matrix runs.
 
 Cross-compilation (`make release`) is not execution evidence.
 

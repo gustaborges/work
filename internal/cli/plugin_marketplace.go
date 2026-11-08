@@ -24,7 +24,10 @@ func newPluginMarketplaceCmd() *cobra.Command {
 		SilenceUsage:  true,
 		Args:          noArgsUsage,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return hubGuard(cmd, "run `work plugin marketplace add <source>`, `list`, `upgrade [name]` or `remove <name>`; see `work plugin marketplace --help`")
+			if err := hubGuard(cmd, "run `work plugin marketplace add <source>`, `list`, `upgrade [name]` or `remove <name>`; see `work plugin marketplace --help`"); err != nil {
+				return err
+			}
+			return runPluginHub(cmd, true)
 		},
 	}
 	cmd.AddCommand(newMarketplaceAddCmd(), newMarketplaceListCmd(), newMarketplaceUpgradeCmd(), newMarketplaceRemoveCmd())

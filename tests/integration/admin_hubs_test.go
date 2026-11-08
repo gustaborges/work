@@ -394,20 +394,20 @@ func TestAdminPluginManagerToggleAndRemoval(t *testing.T) {
 	if screen := c.screen(); strings.Contains(screen, "local-pinned") || strings.Contains(screen, "Install plugin") || strings.Contains(screen, "Official") {
 		t.Fatal("the manager still advertises retired destinations:\n" + screen)
 	}
-	c.send(" ")
-	managerScreen(c, "admin-suite@a disabled.", "Disabled")
+	c.send("\r")
+	managerScreen(c, "Plugins › Installed › admin-suite@a", "Disable")
+	c.send("\r")
+	managerScreen(c, "Disabled 1 plugin(s).", "Enable")
 	before := adminTree(t, home)
 	hubRun(t, bin, env, dir, "plugin", "disable", "admin-suite@a")
 	if !reflect.DeepEqual(before, adminTree(t, home)) {
 		t.Fatal("hub/direct disable differed")
 	}
-	c.send("\r")
-	managerScreen(c, "Plugins › admin-suite@a", "Remove")
-	c.send("\x1b[B\r")
+	c.send("\x1b[B\x1b[B\x1b[B\r")
 	managerScreen(c, "Review removal", "admin-suite@a/clone")
 	c.send("\x1b[B\x1b[B\r")
 	managerScreen(c, "Authorize the listed", "Review removal")
 	c.send("\x1b[A \x1b[B\r")
-	managerScreen(c, "Removed admin-suite@a.", "Installed (0)")
+	managerScreen(c, "Removed 1 plugin(s).", "Installed (0)")
 	managerExit(c)
 }
