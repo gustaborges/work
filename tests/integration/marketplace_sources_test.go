@@ -154,7 +154,7 @@ func TestInvalidMissingAndOfflineCatalogsFailWithoutPartialState(t *testing.T) {
 	if _, err := os.Stat(adminHome(h)); !os.IsNotExist(err) {
 		entries := adminTree(t, adminHome(h))
 		for name := range entries {
-			if strings.Contains(name, "marketplace-snapshots") && name != "state/marketplace-snapshots" {
+			if strings.Contains(name, "marketplace-snapshots") && filepath.ToSlash(name) != "state/marketplace-snapshots" {
 				t.Fatalf("partial capture state: %s", name)
 			}
 		}

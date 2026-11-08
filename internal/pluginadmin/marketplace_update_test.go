@@ -73,15 +73,19 @@ func row(t *testing.T, rows []pluginadmin.UpdateResult, id string) pluginadmin.U
 	return pluginadmin.UpdateResult{}
 }
 
-// homeFiles lists every path under the Work home, to prove a read-only
-// operation wrote nothing.
+// homeFiles lists every path under the Work home, with file modification times,
+// to prove a read-only operation wrote nothing. Directory times are omitted:
+// Windows moves them whenever a transient lease file is created or removed.
 func homeFiles(t *testing.T, h workhome.Home) []string {
 	t.Helper()
 	var out []string
 	_ = filepath.WalkDir(h.Root(), func(p string, d os.DirEntry, err error) error {
 		if err == nil {
-			info, _ := d.Info()
-			out = append(out, p+"|"+info.ModTime().String())
+			entry := p
+			if info, _ := d.Info(); info != nil && info.Mode().IsRegular() {
+				entry += "|" + info.ModTime().String()
+			}
+			out = append(out, entry)
 		}
 		return nil
 	})

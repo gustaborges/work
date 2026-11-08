@@ -191,8 +191,10 @@ func TestWithdrawalInvalidCandidatesAndBatchPrecedence(t *testing.T) {
 		t.Fatal(err)
 	}
 	publishVersion(t, src, "alpha", "1.0.0", "2.0.0", "#!/bin/sh\nexit 2\n")
-	if err := os.Remove(filepath.Join(src, "plugins", "beta", "bin", "tool")); err != nil {
-		t.Fatal(err)
+	for _, name := range []string{"tool", "tool.exe"} {
+		if err := os.Remove(filepath.Join(src, "plugins", "beta", "bin", name)); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
 	}
 
 	rows := checkJSON(t, h, 50)
