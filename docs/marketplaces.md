@@ -74,7 +74,19 @@ copied whole, so keep them self-contained.
 
 ## Official `work` marketplace
 
-An officially published marketplace is not yet available. Its origin is
-pending owner confirmation, and no catalog is treated as official until that
-origin is recorded here. Until then every source, including one named `work`,
-is shown as an ordinary registered source.
+The Work project publishes one catalog, `work`:
+
+```sh
+work plugin marketplace add https://github.com/gustaborges/work-cli-marketplace.git
+work plugin add github@work       # pull request / issue starters, linkers, importers
+work plugin add wsp@work          # repository locator backed by `wsp find`
+```
+
+- **Origin:** `https://github.com/gustaborges/work-cli-marketplace.git`, branch
+  `master`, namespace `work`. This is the only source that may be called
+  official: its normalized Git descriptor must equal the origin and its catalog
+  must declare `work`. A catalog that merely names itself `work` is an ordinary
+  source, and the CLI still presents every registered source the same way.
+- **Explicit only.** Nothing registers it for you, and removing it never
+  reinstalls it. `builtin` is unaffected either way.
+- **Contents and a reviewable snapshot:** `marketplaces/work/README.md`.

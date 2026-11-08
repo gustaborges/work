@@ -1,0 +1,147 @@
+{
+  "name": "github",
+  "version": "1.1.0",
+  "components": [
+    {
+      "name": "github-pr-starter",
+      "role": "starter",
+      "entrypoint": "bin/github-pr-starter.py",
+      "runtime": "python3",
+      "pattern": "^https://github\\.com/[^/]+/[^/]+/pull/[0-9]+/?$"
+    },
+    {
+      "name": "github-issue-starter",
+      "role": "starter",
+      "entrypoint": "bin/github-issue-starter.py",
+      "runtime": "python3",
+      "pattern": "^https://github\\.com/[^/]+/[^/]+/issues/[0-9]+/?$"
+    },
+    {
+      "name": "github-pr-linker",
+      "role": "linker",
+      "key": "github.pull_request",
+      "entrypoint": "bin/github-pr-linker.py",
+      "runtime": "python3",
+      "discover": {
+        "automatic": true,
+        "on": [
+          {
+            "event": "start:finalized"
+          }
+        ],
+        "inputs": [
+          "work:worktree_path"
+        ]
+      },
+      "manual": {
+        "display_name": "GitHub pull request",
+        "description": "Links the pull request of the current branch"
+      }
+    },
+    {
+      "name": "github-issue-linker",
+      "role": "linker",
+      "key": "github.issue",
+      "entrypoint": "bin/github-issue-linker.py",
+      "runtime": "python3",
+      "discover": {
+        "automatic": true,
+        "on": [
+          {
+            "event": "start:finalized"
+          }
+        ],
+        "inputs": [
+          "work:worktree_path",
+          "work:branch:optional",
+          "link:github.pull_request:optional"
+        ]
+      },
+      "manual": {
+        "display_name": "GitHub issue",
+        "description": "Links the issue the pull request closes or the branch names"
+      }
+    },
+    {
+      "name": "github-pr-description-importer",
+      "role": "importer",
+      "entrypoint": "bin/github-pr-description-importer.py",
+      "runtime": "python3",
+      "on": [
+        {
+          "event": "start:finalized"
+        }
+      ],
+      "manual": {
+        "display_name": "Pull request description",
+        "description": "Saves the title and description of the linked pull request"
+      },
+      "inputs": [
+        "link:github.pull_request"
+      ]
+    },
+    {
+      "name": "github-pr-comments-importer",
+      "role": "importer",
+      "entrypoint": "bin/github-pr-comments-importer.py",
+      "runtime": "python3",
+      "on": [
+        {
+          "event": "start:finalized"
+        }
+      ],
+      "manual": {
+        "display_name": "Pull request comments",
+        "description": "Saves the reviews and comments of the linked pull request"
+      },
+      "inputs": [
+        "link:github.pull_request"
+      ]
+    },
+    {
+      "name": "github-pr-diff-importer",
+      "role": "importer",
+      "entrypoint": "bin/github-pr-diff-importer.py",
+      "runtime": "python3",
+      "on": [
+        {
+          "event": "start:finalized"
+        }
+      ],
+      "manual": {
+        "display_name": "Pull request diff",
+        "description": "Saves the diff of the linked pull request"
+      },
+      "inputs": [
+        "link:github.pull_request"
+      ]
+    },
+    {
+      "name": "github-issue-importer",
+      "role": "importer",
+      "entrypoint": "bin/github-issue-importer.py",
+      "runtime": "python3",
+      "on": [
+        {
+          "event": "start:finalized"
+        }
+      ],
+      "manual": {
+        "display_name": "Issue",
+        "description": "Saves the linked issue and its comments"
+      },
+      "inputs": [
+        "link:github.issue"
+      ]
+    }
+  ],
+  "conventions": [
+    {
+      "name": "gitflow",
+      "prefixes": [
+        "feature/{slug}",
+        "bugfix/{slug}"
+      ]
+    }
+  ]
+}

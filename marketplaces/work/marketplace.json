@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "name": "work",
+  "display_name": "Work Plugins",
+  "description": "Plugins for the Work CLI",
+  "plugins": [
+    {
+      "name": "github",
+      "path": "plugins/github",
+      "description": "Start from and link GitHub pull requests and issues"
+    },
+    {
+      "name": "wsp",
+      "path": "plugins/wsp",
+      "description": "Find local clones through the wsp workspace index"
+    }
+  ]
+}

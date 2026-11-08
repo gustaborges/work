@@ -96,6 +96,31 @@ Local gates on 2026-11-08: `gofmt`, `go vet ./...`, `go tool staticcheck ./...`,
 
 Cross-compilation (`make release`) is not execution evidence.
 
+## Official publication evidence (T071, T072)
+
+Origin supplied by the project owner on 2026-11-08: `https://github.com/gustaborges/work-cli-marketplace.git`, branch `master`, namespace `work`. All changes reached `master` through pull requests except where noted. Every command ran with the freshly built `bin/work` (linux/amd64) in disposable homes against the real remote, never a fixture.
+
+| Revision on `master` | Change | Plugin versions |
+| --- | --- | --- |
+| `c8fc143` | PR #1: first catalog (`marketplace.json`, `plugins/github`, `plugins/wsp`) | github 1.0.0, wsp 1.0.0 |
+| `60893e4` | linker REST fallback. **Pushed to `master` directly by mistake**, not through a PR; the content was then carried into PR #2 | github 1.0.0 (content changed) |
+| `46806a6` | PR #2: four importers | github 1.1.0 |
+| `0518d1f` | PR #4: wsp locator normalizes clone URLs | wsp 1.0.1 |
+
+| Scenario | Observed |
+| --- | --- |
+| Initial registration and install from the real origin | `marketplace add` registered at `c8fc143`; `plugin add github@work` and `wsp@work` installed 1.0.0 |
+| Real start through installed 1.0.0 | `work start <PR URL>` resolved the clone through the wsp locator, offered contribution/fork, created the Work with the `github.pull_request` link and number |
+| Equal version, changed bytes (`60893e4`) | `marketplace upgrade` moved the stored revision; `update --check` reported `unchanged` with differing digests; `plugin add github@work` reinstalled (`result: reinstalled`), after which check was `unchanged` with equal digests |
+| New version adds components (`46806a6`) | `update --check` reported `update-available 1.0.0 -> 1.1.0` listing the four importers as added and nothing withdrawn or changed; `update github@work --yes` applied; enablement kept; importers then ran against the Work started under 1.0.0 |
+| Patch update with a policy reference (`0518d1f`) | `update --check` per plugin: builtin and github `unchanged`, wsp `update-available 1.0.0 -> 1.0.1`; `update --all --yes` updated only wsp; the resolution policy still listed `wsp@work/wsp-repository-locator` |
+| Automatic importers on a fresh start | home on 1.1.0: `work start <issue URL>` ran the issue linker and the issue importer automatically and wrote `context/github/issue/issue.md`; no PR importer ran |
+| Manual import contracts | missing link: `required-input-missing`; repeated import: `extension-output-refused`; PR description/comments/diff and issue imported |
+| Whole-source removal | `marketplace remove work --yes` refused with `plugin-policy-dependency`; state unchanged; with `--remove-policy-references` it removed `github@work` and `wsp@work`, emptied the policy, kept `builtin` and the Work directory |
+| Snapshot in this repository | `marketplaces/work/` registers as an independent local source named `work` |
+
+Defects found by this run and fixed before release: the PR linker failed without a logged-in `gh` (fixed in `60893e4`); the wsp locator never matched URL-only references (fixed in 1.0.1). The component classes involved were not covered by any local fixture.
+
 ## Release gate
 
 Public delivery requires all of: M1–M4 complete; every P01–P12 / S01–S12 case verified; current-only code, tests and docs; native three-OS outcomes recorded above; and the owner-authorized real initial `work` publication evidenced (T071, T072). Local fixtures do not satisfy the publication gate.
@@ -103,5 +128,5 @@ Public delivery requires all of: M1–M4 complete; every P01–P12 / S01–S12 c
 - [x] M2 complete
 - [X] M3 complete
 - [ ] M4 complete
-- [ ] Owner-confirmed official origin recorded (T071)
-- [ ] Real initial publication and later refresh/removal evidenced (T072)
+- [x] Owner-confirmed official origin recorded (T071)
+- [x] Real initial publication and later refresh/removal evidenced (T072)

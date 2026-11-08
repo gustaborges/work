@@ -1,0 +1,20 @@
+{
+  "name": "wsp",
+  "version": "1.0.1",
+  "components": [
+    {
+      "name": "wsp-repository-locator",
+      "role": "repository-locator",
+      "entrypoint": "bin/wsp-repository-locator.py",
+      "runtime": "python3",
+      "accepts": [
+        "git_fetch_urls",
+        "name",
+        "query"
+      ],
+      "display_name": "WSP workspace index",
+      "description": "Finds local clones through the wsp workspace index (wsp find)"
+    }
+  ],
+  "conventions": []
+}
