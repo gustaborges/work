@@ -491,7 +491,7 @@ func TestInstallerExposesNoStandalonePublisher(t *testing.T) {
 	if err != nil || len(files) == 0 {
 		t.Fatalf("no installer sources found: %v", err)
 	}
-	allowed := []string{"ComponentEntry", "PreflightRuntimes", "ProvenanceOf", "Register", "Prepare", "WriteMeta"}
+	allowed := []string{"ComponentEntry", "PreflightRuntimes", "ProvenanceOf", "Register", "Prepare", "Validate", "WriteMeta"}
 	var exported []string
 	for _, file := range files {
 		if strings.HasSuffix(file, "_test.go") {

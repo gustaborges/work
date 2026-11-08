@@ -46,10 +46,28 @@ M1 also performs the identity cutover the later milestones build on: the alias-k
 Behavior worth knowing when reading the evidence:
 
 - First-use setup and `plugin add work-reference@builtin` share one preparation and registration path (`plugininstall.Prepare`/`Publish`).
-- An explicit add of the reference settles first-use setup and policy (`initialized` and `policy_handled`) without inserting a Locator, so a later setup neither reinstalls it nor seeds the default policy. The broader lifecycle matrix remains M3 (T054–T057).
+- An explicit add of the reference settles first-use setup and policy (`initialized` and `policy_handled`) without inserting a Locator, so a later setup neither reinstalls it nor seeds the default policy. The broader lifecycle matrix is M3 evidence below.
 - Reinstall (changed fixed content, including an equal opaque version) keeps enablement and needs `--yes` or an interactive acceptance; dropping policy Locators needs `--remove-policy-references` separately.
 - Private values are stored under `plugin.<plugin>@<marketplace>~<registration_id>.<local>`; `work status` currently prints stored keys as written.
-- `plugin remove` is the former uninstall (journal label `work plugin remove`); `plugin update` arrives in M3.
+- `plugin remove` is the former uninstall (journal label `work plugin remove`); `plugin update` and whole-source removal arrive in M3 (below).
+
+### M3 — Maintenance and default lifecycle
+
+| Area | Evidence |
+| --- | --- |
+| Shared source/branch candidates, frozen reviewed apply, equal/changed opaque versions, invalid equal-version, missing registration/discovery, path move, withdrawal, per-target drift and error precedence | `internal/pluginadmin/marketplace_update_test.go`, `internal/marketplace/candidate.go` |
+| Whole-source set (enabled, disabled, withdrawn), offline removal, separate policy authorization, domain refusal of the included provider, instance-bound membership, drift conflicts, retained convention memory | `internal/marketplaceadmin/remove_test.go` |
+| Journal checkpoints for source removal and update (prepared rollback, committed replay), pre-commit injection, committed cleanup failure, live capture lease, read purity during recovery | `tests/integration/marketplace_recovery_test.go` |
+| Pure refresh/check, one revision per batch, exact reviewed apply, same-version reinstall, withdrawal, atomic offline source removal, dependency refusal, batch precedence, update grammar | `tests/integration/marketplace_maintenance_test.go` |
+| Concurrent refresh/install/remove, force-pushed source, lease lifetime, running-package removal, unaffected-change merging (run with `-race`) | `tests/integration/marketplace_concurrency_test.go` |
+| Lifecycle matrix: registration before first use, explicit policy, explicit reference add, disabled/removed defaults, damaged content, invalid lifecycle | `tests/integration/marketplace_bootstrap_test.go`, `internal/bootstrap/bootstrap_test.go`, `internal/cli/policy_lifecycle_test.go` |
+
+Behavior worth knowing when reading the evidence:
+
+- A check judges the source recorded in each package's provenance and opens each source/branch once; it never consults or writes discovery, and exposes its rows only if the administrative epoch is unchanged.
+- Update applies the frozen staged candidate per package (a separate transaction each); drifted targets fail alone with conflict/53, which outranks the generic update failure. Cancellation, recovery and cleanup failures stop the remainder.
+- Source removal membership is by registration instance, not namespace text. Stored captures of a removed source are collected by the next mutation unless a live lease names them.
+- Every explicit `repository policy` mutation marks `policy_handled` in the same transaction; rejected edits do not. There was no pre-existing default-adoption suite to delete (T057): the bootstrap tests were already written against the current lifecycle.
 
 ### Commands run (fill in with real outcomes)
 
@@ -62,6 +80,9 @@ Behavior worth knowing when reading the evidence:
 | `go test -count=1 ./...` (after M2) | linux/amd64 | passed |
 | `go vet ./...`, `gofmt -l .`, `go tool staticcheck ./...` (after M2) | linux/amd64 | clean |
 | `go test -race ./internal/adminstate ./internal/marketplaceadmin ./internal/pluginadmin ./internal/extension ./internal/semconv ./internal/starter` | linux/amd64 | passed |
+| `go test -count=1 ./...` (after M3) | linux/amd64 | passed |
+| `go vet ./...`, `gofmt -l .`, `go tool staticcheck ./...` (after M3) | linux/amd64 | clean |
+| `go test ./internal/adminstate ./internal/marketplace ./internal/marketplaceadmin ./internal/pluginadmin` and the M3 `tests/integration` concurrency/recovery cases with `-race` (after M3) | linux/amd64 | passed |
 
 ## Native platform evidence slots (T076)
 
@@ -78,7 +99,7 @@ Cross-compilation (`make release`) is not execution evidence.
 Public delivery requires all of: M1–M4 complete; every P01–P12 / S01–S12 case verified; current-only code, tests and docs; native three-OS outcomes recorded above; and the owner-authorized real initial `work` publication evidenced (T071, T072). Local fixtures do not satisfy the publication gate.
 
 - [x] M2 complete
-- [ ] M3 complete
+- [X] M3 complete
 - [ ] M4 complete
 - [ ] Owner-confirmed official origin recorded (T071)
 - [ ] Real initial publication and later refresh/removal evidenced (T072)

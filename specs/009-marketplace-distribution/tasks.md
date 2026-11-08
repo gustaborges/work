@@ -2,7 +2,7 @@
 
 **Input**: [plan.md](plan.md), [spec.md](spec.md), research.md, data-model.md, contracts/, quickstart.md and ADR-0030.
 **Created/revised**: 2026-11-07
-**Status**: Milestones M1 (T001–T021) and M2 (T022–T041) implemented and validated; M3–M4 remain pending.
+**Status**: Milestones M1 (T001–T021), M2 (T022–T041) and M3 (T042–T057) implemented and validated; M4 remains pending.
 **Scope correction**: The CLI is unreleased. Existing development plugins/state may break. Implement one purposeful current marketplace model and delete superseded code/tests; no compatibility readers/providers/selectors/adapters, migration/adoption flows, old-journal conversion, old-executable fences or compatibility-only suites.
 
 ## Format and execution rules
@@ -107,18 +107,18 @@
 
 **Independent validation:** Refresh/check/reinstall/update changed and withdrawn entries; remove one source with enabled/disabled/withdrawn dependencies while injecting failure and concurrent drift.
 
-- [ ] T042 [P] [US3] Add grouped source/branch acquisition, frozen candidate, equal/changed opaque version, invalid equal-version, missing registration/discovery, path-move and withdrawal cases in internal/pluginadmin/marketplace_update_test.go. (FR-007, FR-008, FR-009, FR-010, FR-014)
-- [ ] T043 [P] [US3] Add exact whole-source target/dependency set, offline remove, refused authorization, namespace reuse, and concurrent target drift cases in internal/marketplaceadmin/remove_test.go. (FR-011, FR-012, FR-013)
-- [ ] T044 [P] [US3] Add every current catalog/config/package image/move/commit checkpoint, active invocation/lease, rollback, committed recovery and cleanup failure scenario in tests/integration/marketplace_recovery_test.go. (FR-012, FR-013, FR-014, FR-024)
-- [ ] T045 [US3] Resolve one complete current source snapshot per recorded source/branch group for check/update in internal/pluginadmin/update.go and internal/marketplace/candidate.go, without publishing discovery or using stale name-only provenance. (FR-007, FR-008, FR-010, FR-014)
-- [ ] T046 [US3] Freeze validated candidate content, version, declaration/dependency effects and current baseline through exact apply in internal/pluginadmin/update.go; preserve per-target results and aggregate error precedence without refetch. (FR-008, FR-010, FR-013)
-- [ ] T047 [US3] Implement same-version explicit reinstall/no-op with retained enablement and exact replacement authorization in internal/pluginadmin/install.go and internal/cli/plugin_add.go. (FR-009, FR-010, FR-013)
-- [ ] T048 [US3] Prepare whole-source removal from complete local inventory and exact source/catalog/dependency facts in internal/marketplaceadmin/remove.go, including disabled and withdrawn targets and domain-level builtin rejection. (FR-011, FR-012, FR-013)
-- [ ] T049 [US3] Apply source/config/catalog/owned-copy/registry and explicitly authorized policy removal as one reviewed transaction in internal/marketplaceadmin/remove.go and internal/pluginadmin/uninstall.go; preserve Works/memory and namespace continuity rules. (FR-011, FR-012, FR-013, FR-019)
-- [ ] T050 [US3] Add source remove CLI review/result and independent dependency authorization in internal/cli/plugin_marketplace.go; emit exact removed IDs, committed/cleanup state, and safe errors. (FR-012, FR-013, FR-023, FR-026)
-- [ ] T051 [US3] Implement the intended qualified interactive/explicit/all check-update target rules and safe per-target/source outcomes in internal/cli/plugin_update.go and internal/cli/admin_shared.go; remove source-managed and previous-origin mode branches. (FR-007, FR-008, FR-010, FR-023)
-- [ ] T052 [US3] Verify refresh/check purity, one source revision per batch, exact reviewed apply, same-version reinstall, withdrawal, offline atomic source removal, dependency refusal and batch error precedence in tests/integration/marketplace_maintenance_test.go. (FR-003, FR-008, FR-009, FR-010, FR-012, FR-013, FR-014)
-- [ ] T053 [US3] Exercise concurrent refresh/install/remove, source force-push, capture/stage lease lifetime, running package removal, and unaffected change merging in tests/integration/marketplace_concurrency_test.go; use deterministic synchronization and relevant race detection. (FR-013, FR-014, FR-024)
+- [X] T042 [P] [US3] Add grouped source/branch acquisition, frozen candidate, equal/changed opaque version, invalid equal-version, missing registration/discovery, path-move and withdrawal cases in internal/pluginadmin/marketplace_update_test.go. (FR-007, FR-008, FR-009, FR-010, FR-014)
+- [X] T043 [P] [US3] Add exact whole-source target/dependency set, offline remove, refused authorization, namespace reuse, and concurrent target drift cases in internal/marketplaceadmin/remove_test.go. (FR-011, FR-012, FR-013)
+- [X] T044 [P] [US3] Add every current catalog/config/package image/move/commit checkpoint, active invocation/lease, rollback, committed recovery and cleanup failure scenario in tests/integration/marketplace_recovery_test.go. (FR-012, FR-013, FR-014, FR-024)
+- [X] T045 [US3] Resolve one complete current source snapshot per recorded source/branch group for check/update in internal/pluginadmin/update.go and internal/marketplace/candidate.go, without publishing discovery or using stale name-only provenance. (FR-007, FR-008, FR-010, FR-014)
+- [X] T046 [US3] Freeze validated candidate content, version, declaration/dependency effects and current baseline through exact apply in internal/pluginadmin/update.go; preserve per-target results and aggregate error precedence without refetch. (FR-008, FR-010, FR-013)
+- [X] T047 [US3] Implement same-version explicit reinstall/no-op with retained enablement and exact replacement authorization in internal/pluginadmin/install.go and internal/cli/plugin_add.go. (FR-009, FR-010, FR-013)
+- [X] T048 [US3] Prepare whole-source removal from complete local inventory and exact source/catalog/dependency facts in internal/marketplaceadmin/remove.go, including disabled and withdrawn targets and domain-level builtin rejection. (FR-011, FR-012, FR-013)
+- [X] T049 [US3] Apply source/config/catalog/owned-copy/registry and explicitly authorized policy removal as one reviewed transaction in internal/marketplaceadmin/remove.go and internal/pluginadmin/uninstall.go; preserve Works/memory and namespace continuity rules. (FR-011, FR-012, FR-013, FR-019)
+- [X] T050 [US3] Add source remove CLI review/result and independent dependency authorization in internal/cli/plugin_marketplace.go; emit exact removed IDs, committed/cleanup state, and safe errors. (FR-012, FR-013, FR-023, FR-026)
+- [X] T051 [US3] Implement the intended qualified interactive/explicit/all check-update target rules and safe per-target/source outcomes in internal/cli/plugin_update.go and internal/cli/admin_shared.go; remove source-managed and previous-origin mode branches. (FR-007, FR-008, FR-010, FR-023)
+- [X] T052 [US3] Verify refresh/check purity, one source revision per batch, exact reviewed apply, same-version reinstall, withdrawal, offline atomic source removal, dependency refusal and batch error precedence in tests/integration/marketplace_maintenance_test.go. (FR-003, FR-008, FR-009, FR-010, FR-012, FR-013, FR-014)
+- [X] T053 [US3] Exercise concurrent refresh/install/remove, source force-push, capture/stage lease lifetime, running package removal, and unaffected change merging in tests/integration/marketplace_concurrency_test.go; use deterministic synchronization and relevant race detection. (FR-013, FR-014, FR-024)
 
 ### Phase 6 — US4: Purposeful first use and default lifecycle
 
@@ -126,10 +126,10 @@
 
 **Independent validation:** Fresh disposable homes cover registration-before-start, explicit empty policy, default add/disable/remove, newer offers and current journal recovery.
 
-- [ ] T054 [P] [US4] Add the current lifecycle matrix from contracts/bootstrap-and-publication.md in tests/integration/marketplace_bootstrap_test.go, covering registration-first, explicit empty policy, explicit add, disabled/removed defaults, changed offers and invalid current state. (FR-015, FR-016, FR-018, FR-024)
-- [ ] T055 [US4] Replace alias/embedded-digest inference with current initialized/policy_handled/removed lifecycle in internal/bootstrap/bootstrap.go and internal/adminstate/lifecycle.go; remove adoption, earlier-installation retention and implicit content replacement. (FR-015, FR-016, FR-018, FR-024)
-- [ ] T056 [US4] Mark every explicit policy choice, including empty, handled in the same transaction in internal/repoconfig/policy.go; source registration leaves it false, fresh required setup seeds only while unhandled, and explicit reference add handles without insertion. (FR-013, FR-016, FR-018)
-- [ ] T057 [US4] Verify common-pipeline fresh setup, one-time policy, no resurrection/content replacement and current source-instance ownership using tests/integration/marketplace_bootstrap_test.go and tests/integration/admin_seed_test.go; delete superseded default-adoption tests. (FR-015, FR-016, FR-018, FR-019, FR-024)
+- [X] T054 [P] [US4] Add the current lifecycle matrix from contracts/bootstrap-and-publication.md in tests/integration/marketplace_bootstrap_test.go, covering registration-first, explicit empty policy, explicit add, disabled/removed defaults, changed offers and invalid current state. (FR-015, FR-016, FR-018, FR-024)
+- [X] T055 [US4] Replace alias/embedded-digest inference with current initialized/policy_handled/removed lifecycle in internal/bootstrap/bootstrap.go and internal/adminstate/lifecycle.go; remove adoption, earlier-installation retention and implicit content replacement. (FR-015, FR-016, FR-018, FR-024)
+- [X] T056 [US4] Mark every explicit policy choice, including empty, handled in the same transaction in internal/repoconfig/policy.go; source registration leaves it false, fresh required setup seeds only while unhandled, and explicit reference add handles without insertion. (FR-013, FR-016, FR-018)
+- [X] T057 [US4] Verify common-pipeline fresh setup, one-time policy, no resurrection/content replacement and current source-instance ownership using tests/integration/marketplace_bootstrap_test.go and tests/integration/admin_seed_test.go; delete superseded default-adoption tests. (FR-015, FR-016, FR-018, FR-019, FR-024)
 
 ## Milestone M4 — Complete interface and delivery evidence
 

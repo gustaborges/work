@@ -19,6 +19,6 @@ func newPluginCmd() *cobra.Command {
 			return runPluginHub(cmd)
 		},
 	}
-	cmd.AddCommand(newPluginAddCmd(), newPluginListCmd(), newPluginRemoveCmd(), newPluginEnableCmd(), newPluginDisableCmd(), newPluginMarketplaceCmd())
+	cmd.AddCommand(newPluginAddCmd(), newPluginListCmd(), newPluginRemoveCmd(), newPluginUpdateCmd(), newPluginEnableCmd(), newPluginDisableCmd(), newPluginMarketplaceCmd())
 	return cmd
 }

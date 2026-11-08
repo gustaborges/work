@@ -299,7 +299,8 @@ func (p *InstallPlan) ApplyWithOptions(ctx context.Context, removePolicy bool, o
 			// Choosing the reference explicitly settles first-use setup and the
 			// default policy: a later setup must neither reinstall it nor seed
 			// the default Locator the user did not ask for.
-			s.Lifecycle.Initialized, s.Lifecycle.PolicyHandled = true, true
+			s.Lifecycle.Initialized = true
+			s.Lifecycle.MarkPolicyHandled()
 			s.Persist("lifecycle")
 		}
 		if len(p.dropped) > 0 {

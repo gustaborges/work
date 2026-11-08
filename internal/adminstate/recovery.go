@@ -293,13 +293,13 @@ func recoveryCommand(operation string) string {
 	words := strings.Fields(operation)
 	if len(words) >= 4 && words[0] == "work" && words[1] == "plugin" && words[2] == "marketplace" {
 		switch words[3] {
-		case "add", "upgrade":
+		case "add", "upgrade", "remove":
 			return "work plugin marketplace " + words[3]
 		}
 	}
 	if len(words) >= 3 && words[0] == "work" {
 		switch words[1] + " " + words[2] {
-		case "plugin add", "plugin remove", "plugin enable", "plugin disable", "repository policy", "repository root", "convention set":
+		case "plugin add", "plugin remove", "plugin update", "plugin enable", "plugin disable", "repository policy", "repository root", "convention set":
 			return "work " + words[1] + " " + words[2]
 		}
 	}

@@ -118,12 +118,12 @@ func TestReceiptsNameExactQualifiedIdentities(t *testing.T) {
 func TestOnlyCurrentPluginCommandsExist(t *testing.T) {
 	c := newWorkCLI(t)
 	out, _ := c.run(0, "plugin", "--help")
-	for _, command := range []string{"add", "list", "remove", "enable", "disable", "marketplace"} {
+	for _, command := range []string{"add", "list", "remove", "update", "enable", "disable", "marketplace"} {
 		if !strings.Contains(out, "\n  "+command+" ") {
 			t.Errorf("plugin --help lacks %q:\n%s", command, out)
 		}
 	}
-	for _, retired := range []string{"install", "uninstall", "update"} {
+	for _, retired := range []string{"install", "uninstall"} {
 		if strings.Contains(out, "\n  "+retired+" ") {
 			t.Errorf("plugin --help advertises the retired %q", retired)
 		}

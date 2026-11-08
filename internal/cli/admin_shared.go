@@ -92,7 +92,7 @@ func hubDirect(cmd *cobra.Command, args ...string) error {
 		return err
 	}
 	equivalent := slices.Clone(args)
-	if len(args) > 1 && args[0] == "plugin" && (args[1] == "update" || args[1] == "uninstall") {
+	if len(args) > 1 && args[0] == "plugin" && (args[1] == "update" || args[1] == "remove") {
 		check, _ := executed.Flags().GetBool("check")
 		if !check {
 			remove, _ := executed.Flags().GetBool("remove-policy-references")

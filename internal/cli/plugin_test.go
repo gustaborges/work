@@ -11,12 +11,12 @@ func TestPluginExplicitHelpExitZero(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
 	}
-	for _, want := range []string{"add", "list", "marketplace", "enable", "disable", "remove"} {
+	for _, want := range []string{"add", "list", "marketplace", "enable", "disable", "remove", "update"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help missing %q:\n%s", want, out)
 		}
 	}
-	for _, retired := range []string{"  install ", "  uninstall ", "  update "} {
+	for _, retired := range []string{"  install ", "  uninstall "} {
 		if strings.Contains(out, retired) {
 			t.Errorf("help advertises a retired command %q:\n%s", retired, out)
 		}
@@ -32,7 +32,7 @@ func TestPluginJSONOnParentIsUsage(t *testing.T) {
 
 func TestPluginRetiredCommandsAreUsageErrors(t *testing.T) {
 	for _, args := range [][]string{
-		{"plugin", "install", "./x"}, {"plugin", "install", "--embedded"}, {"plugin", "update", "--check"}, {"plugin", "update", "--all"},
+		{"plugin", "install", "./x"}, {"plugin", "install", "--embedded"}, {"plugin", "update", "--json"}, {"plugin", "update", "--all", "x@y"},
 		{"marketplace", "add", "x"},
 	} {
 		home := t.TempDir()

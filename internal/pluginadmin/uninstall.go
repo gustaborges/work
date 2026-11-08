@@ -66,10 +66,16 @@ func factsOf(reg *registry.Registry, p pluginid.Provider) ([]registry.Component,
 // PlanUninstall reads a coherent catalog and owned roots without retrieving or
 // invoking any source. Every provider is resolved before inspecting any target.
 func PlanUninstall(ctx context.Context, h workhome.Home, providers []pluginid.Provider) (*UninstallPlan, error) {
-	targets := SortedProviders(providers)
-	if len(targets) == 0 {
+	if len(providers) == 0 {
 		return nil, diag.New(diag.Usage, "supply at least one installed plugin as plugin@marketplace")
 	}
+	return PlanUninstallSet(ctx, h, providers)
+}
+
+// PlanUninstallSet is PlanUninstall for a set a caller computed itself, such
+// as every plugin copied from one source, which may legitimately be empty.
+func PlanUninstallSet(ctx context.Context, h workhome.Home, providers []pluginid.Provider) (*UninstallPlan, error) {
+	targets := SortedProviders(providers)
 	for _, p := range targets {
 		if p.Validate() != nil {
 			return nil, diag.New(diag.Usage, "supply exact installed plugins as plugin@marketplace")
@@ -148,6 +154,30 @@ func verifyRemoval(h workhome.Home, s *adminstate.Snapshot, p *UninstallPlan) er
 	return nil
 }
 
+// ApplyIn revalidates the reviewed facts inside an open administrative session
+// and removes the set: owned roots, registry records and the reviewed policy
+// references. The caller owns the transaction, so a larger reviewed operation
+// (such as removing a whole source) can add its own changes to the same
+// publication, and owns the dependency authorization check. Remembered
+// conventions and Works are never touched.
+func (p *UninstallPlan) ApplyIn(h workhome.Home, s *adminstate.Session) error {
+	if err := verifyRemoval(h, s.Snapshot, p); err != nil {
+		return err
+	}
+	for _, pid := range p.providers {
+		if err := s.Remove(pid); err != nil {
+			return err
+		}
+		s.Registry.RemoveProvider(pid)
+	}
+	s.Config.RepositoryResolution.Locators = slices.DeleteFunc(slices.Clone(s.Config.RepositoryResolution.Locators), func(ref string) bool { return slices.Contains(p.references, ref) })
+	if slices.Contains(p.providers, adminstate.ReferenceProvider) {
+		s.Lifecycle.MarkRemoved()
+		s.Persist("lifecycle")
+	}
+	return nil
+}
+
 // Uninstall commits the reviewed set.
 func Uninstall(ctx context.Context, h workhome.Home, p *UninstallPlan, removePolicy bool) ([]pluginid.Provider, error) {
 	return UninstallWithOptions(ctx, h, p, removePolicy, adminstate.WriteOptions{})
@@ -167,21 +197,7 @@ func UninstallWithOptions(ctx context.Context, h workhome.Home, p *UninstallPlan
 		operation += " --remove-policy-references"
 	}
 	err := adminstate.WithWriteOptions(ctx, h, operation, func(s *adminstate.Session) error {
-		if err := verifyRemoval(h, s.Snapshot, p); err != nil {
-			return err
-		}
-		for _, pid := range p.providers {
-			if err := s.Remove(pid); err != nil {
-				return err
-			}
-			s.Registry.RemoveProvider(pid)
-		}
-		s.Config.RepositoryResolution.Locators = slices.DeleteFunc(slices.Clone(s.Config.RepositoryResolution.Locators), func(ref string) bool { return slices.Contains(p.references, ref) })
-		if slices.Contains(p.providers, adminstate.ReferenceProvider) {
-			s.Lifecycle.MarkRemoved()
-			s.Persist("lifecycle")
-		}
-		return nil
+		return p.ApplyIn(h, s)
 	}, opts)
 	if err == nil || diag.ExitCode(err) == diag.AdministrationCleanupFailed.Code {
 		return p.Providers(), err

@@ -72,16 +72,17 @@ stdout 'disable'
 stdout '(?m)^  remove '
 ! stdout '(?m)^  install '
 ! stdout '(?m)^  uninstall '
-! stdout '(?m)^  update '
+stdout '(?m)^  update '
 work plugin marketplace --help
 stdout 'add'
 stdout 'list'
 stdout 'upgrade'
+stdout 'remove'
 work plugin marketplace add --help
 stdout '.*--branch'
 ! work plugin install ./x
 stderr '^error: usage:'
-! work plugin update --check
+! work plugin update --check --all
 stderr '^error: usage:'
 ! work marketplace
 stderr '^error: usage:'
@@ -91,6 +92,15 @@ work plugin remove --help
 stdout '.*--yes'
 stdout '.*--remove-policy-references'
 stdout '.*--marketplace'
+work plugin update --help
+stdout '.*--check'
+stdout '.*--all'
+stdout '.*--yes'
+stdout '.*--remove-policy-references'
+stdout '.*--marketplace'
+work plugin marketplace remove --help
+stdout '.*--yes'
+stdout '.*--remove-policy-references'
 work plugin add --help
 stdout '.*--yes'
 stdout '.*--remove-policy-references'

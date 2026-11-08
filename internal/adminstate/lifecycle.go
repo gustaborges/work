@@ -62,3 +62,9 @@ func (l *Lifecycle) MarkRemoved() {
 	l.Initialized = true
 	l.Removed = true
 }
+
+// MarkPolicyHandled records an explicit repository-policy choice. The caller
+// persists the lifecycle image in the same transaction as the choice, so an
+// explicit empty policy is meaningful even when the Locator list was already
+// empty and first-use setup can never overwrite it with the default.
+func (l *Lifecycle) MarkPolicyHandled() { l.PolicyHandled = true }

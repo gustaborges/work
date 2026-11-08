@@ -201,7 +201,7 @@ func TestRetiredPublicationSyntaxIsUsageBeforeAnyStateOrRetrieval(t *testing.T) 
 	c := newWorkCLI(t)
 	for _, args := range [][]string{
 		{"plugin", "install", "./plugin"}, {"plugin", "install", "--embedded"}, {"plugin", "install", "x", "--link"}, {"plugin", "install", "x", "--as", "y"},
-		{"plugin", "update"}, {"plugin", "update", "--check"}, {"marketplace", "add", "x"}, {"plugin", "marketplace", "remove", "x"},
+		{"plugin", "update"}, {"plugin", "update", "--check", "--all"}, {"marketplace", "add", "x"}, {"plugin", "marketplace", "remove", "builtin", "--yes"},
 	} {
 		_, ui := c.run(2, args...)
 		if !strings.Contains(ui, "error: usage:") {

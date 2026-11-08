@@ -81,7 +81,7 @@ func EnsureSeedLocked(h workhome.Home, s *adminstate.Session) error {
 		if !slices.Contains(s.Config.RepositoryResolution.Locators, LocatorPolicyEntry) {
 			s.Config.RepositoryResolution.Locators = append(s.Config.RepositoryResolution.Locators, LocatorPolicyEntry)
 		}
-		s.Lifecycle.PolicyHandled = true
+		s.Lifecycle.MarkPolicyHandled()
 	}
 	s.Lifecycle.Initialized = true
 	s.Persist("lifecycle")

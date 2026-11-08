@@ -222,7 +222,7 @@ func TestAdminHubDirectInventoryAndFlags(t *testing.T) {
 			t.Fatalf("missing direct action %v: %v", path, err)
 		}
 	}
-	for name, flags := range map[string][]string{"add": {"marketplace", "yes", "remove-policy-references"}, "remove": {"marketplace", "yes", "remove-policy-references"}, "marketplace add": {"branch"}} {
+	for name, flags := range map[string][]string{"add": {"marketplace", "yes", "remove-policy-references"}, "remove": {"marketplace", "yes", "remove-policy-references"}, "marketplace add": {"branch"}, "update": {"marketplace", "check", "all", "yes", "remove-policy-references"}, "marketplace remove": {"yes", "remove-policy-references"}} {
 		cmd, _, _ := newRootCmd().Find(strings.Fields("plugin " + name))
 		for _, flag := range flags {
 			if cmd.Flags().Lookup(flag) == nil {
@@ -231,7 +231,7 @@ func TestAdminHubDirectInventoryAndFlags(t *testing.T) {
 		}
 	}
 	// Retired commands and flags are absent, not aliased.
-	for _, retired := range []string{"install", "update"} {
+	for _, retired := range []string{"install", "uninstall"} {
 		if cmd, _, _ := newRootCmd().Find([]string{"plugin", retired}); cmd != nil && cmd.Name() == retired {
 			t.Errorf("retired command plugin %s is still registered", retired)
 		}

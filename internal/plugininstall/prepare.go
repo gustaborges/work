@@ -40,25 +40,8 @@ func ProvenanceOf(e *marketplace.ResolvedEntry) registry.Provenance {
 // because a package that could never start is refused up front instead of
 // warned about forever. stage must be an empty directory the caller owns.
 func Prepare(entry *marketplace.ResolvedEntry, stage string) (*Prepared, error) {
-	tree, err := entry.Tree()
+	tree, manifest, err := Validate(entry)
 	if err != nil {
-		return nil, err
-	}
-	raw, err := tree.ReadFile("plugin.json")
-	if err != nil {
-		return nil, fmt.Errorf("%w: plugin.json: %v", marketplace.ErrInvalid, err)
-	}
-	manifest, err := plugin.Parse(raw)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", marketplace.ErrInvalid, err)
-	}
-	if manifest.Name != entry.Provider.Plugin || manifest.Version != entry.Entry.Version {
-		return nil, fmt.Errorf("%w: the package no longer matches its offer", marketplace.ErrInvalid)
-	}
-	if err = requireEntrypoints(tree, manifest); err != nil {
-		return nil, err
-	}
-	if err = PreflightRuntimes(manifest); err != nil {
 		return nil, err
 	}
 	if err = tree.CopyTo(filepath.Join(stage, "source")); err != nil {
@@ -69,6 +52,35 @@ func Prepare(entry *marketplace.ResolvedEntry, stage string) (*Prepared, error) 
 		return nil, diag.Wrap(diag.PluginInstallFailed, err, "cannot record the plugin's origin")
 	}
 	return p, nil
+}
+
+// Validate proves that entry's fixed content is exactly what its offer
+// promised and that the package could be installed, without copying anything.
+// Maintenance checks use it to judge a candidate even when it would not be
+// applied; Prepare builds on it so both accept precisely the same packages.
+func Validate(entry *marketplace.ResolvedEntry) (*marketplace.Tree, *plugin.Manifest, error) {
+	tree, err := entry.Tree()
+	if err != nil {
+		return nil, nil, err
+	}
+	raw, err := tree.ReadFile("plugin.json")
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: plugin.json: %v", marketplace.ErrInvalid, err)
+	}
+	manifest, err := plugin.Parse(raw)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %v", marketplace.ErrInvalid, err)
+	}
+	if manifest.Name != entry.Provider.Plugin || manifest.Version != entry.Entry.Version {
+		return nil, nil, fmt.Errorf("%w: the package no longer matches its offer", marketplace.ErrInvalid)
+	}
+	if err = requireEntrypoints(tree, manifest); err != nil {
+		return nil, nil, err
+	}
+	if err = PreflightRuntimes(manifest); err != nil {
+		return nil, nil, err
+	}
+	return tree, manifest, nil
 }
 
 // requireEntrypoints fails when a declared entrypoint is not a regular file of
