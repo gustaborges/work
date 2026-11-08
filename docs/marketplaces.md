@@ -89,4 +89,9 @@ work plugin add wsp@work          # repository locator backed by `wsp find`
   source, and the CLI still presents every registered source the same way.
 - **Explicit only.** Nothing registers it for you, and removing it never
   reinstalls it. `builtin` is unaffected either way.
-- **Contents and a reviewable snapshot:** `marketplaces/work/README.md`.
+- **Contents:** `github` (pull request and issue starters, linkers and importers) and `wsp`
+  (repository locator backed by `wsp find`). The catalog lives only in the origin
+  repository; this repository keeps no copy.
+- **Publishing a change:** edit the packages in the origin repository through a
+  branch and pull request, and bump the plugin `version` when behavior changes
+  (installed copies only see an update when the version differs).

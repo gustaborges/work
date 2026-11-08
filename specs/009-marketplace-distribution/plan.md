@@ -84,7 +84,6 @@ internal/
   diag/                     # purposeful error names and new categories 57–61
 seed/                       # builtin catalog and current native reference assets
 examples/marketplaces/      # minimum single/multiple author catalogs
-marketplaces/work/          # publication artifact; no automatic remote write
 tests/
   fixtures/marketplaces/    # current local/Git/homonym/invalid source fixtures
   contract/, integration/   # current grammar/state/safety/parity/platform evidence

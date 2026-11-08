@@ -117,7 +117,6 @@ Origin supplied by the project owner on 2026-11-08: `https://github.com/gustabor
 | Automatic importers on a fresh start | home on 1.1.0: `work start <issue URL>` ran the issue linker and the issue importer automatically and wrote `context/github/issue/issue.md`; no PR importer ran |
 | Manual import contracts | missing link: `required-input-missing`; repeated import: `extension-output-refused`; PR description/comments/diff and issue imported |
 | Whole-source removal | `marketplace remove work --yes` refused with `plugin-policy-dependency`; state unchanged; with `--remove-policy-references` it removed `github@work` and `wsp@work`, emptied the policy, kept `builtin` and the Work directory |
-| Snapshot in this repository | `marketplaces/work/` registers as an independent local source named `work` |
 
 Defects found by this run and fixed before release: the PR linker failed without a logged-in `gh` (fixed in `60893e4`); the wsp locator never matched URL-only references (fixed in 1.0.1). The component classes involved were not covered by any local fixture.
 
