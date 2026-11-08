@@ -36,7 +36,15 @@ func Copy(t testing.TB, name string) string {
 		if err != nil {
 			return err
 		}
-		return os.WriteFile(to, b, info.Mode().Perm())
+		if err := os.WriteFile(to, b, info.Mode().Perm()); err != nil {
+			return err
+		}
+		// Installation requires a native entrypoint to carry ".exe" on Windows,
+		// while the shared fixtures ship one POSIX script per entrypoint.
+		if runtime.GOOS == "windows" && filepath.Base(filepath.Dir(rel)) == "bin" && filepath.Ext(rel) == "" {
+			return os.WriteFile(to+".exe", b, 0o644)
+		}
+		return nil
 	})
 	if err != nil {
 		t.Fatalf("copying fixture %q: %v", name, err)

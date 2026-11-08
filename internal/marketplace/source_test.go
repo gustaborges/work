@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -85,6 +86,9 @@ func TestCaptureLocalDetectsMutationAtTheBoundary(t *testing.T) {
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
+			if name == "chmod" && runtime.GOOS == "windows" {
+				t.Skip("local files carry no executable bit on Windows")
+			}
 			src := marketplaces.Copy(t, "multiple")
 			stage := stageDir(t)
 			snap, err := CaptureLocal(context.Background(), src, stage, CaptureOptions{afterCopy: func() { mutate(src) }})
@@ -251,6 +255,9 @@ func TestOpenGitRejectsSubmodules(t *testing.T) {
 }
 
 func TestGitPackagesRecordExecutableBit(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("local captures record no executable bit on Windows, so they cannot match a Git tree that does")
+	}
 	_, url := gitSource(t, "single", "main")
 	snap, err := OpenGit(context.Background(), url, "main", "", t.TempDir())
 	if err != nil {
