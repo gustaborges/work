@@ -231,11 +231,9 @@ func (t *Tree) ValidateLinks() error {
 		if err := validateLinkText(n.Link); err != nil {
 			return fmt.Errorf("%s: %w", n.Path, err)
 		}
-		target := path.Join(path.Dir(n.Path), n.Link)
-		if target == ".." || strings.HasPrefix(target, "../") {
-			return fmt.Errorf("%s: %w", n.Path, errEscape)
-		}
-		if _, err := resolve(idx, target); err != nil {
+		// The link text is handed to resolve uncleaned: lexically collapsing
+		// "d/.." would skip the symlink d and miss an escape through it.
+		if _, err := resolve(idx, path.Dir(n.Path)+"/"+n.Link); err != nil {
 			return fmt.Errorf("%s: %w", n.Path, err)
 		}
 	}
