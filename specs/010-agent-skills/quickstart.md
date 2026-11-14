@@ -14,22 +14,23 @@
 make build
 sandbox=$(mktemp -d)
 mkdir -p "$sandbox/marketplace"
-bin/work skills install --dir "$sandbox/marketplace"
-bin/work skills status --dir "$sandbox/marketplace" --json
+work_bin="$(pwd)/bin/work"
+(cd "$sandbox/marketplace" && "$work_bin" skills install --vendor=codex --scope=local --yes)
+(cd "$sandbox/marketplace" && "$work_bin" skills status --vendor=codex --scope=local --json)
 ```
 
-Expect installed/current for both agents, one missing-catalog stderr note, identical complete vendor trees and no Work home creation. Compare all payload files plus marker; rerun install and assert unchanged with every payload mtime stable. Repeat global tests only under test-owned homes; test vendor selection and empty/relative/absolute Claude override. Delete only this owned sandbox after checking no operation/recovery remains.
+Expect installed/current for Codex and no Work home creation. Repeat explicitly with --vendor=claude and compare identical complete vendor payloads. Compare all payload files plus marker; rerun install and assert unchanged with every payload mtime stable. Repeat user-scope tests only under test-owned homes; test vendor selection and empty/relative/absolute Claude override. Delete only this owned sandbox after checking no operation/recovery remains.
 
 ## Q2 — Ownership and scope/path matrix
 
-Use `go test ./internal/skillinstall -run 'Test(Targets|Ownership|Digest|Plan)'` after these tests are implemented. Cover absent/current/outdated/modified/foreign, malformed/future/wrong-skill marker, added/deleted/hidden assets, platform mode independence, linked parent/target/descendant, special nodes, unreadable marker/tree, Unicode/spaces/case aliases/overlaps. Ordinary modified/foreign is replaced only with force; unsafe/unreadable/changed-under-observation never is. Assert no initial-conflict payload changes across vendors.
+Use `go test ./internal/skillinstall -run 'Test(Targets|Ownership|Digest|Plan)'` after these tests are implemented. Cover absent/current/outdated/modified/foreign, malformed/future/wrong-skill marker, added/deleted/hidden assets, platform mode independence, linked parent/target/descendant, special nodes, unreadable marker/tree, Unicode/spaces/case aliases/overlaps. Ordinary modified/foreign is replaced only with force; unsafe/unreadable/changed-under-observation never is. Assert no initial-conflict payload changes across selected skill targets.
 
-CLI contract tests: `go test ./tests/contract -run TestSkills`. Neither/both scopes, unknown/empty operands/vendors, path-like skills, missing/file --dir, unknown flags and install --json fail before target writes. Root/setup/group help and static home follow [CLI contract](contracts/cli-work-skills.md).
+CLI contract tests: `go test ./tests/contract -run TestSkills`. Missing/invalid scope, unknown/empty/repeated vendors, all-vendors values, all skill operands, removed --dir/--global flags, unknown flags and install --json fail before target writes. Root/setup/group help and static home follow [CLI contract](contracts/cli-work-skills.md).
 
 ## Q3 — Pure coherent status
 
 ```sh
-bin/work skills status --dir "$sandbox/marketplace" --json
+(cd "$sandbox/marketplace" && "$work_bin" skills status --vendor=codex --scope=local --json)
 ```
 
 Run the implemented `go test ./tests/integration -run TestSkillsStatus` matrix. Snapshot directory existence, bytes and local coordination before/after, including absent paths, foreign/unreadable content and pending records. Expect one ordered non-null JSON array with nullable digests/safe error fields and stderr-only notes. Ordinary inspected states exit zero; structural/recovery/I/O rows fail but retain other rows. Synchronize status with publication checkpoints; max three attempts, no invented current and no lock files/repair.
@@ -59,9 +60,9 @@ Use full multi-entry fixtures and separately tested POSIX/PowerShell recipes fro
 
 ## Q7 — Actual local-agent dogfood
 
-After deterministic tests, in clean isolated Claude Code and Codex sessions, install into a temporary marketplace with --dir. Record actual discovery, invocation and reload results, then ask each agent to create a new catalog/plugin using only delivered skill/references/templates. Register and selected-install every output entry with no manual contract fixes. Record agent/version, Work revision, runtime prerequisites, outputs and failures in `specs/010-agent-skills/validation.md` during implementation.
+After deterministic tests, in clean isolated Claude Code and Codex sessions, install into a temporary marketplace using --scope=local --vendor=<agent> and --yes for automation. Record actual discovery, invocation and reload results, then ask each agent to create a new catalog/plugin using only delivered skill/references/templates. Register and selected-install every output entry with no manual contract fixes. Record agent/version, Work revision, runtime prerequisites, outputs and failures in `specs/010-agent-skills/validation.md` during implementation.
 
-Check Claude global discovery with CLAUDE_CONFIG_DIR override separately because the skills subpath is inferred from its configuration-root documentation. Claude uses `/work-plugin-builder`; `/reload-skills` is needed for a newly created top-level skill directory in-session. Codex uses `$work-plugin-builder`, auto-detects changes and can restart if absent. Verify duplicate-scope behavior without promising merges. Missing agent access leaves this task incomplete; parser fixtures cannot substitute for it.
+Check Claude user-scope discovery with CLAUDE_CONFIG_DIR override separately because the skills subpath is inferred from its configuration-root documentation. Claude uses `/work-cli-plugin-builder`; `/reload-skills` is needed for a newly created top-level skill directory in-session. Codex uses `$work-cli-plugin-builder`, auto-detects changes and can restart if absent. Verify duplicate-scope behavior without promising merges. Missing agent access leaves this task incomplete; parser fixtures cannot substitute for it.
 
 ## Q8 — Release gate
 

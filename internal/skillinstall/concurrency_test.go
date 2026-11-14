@@ -7,7 +7,7 @@ import (
 )
 
 func TestConcurrentInstallStatusAndCancellation(t *testing.T) {
-	ds, _ := Resolve(Options{Dir: t.TempDir(), Vendors: []string{"codex"}})
+	ds, _ := resolveAt(Options{Scope: "local", Vendor: "codex"}, t.TempDir())
 	prepared := make(chan struct{})
 	resume := make(chan struct{})
 	finished := make(chan []Outcome, 1)

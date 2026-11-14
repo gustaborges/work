@@ -25,3 +25,14 @@ The feature is not release-complete. Any PR must remain draft until remaining ta
 Full host `go test ./...` passed (integration package 254.494s), with temporary Git fixture signing disabled through environment configuration; repository commit signing remains enabled. Final focused suite including CLI/domain/assets/installer passed. Final make lint passed. Generated references and pin were regenerated/reviewed after annotating the existing LinkerResponse wire field; non-mutating verification passed.
 
 Authenticated existing Claude/Codex profiles are available. Clean profile checks above remain true, but are not evidence that existing profiles cannot run. The actual Claude authoring attempt was rejected by automatic approval review because exporting the installed skill and temporary workspace to the external AI service requires explicit user approval. No model request ran, and no alternative agent request bypassed the rejection. Approval for both exercises has been requested.
+
+## Owner-approved CLI experience revision
+
+2026-11-14: Revised agent skills PRD FR-66 and accepted ADR-0034 superseding ADR-0032. Both commands require one vendor and local/user scope, take no skill operands and select the complete release inventory. Both install scopes confirm unless --yes; force remains independent. Renamed the bundled skill to work-cli-plugin-builder; existing copies under the prior name are not automatically migrated or deleted.
+
+- CLI tests cover both vendors × both scopes, full inventory/current status, unselected-vendor absence, Work-home purity, invalid/missing/repeated/all vendor selection, obsolete scope flags, forbidden skill operands and install JSON/status mutation flags.
+- Confirmation previews cover multiple skills/destinations and force disclosure; --yes preserves local edits without force and --force --yes replaces them. Non-interactive unconfirmed installs create no target or coordination files.
+- Relative Claude user configuration and local current-directory anchors are tested without writes.
+- Reviewed renamed references and complete scaffold templates. `go generate ./ai-skills/...` and explicit `make skill-lock` completed; all three generated reference files and the represented contract pin remain byte-identical to the prior tree. Only the skill name/frontmatter changed in the delivered content.
+- `make lint` passed with Go/staticcheck caches under /tmp. Fixture Git signing was disabled through process-only environment configuration for the test run; repository signing configuration was not changed.
+- Full host `go test ./...` passed, including interactive accept/decline checks for both local and user scope (integration package 195.943s). Declining leaves target roots and coordination artifacts absent. Final focused installer suite also passed after adding the Claude override anchor case. These results validate this CLI revision; the pre-existing feature-wide delivery gaps above remain separate.

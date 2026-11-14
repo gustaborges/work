@@ -506,8 +506,8 @@ never print. Set `WORK_DEBUG=1` to append the underlying cause chain.
 
 | Setup command | Purpose |
 | --- | --- |
-| `work skills install --global` | Install bundled authoring guidance for Claude Code and Codex |
-| `work skills install --dir PATH` | Install guidance into an existing folder |
-| `work skills status --dir PATH --json` | Inspect local copies without writing state |
+| `work skills install --vendor=codex --scope=user` | Confirm installation of all bundled Work skills for Codex |
+| `work skills install --vendor=claude --scope=local` | Confirm installation of all bundled Work skills in the current directory for Claude Code |
+| `work skills status --vendor=codex --scope=local --json` | Inspect local copies without writing state |
 
 See [agent skills](docs/agent-skills.md) for ownership, explicit updates and recovery.

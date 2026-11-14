@@ -3,12 +3,13 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+
 	skills "github.com/gustaborges/work/ai-skills"
 	"github.com/gustaborges/work/internal/diag"
+	"github.com/gustaborges/work/internal/present"
 	"github.com/gustaborges/work/internal/skillinstall"
 	"github.com/spf13/cobra"
-	"os"
-	"path/filepath"
 )
 
 func skillError(token string) error {
@@ -23,12 +24,14 @@ func newSkillsCmd() *cobra.Command {
 	group := &cobra.Command{Use: "skills", Short: "Install and inspect bundled agent authoring skills", Args: noArgsUsage, RunE: func(c *cobra.Command, _ []string) error { return c.Help() }}
 	for _, operation := range []string{"install", "status"} {
 		var o skillinstall.Options
-		cmd := &cobra.Command{Use: operation + " [SKILL...]", Short: operation + " local agent skill copies"}
-		cmd.Flags().BoolVar(&o.Global, "global", false, "use personal agent skill directories")
-		cmd.Flags().StringVar(&o.Dir, "dir", "", "use an existing folder")
-		cmd.Flags().StringArrayVar(&o.Vendors, "vendor", nil, "select claude or codex (repeatable; default both)")
+		var vendors []string
+		var yes, force bool
+		cmd := &cobra.Command{Use: operation, Short: operation + " the complete bundled Work skill collection", Args: noArgsUsage}
+		cmd.Flags().StringVar(&o.Scope, "scope", "", "required: local (current directory) or user")
+		cmd.Flags().StringArrayVar(&vendors, "vendor", nil, "required: exactly one of claude or codex")
 		if operation == "install" {
-			cmd.Flags().BoolVar(&o.Force, "force", false, "replace ordinary modified or foreign content")
+			cmd.Flags().BoolVar(&force, "force", false, "replace ordinary modified or foreign content")
+			cmd.Flags().BoolVar(&yes, "yes", false, "skip the installation confirmation (does not permit replacing local edits)")
 		} else {
 			cmd.Flags().Bool("json", false, "emit machine-readable status")
 		}
@@ -37,18 +40,13 @@ func newSkillsCmd() *cobra.Command {
 			if operation == "install" && c.Flags().Changed("json") {
 				return diag.New(diag.Usage, "skills install does not accept --json")
 			}
-			if c.Flags().Changed("dir") && o.Dir == "" {
-				return diag.New(diag.Usage, "--dir must be nonempty")
+			if len(vendors) != 1 {
+				return diag.New(diag.Usage, "--vendor is required and must select exactly one of claude or codex")
 			}
-			o.Skills = args
+			o.Vendor = vendors[0]
 			ds, err := skillinstall.Resolve(o)
 			if err != nil {
-				return diag.Wrap(diag.Usage, err, "invalid skill selection or scope; choose --global or an existing --dir and supported skill/vendor names")
-			}
-			if o.Dir != "" {
-				if _, err := os.Stat(filepath.Join(o.Dir, "marketplace.json")); os.IsNotExist(err) {
-					fmt.Fprintf(c.ErrOrStderr(), "note: no marketplace.json in %q; skill management does not require one\n", o.Dir)
-				}
+				return diag.Wrap(diag.Usage, err, "choose --scope=local or --scope=user and exactly one --vendor=claude or --vendor=codex")
 			}
 			if operation == "status" {
 				rows := make([]skillinstall.Result, 0, len(ds))
@@ -90,7 +88,10 @@ func newSkillsCmd() *cobra.Command {
 				}
 				return failure
 			}
-			outcomes := skillinstall.Install(c.Context(), ds, o.Force)
+			if err := confirmSkillsInstall(c, ds, o, yes, force); err != nil {
+				return err
+			}
+			outcomes := skillinstall.Install(c.Context(), ds, force)
 			var failure error
 			for _, out := range outcomes {
 				fmt.Fprint(c.OutOrStdout(), out.String())
@@ -103,9 +104,9 @@ func newSkillsCmd() *cobra.Command {
 				fmt.Fprintln(c.OutOrStdout())
 				if out.Error == "" && (out.Action == "installed" || out.Action == "updated" || out.Action == "unchanged") {
 					if out.Destination.Vendor == "claude" {
-						fmt.Fprintln(c.ErrOrStderr(), "hint: invoke /work-plugin-builder in Claude Code; use /reload-skills if the top-level skills directory was created during this session")
+						fmt.Fprintf(c.ErrOrStderr(), "hint: invoke /%s in Claude Code; use /reload-skills if the top-level skills directory was created during this session\n", out.Destination.Skill)
 					} else {
-						fmt.Fprintln(c.ErrOrStderr(), "hint: invoke $work-plugin-builder in Codex; restart if it is not detected")
+						fmt.Fprintf(c.ErrOrStderr(), "hint: invoke $%s in Codex; restart if it is not detected\n", out.Destination.Skill)
 					}
 				}
 			}
@@ -114,4 +115,35 @@ func newSkillsCmd() *cobra.Command {
 		group.AddCommand(cmd)
 	}
 	return group
+}
+
+func skillsInstallImpact(ds []skillinstall.Destination, o skillinstall.Options, force bool) string {
+	var impact strings.Builder
+	fmt.Fprintf(&impact, "Vendor: %s\nScope: %s\n\nSkills included:\n", o.Vendor, o.Scope)
+	for _, d := range ds {
+		fmt.Fprintf(&impact, "  %s\n    → %q\n", d.Skill, d.Path)
+	}
+	if force {
+		impact.WriteString("\nReplace modified or foreign skill files if present. Local edits will be lost.\n")
+	}
+	return impact.String()
+}
+
+func confirmSkillsInstall(c *cobra.Command, ds []skillinstall.Destination, o skillinstall.Options, yes, force bool) error {
+	if yes {
+		return nil
+	}
+	if !present.IsInteractive() {
+		return diag.New(diag.Usage, "skills install requires --yes in a non-interactive session")
+	}
+	ok, err := present.Confirm(c.Context(), present.IO{In: c.InOrStdin(), UI: c.ErrOrStderr()}, present.ConfirmSpec{
+		Title: "Install Work skills", Impact: skillsInstallImpact(ds, o, force), Accept: "Install", Reject: "Cancel",
+	})
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return diag.New(diag.Cancelled, "skill installation declined; no files changed")
+	}
+	return nil
 }

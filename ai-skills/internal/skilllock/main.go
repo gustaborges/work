@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	if err := os.WriteFile("ai-skills/work-plugin-builder/CONTRACT", []byte(skills.ContractPin()), 0644); err != nil {
+	if err := os.WriteFile("ai-skills/work-cli-plugin-builder/CONTRACT", []byte(skills.ContractPin()), 0644); err != nil {
 		panic(err)
 	}
 }

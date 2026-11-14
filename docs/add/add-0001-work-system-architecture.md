@@ -503,7 +503,7 @@ Read commands (`status`, `list`, `show`, and `plugin update --check`) accept `--
 
 ## Agent authoring skills
 
-Governing decisions: ADR-0031, ADR-0032, ADR-0033. Satisfies PRD FR-65–FR-69.
+Governing decisions: ADR-0031, ADR-0033, [ADR-0034](../adr/adr-0034-complete-skill-collection.md). Satisfies PRD FR-65–FR-69.
 
 ### Components and dependencies
 
@@ -512,6 +512,8 @@ Governing decisions: ADR-0031, ADR-0032, ADR-0033. Satisfies PRD FR-65–FR-69.
 `internal/skillinstall` owns destination resolution, pure inspection, portable digest/marker classification, plan/apply and filesystem-local recovery. It uses portable lock/atomic-file helpers and owns no Work administrative state. `internal/cli/skills.go` validates flags, composes the service and renders results through existing CLI conventions; it never invokes bootstrap, mutation preflight or repository discovery.
 
 ## Data and flows
+
+The command adapter accepts no skill operands and resolves the complete embedded inventory for one explicit vendor and local/user scope. Local resolution captures the initial current directory; user resolution uses the vendor's user root. Before calling the writable installer, both scopes use the existing confirmation control with every skill and resolved destination; non-interactive callers require `--yes`. Force authorization remains separate. The adapter does not inspect vendor executables or require a marketplace catalog. Status bypasses confirmation and writable helpers. ADR-0034 governs this interface.
 
 See [data model](../../specs/010-agent-skills/data-model.md) for ownership/operation records and exact digest framing. [Installer contract](../../specs/010-agent-skills/contracts/skill-installation.md) defines preflight, ordered locking, stage/backup publication and recovery. [CLI contract](../../specs/010-agent-skills/contracts/cli-work-skills.md) defines scope, output and errors. Pure status observes coordination and tree identity around hashing with at most three attempts and never opens a writable helper.
 

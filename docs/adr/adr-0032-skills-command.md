@@ -1,6 +1,6 @@
 # ADR-0032: Explicit plural skills setup command
 
-**Status**: Accepted, 2026-11-14; approved by the project owner during implementation.
+**Status**: Superseded by [ADR-0034](adr-0034-complete-skill-collection.md), 2026-11-14. Original decision retained below.
 **Related requirements**: FR-66, FR-68 in [PRD](../prd.md).
 **Realized by**: [ADD-0001](../add/add-0001-work-system-architecture.md), command adapter.
 

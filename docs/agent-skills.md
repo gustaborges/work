@@ -1,23 +1,26 @@
 # Agent authoring skills
 
-Work bundles `work-plugin-builder` as offline text guidance, reference tables and a complete marketplace scaffold. It helps local agents author marketplaces, manifests, conventions and all four component roles. Skill management never contacts an AI service or opens Work application state.
+Work bundles `work-cli-plugin-builder` as offline text guidance, reference tables and a complete marketplace scaffold. It helps local agents author marketplaces, manifests, conventions and all four component roles. Skill management never contacts an AI service or opens Work application state.
 
-Choose exactly one scope:
+Choose exactly one vendor and scope. Every installation includes **all skills bundled with this Work release**, initially `work-cli-plugin-builder`. Individual skill operands, repeated vendors and `--vendor=all` are not supported.
 
 ```sh
-work skills install --global
-work skills install --dir /path/to/existing/marketplace
-work skills status --dir /path/to/existing/marketplace --json
+work skills install --vendor=codex --scope=local
+work skills install --vendor=claude --scope=user
+work skills install --vendor=codex --scope=user --yes
+work skills status --vendor=codex --scope=local --json
 ```
 
-Both agents are selected by default. Repeat `--vendor claude` or `--vendor codex` to select agents explicitly. Omitted skill operands select all bundled skills. Unknown names, vendors and missing scope fail before writes. A catalog is optional for skill management. Install does not accept --json; status does. Bare `work skills` displays help.
+`local` installs in the current directory; `user` installs in the agent's personal directory. Both scopes preview all included skills and their destinations and ask for confirmation. `--yes` skips confirmation and is required without an interactive terminal. `--force` separately permits replacing ordinary modified/foreign content; it still prompts unless combined with `--yes`. Neither flag bypasses path/recovery safety checks. Work does not detect or require installed agent executables. No marketplace catalog is required.
 
-| Agent | Personal destination | Folder destination |
+Unknown vendors, missing/invalid scope, skill operands and the removed `--global`/`--dir` flags fail before writes. Install rejects --json; status accepts it and never prompts. Bare `work skills` displays help.
+
+| Agent | User destination | Local destination (relative to current directory) |
 | --- | --- | --- |
-| Claude Code | `${CLAUDE_CONFIG_DIR:-HOME/.claude}/skills/work-plugin-builder` | `.claude/skills/work-plugin-builder` |
-| Codex | `HOME/.agents/skills/work-plugin-builder` | `.agents/skills/work-plugin-builder` |
+| Claude Code | `${CLAUDE_CONFIG_DIR:-HOME/.claude}/skills/work-cli-plugin-builder` | `.claude/skills/work-cli-plugin-builder` |
+| Codex | `HOME/.agents/skills/work-cli-plugin-builder` | `.agents/skills/work-cli-plugin-builder` |
 
-A relative CLAUDE_CONFIG_DIR resolves against the initial working directory. Empty means default. Explicit anchors are canonicalized; linked descendants and unsafe payload nodes are refused. Copies contain identical payload bytes. Invoke `/work-plugin-builder` in Claude Code or `$work-plugin-builder` in Codex. Claude watches existing directories; use `/reload-skills` if the top-level skills directory was created during the session, including after further edits there. Codex detects skills automatically; restart if a copy is missing. Actual override/reload behavior remains a release validation requirement.
+A relative CLAUDE_CONFIG_DIR resolves against the initial working directory. Empty means default. Explicit anchors are canonicalized; linked descendants and unsafe payload nodes are refused. Copies contain identical payload bytes. Invoke `/work-cli-plugin-builder` in Claude Code or `$work-cli-plugin-builder` in Codex. Claude watches existing directories; use `/reload-skills` if the top-level skills directory was created during the session, including after further edits there. Codex detects skills automatically; restart if a copy is missing. Actual override/reload behavior remains a release validation requirement.
 
 The root `.work-skill.json` records the installed payload digest. Current copies are unchanged, including mtimes. Outdated owned copies update explicitly. Modified or foreign ordinary copies require --force, which replaces their local content; inspect or preserve edits before using it. Force never bypasses unsafe nodes, unreadable content, changed observations or unresolved recovery. Binary upgrades do not refresh copies silently.
 

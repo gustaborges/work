@@ -9,7 +9,7 @@ import (
 )
 
 func TestSkillInventory(t *testing.T) {
-	tree, err := Tree("work-plugin-builder")
+	tree, err := Tree("work-cli-plugin-builder")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -18,7 +18,7 @@ func TestSkillInventory(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(b)
-	if !strings.HasPrefix(s, "---\nname: work-plugin-builder\ndescription:") {
+	if !strings.HasPrefix(s, "---\nname: work-cli-plugin-builder\ndescription:") {
 		t.Fatal("frontmatter")
 	}
 	for _, name := range []string{"marketplace-catalog", "plugin-manifest", "component-roles", "validate-and-publish"} {
@@ -29,13 +29,13 @@ func TestSkillInventory(t *testing.T) {
 	if _, err = Tree("../escape"); err == nil {
 		t.Fatal("unknown name")
 	}
-	if _, err = Digest("work-plugin-builder"); err != nil {
+	if _, err = Digest("work-cli-plugin-builder"); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestAllPayloadLinksAndFrontmatter(t *testing.T) {
-	tree, err := Tree("work-plugin-builder")
+	tree, err := Tree("work-cli-plugin-builder")
 	if err != nil {
 		t.Fatal(err)
 	}

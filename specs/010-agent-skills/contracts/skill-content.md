@@ -4,7 +4,7 @@
 
 ## Canonical payload
 
-`ai-skills/work-plugin-builder/SKILL.md` uses only name and description frontmatter. Trigger covers creating/editing/reviewing/validating Work marketplaces, manifests, all four roles and branch conventions. Body is vendor-neutral: no tool names, vendor invocation syntax or `$ARGUMENTS`. References use actual relative Markdown links; comments are not includes. No agents/openai.yaml or overlays in v1.
+`ai-skills/work-cli-plugin-builder/SKILL.md` uses only name and description frontmatter. Trigger covers creating/editing/reviewing/validating Work marketplaces, manifests, all four roles and branch conventions. Body is vendor-neutral: no tool names, vendor invocation syntax or `$ARGUMENTS`. References use actual relative Markdown links; comments are not includes. No agents/openai.yaml or overlays in v1.
 
 Workflow: classify request and read existing catalog → choose role before JSON → scaffold cohesive self-contained packages → implement declared-runtime entrypoints → recapture/validate every entry → explain Git publication/qualified consumer install. One plugin is the atomic package maintenance unit. Bump opaque version on behavioral changes. Respect reserved builtin identity and exact normalized official descriptor; a catalog name alone never grants official status. Never invent manifest fields or execute components merely to validate discovery/installability.
 
@@ -16,7 +16,7 @@ References: marketplace-catalog.md, plugin-manifest.md, component-roles.md, vali
 - Extract inline catalog lists into values consumed by both validation and Contract(), with no new validation behavior. Return deep immutable copies and canonical sorted output. IPC descriptor traverses actual Go structs/tags and models role request/response variants; behavioral fixtures remain separate.
 - `go generate ./ai-skills/...` writes committed generated references via `ai-skills/internal/generate/main.go`. Normal build embeds committed output without generation/network.
 - CONTRACT hashes canonical versioned descriptor serialization (including protocol descriptor). `make skill-lock` invokes `ai-skills/internal/skilllock/main.go` to explicitly update only the pin after human review of guidance/examples. TestSkillContractPinned and byte comparison against in-memory rendered generation never write files.
-- Failure message: “the Work contract changed; update ai-skills/work-plugin-builder (references/ and templates/), then run make skill-lock”. Independent role/catalog/IPC mutations must prove gates fail. Blind re-pinning is possible; never claim proof of meaningful prose revision.
+- Failure message: “the Work contract changed; update ai-skills/work-cli-plugin-builder (references/ and templates/), then run make skill-lock”. Independent role/catalog/IPC mutations must prove gates fail. Blind re-pinning is possible; never claim proof of meaningful prose revision.
 
 ## Fixture routing
 

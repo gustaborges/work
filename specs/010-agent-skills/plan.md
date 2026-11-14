@@ -6,7 +6,7 @@
 
 ## Summary
 
-Bundle one canonical vendor-neutral `work-plugin-builder` text tree with the Work release and explicitly install identical copies for local Claude Code/Codex. Add `work skills install/status` in Setup, with pure status and no Work-home/bootstrap involvement. Use a portable tree digest, ownership marker, canonical target planning, persistent sibling locks and retained-backup recovery per destination. Generate references from actual contract descriptors; verify committed generated content and a reviewed pin without CI mutation.
+Bundle one canonical vendor-neutral `work-cli-plugin-builder` text tree with the Work release and explicitly install identical copies for local Claude Code/Codex. Add `work skills install/status` in Setup, with pure status and no Work-home/bootstrap involvement. Use a portable tree digest, ownership marker, canonical target planning, persistent sibling locks and retained-backup recovery per destination. Generate references from actual contract descriptors; verify committed generated content and a reviewed pin without CI mutation.
 
 The proposal mixes requirements/decisions/design. Draft authority amendments are ready for review; S0 promotes approved PRD → ADR → ADD before implementation. Plural naming conflicts with ADR-0019 until its proposed narrow exception is accepted. Feature 009 must first merge into development baseline (`develop`), with contract/ID/diagnostic reconciliation. No merge or acceptance is performed by planning.
 
@@ -19,8 +19,8 @@ The proposal mixes requirements/decisions/design. Draft authority amendments are
 **Target Platform**: Existing Linux/macOS/Windows CI and release targets. Text assets require no cross-compiled seed; scripts use declared runtimes.
 **Project Type**: Local single-binary CLI plus embedded authoring documentation/scaffolds.
 **Performance Goals**: No network/repository scanning in skill management; inspect only requested destinations and local coordination. Status at most three coherent-read attempts. Reuse 30-second lock acquisition limit/cancellation; no new arbitrary latency SLA.
-**Constraints**: Explicit scope; identical payload bytes; force cannot override unsafe/unreadable/changed-target/recovery conditions. Never lock inside renamed trees. No Work/admin locks, bootstrap, mutationPreflight or repository discovery. No wildcard scratch deletion. No claim of atomic directory visibility or arbitrary power-loss safety.
-**Scale/Scope**: One local user, initially one skill, two vendors and explicit target batches. No removal, overlays, online distribution, marketplace validate or new runtime component role.
+**Constraints**: Explicit local/user scope and exactly one vendor; complete release inventory; installation confirmation unless --yes; identical payload bytes; force cannot override unsafe/unreadable/changed-target/recovery conditions. Never lock inside renamed trees. No Work/admin locks, bootstrap, mutationPreflight or repository discovery. No wildcard scratch deletion. No claim of atomic directory visibility or arbitrary power-loss safety.
+**Scale/Scope**: One local user, initially one skill, two vendors and complete-collection single-vendor target batches. No removal, overlays, online distribution, marketplace validate or new runtime component role.
 
 ## Constitution Check
 
@@ -71,7 +71,7 @@ ai-skills/                      # package skills; canonical tree plus embed/gene
 ├── internal/generate/main.go
 ├── internal/skilllock/main.go
 ├── skills_test.go
-└── work-plugin-builder/
+└── work-cli-plugin-builder/
     ├── SKILL.md
     ├── CONTRACT
     ├── references/{marketplace-catalog,plugin-manifest,component-roles,validate-and-publish}.md
@@ -151,3 +151,7 @@ Use injected filesystem/checkpoint/helper-process seams, not production environm
 ## Complexity Tracking
 
 No adopted constitution exception. The proposed ADR-0019 exception is gated, not implemented. A finite per-destination record/backup protocol is required because file replacement helpers cannot replace nonempty directories and early backup deletion violates FR-011. Separate coordination is necessary for FR-016. This is not a new Work state store or generic transaction framework.
+
+## Owner-approved CLI revision
+
+[ADR-0034](../../docs/adr/adr-0034-complete-skill-collection.md) supersedes ADR-0032: no skill operands, exactly one explicit vendor, required local/user scope, current-directory local anchor, confirmation in both scopes with --yes for automation. The first skill is work-cli-plugin-builder. The embedded inventory drives all targets and vendor hints, so adding skills requires no command grammar change. Per-target recovery and partial outcomes remain governed by ADR-0033.

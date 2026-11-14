@@ -1,5 +1,7 @@
 # Research: Agent Skills
 
+> Historical planning record. Current CLI scope, vendor, collection and confirmation behavior is governed by [ADR-0034](../../docs/adr/adr-0034-complete-skill-collection.md).
+
 **Date**: 2026-11-14. Read-only code research and vendor-documentation research were delegated under speckit-plan Phase 0. No application code or tests ran.
 
 ## R1 — Dependency and authorities

@@ -14,7 +14,7 @@ func TestEveryPublicationCheckpoint(t *testing.T) {
 	for _, existing := range []bool{false, true} {
 		setup := func(t *testing.T) []Destination {
 			t.Helper()
-			ds, err := Resolve(Options{Dir: t.TempDir(), Vendors: []string{"codex"}})
+			ds, err := resolveAt(Options{Scope: "local", Vendor: "codex"}, t.TempDir())
 			if err != nil {
 				t.Fatal(err)
 			}

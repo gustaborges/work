@@ -4,7 +4,7 @@
 
 ## DeliveredSkill
 
-`name` (inventory-owned portable identity), `tree` (read-only fs.FS), `embedded_digest`. Initial inventory contains only `work-plugin-builder`. Expose Names(), Tree(name), Digest(name); unknown names fail. Inventory includes every intended dot/underscore file, rejects symlinks/special nodes/nested Go modules and non-text assets. Empty directories carry no product content.
+`name` (inventory-owned portable identity), `tree` (read-only fs.FS), `embedded_digest`. Initial inventory contains only `work-cli-plugin-builder`. Expose Names(), Tree(name), Digest(name); unknown names fail. Inventory includes every intended dot/underscore file, rejects symlinks/special nodes/nested Go modules and non-text assets. Empty directories carry no product content.
 
 ## Portable content identity: work-skill-tree-v1
 
@@ -14,11 +14,11 @@ Each record: unsigned 64-bit big-endian path-byte length; path bytes without lea
 
 ## OwnershipMarker
 
-Root `.work-skill.json`: object `{schema:1, skill:"work-plugin-builder", digest_algorithm:"work-skill-tree-v1", digest:"sha256:…"}`. Validate exact required types, supported schema/algorithm, selected skill and digest shape. Missing/malformed/unsupported/wrong-skill regular marker is foreign, not owned. I/O failure is unreadable; linked/special marker is conflict. Valid marker plus actual payload digest equal recorded means unmodified; equal embedded means current, otherwise outdated. Unequal actual/recorded means modified.
+Root `.work-skill.json`: object `{schema:1, skill:"work-cli-plugin-builder", digest_algorithm:"work-skill-tree-v1", digest:"sha256:…"}`. Validate exact required types, supported schema/algorithm, selected skill and digest shape. Missing/malformed/unsupported/wrong-skill regular marker is foreign, not owned. I/O failure is unreadable; linked/special marker is conflict. Valid marker plus actual payload digest equal recorded means unmodified; equal embedded means current, otherwise outdated. Unequal actual/recorded means modified.
 
 ## Destination / TargetObservation
 
-Destination: vendor (`claude|codex`), skill, scope (`global|folder`), initial CWD, selected anchor, canonical anchor, absolute target, canonical coordination parent/target identity. Resolve existing anchor prefix once; safe missing suffixes can be planned without creation. Existing parent filesystem identity plus platform case behavior governs alias detection. Deduplicate exact destination identities and reject overlapping or ambiguous aliases before writes. Result order vendor then skill; lock order canonical target identity independent of output order.
+Destination: vendor (`claude|codex`), skill, scope (`local|user`), initial CWD, selected anchor, canonical anchor, absolute target, canonical coordination parent/target identity. Resolve existing anchor prefix once; safe missing suffixes can be planned without creation. Existing parent filesystem identity plus platform case behavior governs alias detection. Deduplicate exact destination identities and reject overlapping or ambiguous aliases before writes. Result order vendor then skill; lock order canonical target identity independent of output order.
 
 Observation: existence, supported node kinds, coherent payload digest, exact marker bytes/digest, tree/root/ancestor identities and record identity. Payload digest alone is insufficient for recovery: old marker bytes (including foreign bytes) must be preserved/checked. Observe added/deleted files and safe ordinary empty directories in the full-tree recovery fingerprint even though payload digest omits empty directories. Keep exact old tree through a retained rename backup; do not rebuild it from a manifest. Revalidation compares complete observed content and marker, not only mtimes.
 

@@ -9,7 +9,7 @@ import (
 )
 
 func TestApplyOwnership(t *testing.T) {
-	ds, err := Resolve(Options{Dir: t.TempDir()})
+	ds, err := testTargets(t, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestApplyOwnership(t *testing.T) {
 func TestApplyRecovery(t *testing.T) {
 	for _, point := range []string{"prepared", "old-moved", "new-moved", "committed"} {
 		t.Run(point, func(t *testing.T) {
-			ds, _ := Resolve(Options{Dir: t.TempDir(), Vendors: []string{"codex"}})
+			ds, _ := resolveAt(Options{Scope: "local", Vendor: "codex"}, t.TempDir())
 			d := ds[0]
 			if err := os.MkdirAll(d.Path, 0755); err != nil {
 				t.Fatal(err)

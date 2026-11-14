@@ -40,11 +40,11 @@ Provide a complete independently inspectable/fixture-testable authoring payload.
 
 - [X] T016 [P] [US1] Add frontmatter/vendor-neutrality/link/inventory tests in ai-skills/skills_test.go, including four-role workflow and explicit generated-reference links (FR-001, FR-004–FR-005).
 - [ ] T017 [P] [US1] Add every-entry validation recipe tests in tests/integration/skills_validation_test.go and owned multi-entry fixtures in tests/fixtures/skills/, covering fallback alternatives, later runtime/entrypoint failure, fresh retry, cleanup/cancellation/offline/environment purity and zero invocation (FR-006, FR-021).
-- [X] T018 [US1] Write canonical workflow/trigger/guardrails in ai-skills/work-plugin-builder/SKILL.md using only name/description frontmatter and vendor-neutral body (FR-004–FR-006).
-- [X] T019 [US1] Write marketplace-catalog.md, plugin-manifest.md and component-roles.md under ai-skills/work-plugin-builder/references/, accurately separating parser strictness and covering conventions, private qualified keys, all role protocols and runtime prerequisites (FR-005).
-- [X] T020 [US1] Create complete catalog/plugin/four-role/convention scaffolds under ai-skills/work-plugin-builder/templates/ with portable text entrypoints and declared runtimes; mark reference examples with actual fixture kinds (FR-005, FR-017, FR-019).
-- [ ] T021 [US1] Write complete safe enumeration/per-entry POSIX and PowerShell scoped-environment recipes in ai-skills/work-plugin-builder/references/validate-and-publish.md; preserve failure on cleanup errors and distinguish discovery/install/runtime behavior (FR-006).
-- [X] T022 [US1] Render and commit initial catalog-schema.md, manifest-schema.md and role-matrix.md under ai-skills/work-plugin-builder/references/generated/ using go generate ./ai-skills/...; never hand-copy contract tables (FR-005, FR-018).
+- [X] T018 [US1] Write canonical workflow/trigger/guardrails in ai-skills/work-cli-plugin-builder/SKILL.md using only name/description frontmatter and vendor-neutral body (FR-004–FR-006).
+- [X] T019 [US1] Write marketplace-catalog.md, plugin-manifest.md and component-roles.md under ai-skills/work-cli-plugin-builder/references/, accurately separating parser strictness and covering conventions, private qualified keys, all role protocols and runtime prerequisites (FR-005).
+- [X] T020 [US1] Create complete catalog/plugin/four-role/convention scaffolds under ai-skills/work-cli-plugin-builder/templates/ with portable text entrypoints and declared runtimes; mark reference examples with actual fixture kinds (FR-005, FR-017, FR-019).
+- [ ] T021 [US1] Write complete safe enumeration/per-entry POSIX and PowerShell scoped-environment recipes in ai-skills/work-cli-plugin-builder/references/validate-and-publish.md; preserve failure on cleanup errors and distinguish discovery/install/runtime behavior (FR-006).
+- [X] T022 [US1] Render and commit initial catalog-schema.md, manifest-schema.md and role-matrix.md under ai-skills/work-cli-plugin-builder/references/generated/ using go generate ./ai-skills/...; never hand-copy contract tables (FR-005, FR-018).
 - [X] T023 [US1] Finish Names/Tree/Digest embedding API in ai-skills/embed.go and verify full payload parity, normal-build availability and rejected unknown skill names through ai-skills/skills_test.go (FR-001, FR-003–FR-004, FR-017).
 - [X] T024 [US1] Implement baseline full scaffold discovery/every-entry selected-install checks in ai-skills/fixtures_test.go using BuildOffer and merged pluginadmin/plugininstall APIs with isolated homes and zero component execution (FR-006, FR-019).
 
@@ -92,7 +92,7 @@ Complete fixture routing/drift enforcement and maintainer obligations without cl
 - [ ] T046 [US4] Extend complete-tree fixtures in tests/fixtures/skills/ and ai-skills/fixtures_test.go for names/containment, missing runtimes/entrypoints, semantic keys and role-specific actual IPC behavior; keep management validation passive (FR-005–FR-006, FR-019).
 - [X] T047 [US4] Add local make skill-lock and non-mutating verification wiring to Makefile and .github/workflows/ci.yml; retain existing OS/build gates, never auto-repin/regenerate in CI (FR-018, FR-020).
 - [X] T048 [US4] Add same-PR marketplace/plugin/protocol maintenance instructions outside managed markers in AGENTS.md, have CLAUDE.md import AGENTS, and add the review question to .github/pull_request_template.md (FR-018, FR-020).
-- [X] T049 [US4] Review guidance/templates against all actual represented and unrepresented contracts, regenerate references then explicitly create the reviewed ai-skills/work-plugin-builder/CONTRACT pin; record review boundaries in docs/agent-skills.md (FR-005, FR-018–FR-020).
+- [X] T049 [US4] Review guidance/templates against all actual represented and unrepresented contracts, regenerate references then explicitly create the reviewed ai-skills/work-cli-plugin-builder/CONTRACT pin; record review boundaries in docs/agent-skills.md (FR-005, FR-018–FR-020).
 
 **Checkpoint**: Validate this phase’s independent goal and relevant quickstart evidence before marking its tasks complete.
 
@@ -147,3 +147,11 @@ Total: 56 tasks. Required coverage is explicit in task FR/SC references; numeric
 ## Implementation tracking note
 
 Tests for the installer are colocated in internal/skillinstall (including native helper-process crash tests) and CLI tests in internal/cli. A checked task records implemented behavior with current evidence; unchecked tasks retain broader matrix, fixture, diagnostic or delivery obligations. See validation.md.
+
+## Owner-approved CLI experience revision (2026-11-14)
+
+- [X] Replace default-both/selectable-skill/global-folder grammar with exactly one vendor, explicit local/user scope and complete embedded inventory selection; reject legacy flags and skill operands.
+- [X] Confirm both installation scopes before writes, support --yes for automation, and keep --force as separate content-replacement permission.
+- [X] Rename the bundled skill to work-cli-plugin-builder and update assets, references, generation/pin tooling, docs and tests. Record the revised requirement and superseding ADR-0034 before updating ADD/CLI contracts.
+- [X] Verify both vendor/scope combinations, invalid grammar purity, full inventory status, local-edit protection, preview contents and relative Claude user anchors; regenerate/review references, explicitly run make skill-lock, and pass lint.
+- [X] Pass full host go test ./... and interactive terminal accept/decline checks for both scopes without cancellation side effects.

@@ -15,7 +15,7 @@ import (
 )
 
 func TestCompleteScaffold(t *testing.T) {
-	tree, err := Tree("work-plugin-builder")
+	tree, err := Tree("work-cli-plugin-builder")
 	if err != nil {
 		t.Fatal(err)
 	}

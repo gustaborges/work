@@ -8,7 +8,7 @@ import (
 )
 
 func TestRecoveryPreservesMismatchedBackup(t *testing.T) {
-	ds, _ := Resolve(Options{Dir: t.TempDir(), Vendors: []string{"codex"}})
+	ds, _ := resolveAt(Options{Scope: "local", Vendor: "codex"}, t.TempDir())
 	d := ds[0]
 	if err := os.MkdirAll(d.Path, 0755); err != nil {
 		t.Fatal(err)
@@ -40,12 +40,12 @@ func TestRecoveryPreservesMismatchedBackup(t *testing.T) {
 	}
 }
 func TestRecoveryRejectsInjectedPaths(t *testing.T) {
-	ds, _ := Resolve(Options{Dir: t.TempDir(), Vendors: []string{"codex"}})
+	ds, _ := resolveAt(Options{Scope: "local", Vendor: "codex"}, t.TempDir())
 	d := ds[0]
 	if err := os.MkdirAll(filepath.Dir(d.Path), 0755); err != nil {
 		t.Fatal(err)
 	}
-	data := []byte(`{"schema":1,"operation":"0123456789abcdef0123456789abcdef","skill":"work-plugin-builder","stage":"../../outside","backup":"../../outside","phase":"prepared"}`)
+	data := []byte(`{"schema":1,"operation":"0123456789abcdef0123456789abcdef","skill":"work-cli-plugin-builder","stage":"../../outside","backup":"../../outside","phase":"prepared"}`)
 	p := sibling(d, ".transaction.json")
 	if err := os.WriteFile(p, data, 0644); err != nil {
 		t.Fatal(err)
@@ -59,7 +59,7 @@ func TestRecoveryRejectsInjectedPaths(t *testing.T) {
 	}
 }
 func TestChangedObservationRefusedWithForce(t *testing.T) {
-	ds, _ := Resolve(Options{Dir: t.TempDir(), Vendors: []string{"codex"}})
+	ds, _ := resolveAt(Options{Scope: "local", Vendor: "codex"}, t.TempDir())
 	d := ds[0]
 	Install(context.Background(), ds, false)
 	if err := os.WriteFile(filepath.Join(d.Path, "edit"), []byte("first"), 0644); err != nil {
@@ -81,7 +81,7 @@ func TestChangedObservationRefusedWithForce(t *testing.T) {
 	}
 }
 func TestLaterFailureRetainsEarlierCommit(t *testing.T) {
-	ds, _ := Resolve(Options{Dir: t.TempDir()})
+	ds, _ := testTargets(t, t.TempDir())
 	calls := 0
 	e := Engine{Checkpoint: func(p string) error {
 		if p == "prepared" {

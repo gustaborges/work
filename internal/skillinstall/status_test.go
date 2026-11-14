@@ -11,7 +11,7 @@ import (
 func TestStatusStateMatrix(t *testing.T) {
 	for _, state := range []string{"absent", "foreign", "modified", "current", "outdated", "recovery_required", "conflict"} {
 		t.Run(state, func(t *testing.T) {
-			ds, err := Resolve(Options{Dir: t.TempDir(), Vendors: []string{"codex"}})
+			ds, err := resolveAt(Options{Scope: "local", Vendor: "codex"}, t.TempDir())
 			if err != nil {
 				t.Fatal(err)
 			}

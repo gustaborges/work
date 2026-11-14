@@ -6,11 +6,10 @@ import "os"
 
 const MarkerName = ".work-skill.json"
 
+// Options always selects the complete bundled collection for one vendor.
 type Options struct {
-	Global          bool
-	Dir             string
-	Vendors, Skills []string
-	Force           bool
+	Scope  string
+	Vendor string
 }
 type Destination struct{ Vendor, Skill, Scope, Anchor, Path string }
 type Marker struct {

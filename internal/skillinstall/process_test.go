@@ -12,7 +12,7 @@ func TestRecoveryHelperProcess(t *testing.T) {
 	if os.Getenv("WORK_SKILL_TEST_HELPER") != "1" {
 		return
 	}
-	ds, err := Resolve(Options{Dir: os.Getenv("WORK_SKILL_TEST_DIR"), Vendors: []string{"codex"}})
+	ds, err := resolveAt(Options{Scope: "local", Vendor: "codex"}, os.Getenv("WORK_SKILL_TEST_DIR"))
 	if err != nil {
 		os.Exit(92)
 	}
@@ -31,7 +31,7 @@ func TestProcessRecovery(t *testing.T) {
 		for _, point := range []string{"prepared", "old-moved", "new-moved", "committed"} {
 			t.Run(point, func(t *testing.T) {
 				root := t.TempDir()
-				ds, err := Resolve(Options{Dir: root, Vendors: []string{"codex"}})
+				ds, err := resolveAt(Options{Scope: "local", Vendor: "codex"}, root)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -74,7 +74,7 @@ func TestProcessRecovery(t *testing.T) {
 func TestInterruptedCompensation(t *testing.T) {
 	for _, point := range []string{"old-restored", "removed:", "record-removed"} {
 		t.Run(point, func(t *testing.T) {
-			ds, _ := Resolve(Options{Dir: t.TempDir(), Vendors: []string{"codex"}})
+			ds, _ := resolveAt(Options{Scope: "local", Vendor: "codex"}, t.TempDir())
 			d := ds[0]
 			if err := os.MkdirAll(d.Path, 0755); err != nil {
 				t.Fatal(err)

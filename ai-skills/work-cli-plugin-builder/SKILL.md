@@ -1,5 +1,5 @@
 ---
-name: work-plugin-builder
+name: work-cli-plugin-builder
 description: Create, edit, review and validate Work marketplaces, plugin manifests, all four component roles and branch conventions; prepare Git publication and consumer installation.
 ---
 

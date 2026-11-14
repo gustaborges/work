@@ -5,16 +5,27 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
+	"slices"
 	"strings"
 	"unicode/utf8"
 )
 
-//go:embed all:work-plugin-builder
+//go:embed all:work-*
 var assets embed.FS
 
-func Names() []string { return []string{"work-plugin-builder"} }
+// Names is the release inventory, in deterministic name order.
+func Names() []string {
+	entries, _ := assets.ReadDir(".")
+	names := []string{}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			names = append(names, entry.Name())
+		}
+	}
+	return names
+}
 func Tree(name string) (fs.FS, error) {
-	if name != "work-plugin-builder" {
+	if !slices.Contains(Names(), name) {
 		return nil, fmt.Errorf("unknown skill %q", name)
 	}
 	tree, err := fs.Sub(assets, name)

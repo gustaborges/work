@@ -8,7 +8,7 @@ import (
 
 func TestOwnership(t *testing.T) {
 	root := t.TempDir()
-	ds, err := Resolve(Options{Dir: root})
+	ds, err := testTargets(t, root)
 	if err != nil {
 		t.Fatal(err)
 	}

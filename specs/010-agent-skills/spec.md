@@ -19,8 +19,8 @@ The proposal is design input, not accepted authority. [Governance drafts](govern
 
 Recommended defaults accepted under gusta-speckit-go; no user questions were needed. All functional, entity, interaction, failure and completion categories are clear. Architecture-ID/naming approval is explicitly deferred to S0, not guessed.
 
-- Q: Which vendors are selected when omitted? → A: Both supported vendors; explicit selection narrows the set (FR-003).
-- Q: Which scope is used when omitted? → A: None; exactly one explicit global/folder scope is required (FR-002).
+- Q: Which vendors are selected when omitted? → A: Exactly one explicit vendor per command; no default, repeated vendor or all-vendors option (revised by owner, FR-003).
+- Q: Which scope is used when omitted? → A: None; exactly one explicit local/user scope is required (FR-002).
 - Q: Include validate/removal/overlays in the first delivery? → A: Defer them; provide complete isolated per-entry validation guidance (FR-006, Assumptions).
 - Q: Can planning proceed before dependency merge and authority acceptance? → A: Draft planning can; implementation/finalization cannot bypass S0 (FR-022).
 
@@ -28,18 +28,18 @@ Recommended defaults accepted under gusta-speckit-go; no user questions were nee
 
 ### User Story 1 - Equip an Agent to Author a Marketplace (Priority: P1)
 
-A developer explicitly installs release-matched authoring guidance for Claude Code, Codex or both, globally or in a marketplace folder. Their agent chooses roles, scaffolds a plugin, validates every offered package and explains publication.
+A developer explicitly installs release-matched authoring guidance for exactly one of Claude Code or Codex, in the current directory or at user scope. Their agent chooses roles, scaffolds a plugin, validates every offered package and explains publication.
 
 **Why this priority**: Accurate, discoverable guidance is the primary product value.
 **Independent Test**: Install in isolated homes/folders and complete a marketplace-authoring exercise with each agent using only the delivered guidance.
 
 **Acceptance Scenarios**:
 
-1. **Given** Work and no network, **When** global or folder installation runs, **Then** selected agents receive identical complete release guidance without accessing Work application state.
+1. **Given** Work and no network, **When** local or user installation runs, **Then** the selected agent receives identical complete release guidance without accessing Work application state.
 2. **Given** a new/existing marketplace, **When** an agent follows the skill, **Then** it reads any existing catalog, chooses supported roles, scaffolds valid packages and uses qualified publication/install commands.
 3. **Given** multiple entries including alternative fallback providers, **When** validation runs, **Then** it discovery-checks and independently installs every entry in fresh scratch environments without component execution, source edits or environment leaks.
 4. **Given** source edits after a failure, **When** validation retries, **Then** it captures corrected content anew and cleans scratch homes on success/failure/cancellation.
-5. **Given** an existing folder without a catalog, **When** guidance is installed, **Then** installation succeeds with an informational note and supports later scaffolding.
+5. **Given** an existing folder without a catalog, **When** guidance is installed, **Then** installation succeeds after confirmation and supports later scaffolding.
 
 ### User Story 2 - Refresh Guidance Without Losing Local Work (Priority: P1)
 
@@ -87,8 +87,8 @@ A maintainer changes a marketplace, manifest or invocation contract and sees ver
 
 ### Edge Cases
 
-- Neither/both scopes; missing/non-directory folder; unknown/empty skills/vendors; path-like operands; unknown flags; install with machine output: reject before target writes.
-- Relative global configuration anchor; canonical duplicate/case aliases or overlapping destinations; linked parent/target/descendant, dangling link, special node and unreadable content.
+- Missing/invalid scope; unknown/empty/repeated vendors; all-vendors values; any skill operands; obsolete scope flags; unknown flags; install with machine output: reject before target writes.
+- Relative user configuration anchor; canonical duplicate/case aliases or overlapping destinations; linked parent/target/descendant, dangling link, special node and unreadable content.
 - Missing/malformed/wrong-skill/future marker; extra hidden/deleted/edited file; platform permission differences and Unicode/spaced paths.
 - Concurrent overlapping installers; lock cancellation/timeout; edit before locked preflight or immediately before replacement, including force mode.
 - Interruption at every record/move/commit/cleanup boundary; unexpected recovery edits; unrecorded lookalike scratch directories; committed cleanup failure and status during rename gap.
@@ -98,9 +98,9 @@ A maintainer changes a marketplace, manifest or invocation contract and sees ver
 
 ### Functional Requirements
 
-- **FR-001**: Deliver `work-plugin-builder` offline with the installed Work release, independently of runtime plugin distribution.
-- **FR-002**: Require exactly one explicit global/folder scope. Folder scope names an existing directory; no catalog is informational, not failure.
-- **FR-003**: Support Claude Code/Codex, default both, and default all delivered skills. Validate unknown/empty/path-like operands before writes; deduplicate selections deterministically.
+- **FR-001**: Deliver `work-cli-plugin-builder` offline with the installed Work release, independently of runtime plugin distribution.
+- **FR-002**: Require explicit local/user scope. Local uses the current directory; no catalog is required or inspected. Both install scopes require confirmation before writes; --yes skips it and is required non-interactively. Force is separate replacement permission and never skips confirmation.
+- **FR-003**: Support Claude Code/Codex with exactly one explicit vendor per command. Always select the complete release inventory; no individual skill selection or all-vendors option. Reject unknown/empty/repeated vendors and all positional operands before writes. Do not detect or require installed vendor executables.
 - **FR-004**: Deliver identical vendor-neutral content at documented discovery locations with accurate invocation/reload guidance.
 - **FR-005**: Teach existing/new marketplaces/plugins, all four roles, conventions, inputs/events, safe packaging, opaque version changes, qualified publication and reserved/official identities.
 - **FR-006**: Distinguish discovery/installability/runtime behavior. Recapture edited source, selected-install every entry independently, preserve real environment/source/Work state and clean scratch homes on success/failure/cancellation; management validation never executes components.
@@ -134,7 +134,7 @@ A maintainer changes a marketplace, manifest or invocation contract and sees ver
 
 ### Measurable Outcomes
 
-- **SC-001**: Every global/folder × Claude/Codex combination works offline; vendor payloads match and repeat installs change zero mtimes.
+- **SC-001**: Every local/user × Claude/Codex combination works offline; vendor payloads match and repeat installs change zero mtimes.
 - **SC-002**: Every ownership/path/interruption case preserves exact pre-commit content/absence or verified committed content; zero unowned/external files are deleted.
 - **SC-003**: Every status case and both commands' Work-state checks cause zero unexpected writes; concurrent inspection never invents current content.
 - **SC-004**: Validation covers 100% of offered entries, catches later failures and corrected-source retries, executes zero components and leaves zero scratch/environment leaks.
@@ -149,3 +149,7 @@ A maintainer changes a marketplace, manifest or invocation contract and sees ver
 - Read-only marketplace validate, skill removal, vendor overlays and interactive scope selection are deferred. Future removal must honor recovery/coordination.
 - S0 completed during implementation with owner approval against develop; PRD FR-65–69 and ADR-0031–33 govern this feature. See validation.md.
 - Fault/integration/contract tests are explicitly required by FR-021. Real-agent dogfood is a delivery check, never inferred from parser success.
+
+## Owner-approved experience revision (2026-11-14)
+
+PRD agent skills FR-66 and ADR-0034 replace default-both, selectable-skill, global/folder grammar with explicit single-vendor local/user complete-collection installation. Both scopes confirm before writes unless --yes is supplied. The initial skill is named work-cli-plugin-builder. Previous S0 records describe the historical approval; this revision governs current behavior.
