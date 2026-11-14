@@ -1,6 +1,9 @@
 # ADR-0005: Plugin Update Mechanism
 
-**Status:** Accepted
+**Status:** Superseded in part for feature 009
+**Superseded by:** ADR-0023 (source acquisition), ADR-0024 (target identity), ADR-0025 (grammar); explicit opaque-version updates and fixed candidates remain.
+
+The original decision body below is retained as historical evidence.
 **Date:** 2026-08-23
 **Product Context:** `docs/prd.md` — RF-19, RNF-3, RNF-4
 **Governs:** `docs/add/add-0001-work-system-architecture.md`, Section 12

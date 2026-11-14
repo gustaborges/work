@@ -9,6 +9,7 @@ import (
 
 	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/diag"
+	"github.com/gustaborges/work/internal/pluginid"
 	"github.com/gustaborges/work/internal/registry"
 )
 
@@ -19,7 +20,7 @@ var errNotFound = errors.New("not found")
 
 // PolicyEntry is one row of `work repository policy list` (data-model.md §4).
 type PolicyEntry struct {
-	// Ref is the qualified "<alias>/<component>" string as stored.
+	// Ref is the fully qualified "<plugin>@<marketplace>/<component>" string as stored.
 	Ref string
 	// Position is the 1-based traversal order.
 	Position int
@@ -54,9 +55,12 @@ func ListPolicy(cfg *config.Config, reg *registry.Registry) []PolicyEntry {
 	out := make([]PolicyEntry, len(list))
 	for i, ref := range list {
 		state, reason := LocatorState(reg, ref)
-		alias, _, _ := strings.Cut(ref, "/")
-		installed := reason == nil || *reason != "package-missing"
-		out[i] = PolicyEntry{Ref: ref, Position: i + 1, Available: state == "available", UnavailableReason: reason, Installed: installed, Enabled: installed && reg.PackageEnabled(alias)}
+		installed := reason == nil || (*reason != "package-missing" && *reason != "reference-invalid")
+		enabled := false
+		if r, err := pluginid.ParseRef(ref); err == nil {
+			enabled = installed && reg.PackageEnabled(r.Provider)
+		}
+		out[i] = PolicyEntry{Ref: ref, Position: i + 1, Available: state == "available", UnavailableReason: reason, Installed: installed, Enabled: enabled}
 	}
 	return out
 }
@@ -66,17 +70,17 @@ func ListPolicy(cfg *config.Config, reg *registry.Registry) []PolicyEntry {
 // policy.
 func ListLocators(cfg *config.Config, reg *registry.Registry) []RegisteredLocator {
 	comps := reg.ByRole(registry.RoleRepositoryLocator)
-	sort.Slice(comps, func(i, j int) bool { return comps[i].Alias+"/"+comps[i].Name < comps[j].Alias+"/"+comps[j].Name })
+	sort.Slice(comps, func(i, j int) bool { return comps[i].QualifiedName() < comps[j].QualifiedName() })
 	out := make([]RegisteredLocator, len(comps))
 	for i, c := range comps {
-		ref := c.Alias + "/" + c.Name
+		ref := c.QualifiedName()
 		out[i] = RegisteredLocator{
 			Ref:         ref,
 			DisplayName: c.DisplayName,
 			Description: c.Description,
 			Accepts:     slices.Clone(c.Accepts),
 			InPolicy:    slices.Contains(cfg.RepositoryResolution.Locators, ref),
-			Enabled:     reg.PackageEnabled(c.Alias),
+			Enabled:     reg.PackageEnabled(c.Provider),
 		}
 		out[i].State, out[i].UnavailableReason = LocatorState(reg, ref)
 	}
@@ -86,8 +90,7 @@ func ListLocators(cfg *config.Config, reg *registry.Registry) []RegisteredLocato
 // AddPolicy appends ref to the policy, or positions it relative to an anchor
 // given by exactly one of before/after (both empty is a plain append). ref
 // must resolve to a registered repository-locator component; a bare
-// <component> is accepted when unambiguous and resolved to its qualified
-// form. Adding an already-present ref is a no-op success (data-model.md §4).
+// <component> is accepted when unambiguous and always stored fully qualified. Adding an already-present ref is a no-op success (data-model.md §4).
 func AddPolicy(cfg *config.Config, reg *registry.Registry, ref, before, after string) error {
 	if before != "" && after != "" {
 		return diag.New(diag.Usage, "specify only one of --before or --after")
@@ -193,21 +196,25 @@ func ReplacePolicy(cfg *config.Config, reg *registry.Registry, refs []string) er
 	return nil
 }
 
+func qualifiedForm(ref string) bool {
+	_, err := pluginid.ParseRef(ref)
+	return err == nil
+}
+
 func resolveReplacement(previous []string, reg *registry.Registry, ref string) (string, error) {
-	if strings.Contains(ref, "/") && slices.Contains(previous, ref) {
+	if qualifiedForm(ref) && slices.Contains(previous, ref) {
 		return ref, nil
 	}
 	matches := []string{}
 	for _, c := range reg.ByRole(registry.RoleRepositoryLocator) {
-		q := c.Alias + "/" + c.Name
-		if q == ref || (!strings.Contains(ref, "/") && c.Name == ref) {
+		q := c.QualifiedName()
+		if q == ref || (!qualifiedForm(ref) && c.Name == ref) {
 			matches = append(matches, q)
 		}
 	}
-	if !strings.Contains(ref, "/") {
+	if !qualifiedForm(ref) {
 		for _, q := range previous {
-			_, name, _ := strings.Cut(q, "/")
-			if name == ref && !slices.Contains(matches, q) {
+			if r, err := pluginid.ParseRef(q); err == nil && r.Name == ref && !slices.Contains(matches, q) {
 				matches = append(matches, q)
 			}
 		}
@@ -216,27 +223,29 @@ func resolveReplacement(previous []string, reg *registry.Registry, ref string) (
 		return matches[0], nil
 	}
 	if len(matches) > 1 {
-		return "", diag.Newf(diag.Usage, "ambiguous repository locator %q; use <alias>/<component>", ref)
+		return "", diag.Newf(diag.Usage, "ambiguous repository locator %q; use <plugin>@<marketplace>/<component>", ref)
 	}
 	return "", diag.Newf(diag.Usage, "unknown repository locator %q", ref)
 }
 
-func hasRepositoryLocator(reg *registry.Registry, alias, name string) bool {
+func hasRepositoryLocator(reg *registry.Registry, r pluginid.Ref) bool {
 	for _, c := range reg.Components {
-		if c.Alias == alias && c.Name == name && c.Role == registry.RoleRepositoryLocator {
+		if c.Provider == r.Provider && c.Name == r.Name && c.Role == registry.RoleRepositoryLocator {
 			return true
 		}
 	}
 	return false
 }
 
-// resolveAgainstRegistry resolves ref (qualified or a bare component name)
-// against installed repository-locator components, for operations that must
-// name an installed Locator (`add`, `replace`).
+// resolveAgainstRegistry resolves ref (fully qualified or a bare component
+// name) against installed repository-locator components, for operations that
+// must name an installed Locator (`add`, `replace`). The result is always the
+// fully qualified form.
 func resolveAgainstRegistry(reg *registry.Registry, ref string) (string, error) {
-	if alias, name, ok := strings.Cut(ref, "/"); ok {
-		if hasRepositoryLocator(reg, alias, name) {
-			return ref, nil
+	if strings.ContainsAny(ref, "/@") {
+		r, err := pluginid.ParseRef(ref)
+		if err == nil && hasRepositoryLocator(reg, r) {
+			return r.String(), nil
 		}
 		return "", diag.Newf(diag.Usage, "unknown repository locator %q", ref)
 	}
@@ -250,10 +259,10 @@ func resolveAgainstRegistry(reg *registry.Registry, ref string) (string, error) 
 	case 0:
 		return "", diag.Newf(diag.Usage, "unknown repository locator %q", ref)
 	case 1:
-		return matches[0].Alias + "/" + matches[0].Name, nil
+		return matches[0].QualifiedName(), nil
 	default:
 		return "", diag.Newf(diag.Usage,
-			"%q matches more than one installed repository locator; use the qualified <alias>/<component> form", ref)
+			"%q matches more than one installed repository locator; use the qualified <plugin>@<marketplace>/<component> form", ref)
 	}
 }
 
@@ -266,7 +275,7 @@ func resolveAgainstPolicy(list []string, ref string) (string, error) {
 	}
 	var matches []string
 	for _, entry := range list {
-		if _, name, ok := strings.Cut(entry, "/"); ok && name == ref {
+		if r, err := pluginid.ParseRef(entry); err == nil && r.Name == ref {
 			matches = append(matches, entry)
 		}
 	}
@@ -277,7 +286,7 @@ func resolveAgainstPolicy(list []string, ref string) (string, error) {
 		return matches[0], nil
 	default:
 		return "", diag.Newf(diag.Usage,
-			"%q matches more than one policy entry; use the qualified <alias>/<component> form", ref)
+			"%q matches more than one policy entry; use the qualified <plugin>@<marketplace>/<component> form", ref)
 	}
 }
 
@@ -293,29 +302,27 @@ func notFoundAsUsage(ref string, err error) error {
 
 // LocatorState distinguishes retained references in requirement precedence.
 func LocatorState(reg *registry.Registry, ref string) (string, *string) {
-	alias, name, qualified := strings.Cut(ref, "/")
-	foundAlias := false
-	if _, ok := reg.PackageByAlias(alias); ok {
-		foundAlias = true
+	r, err := pluginid.ParseRef(ref)
+	if err != nil {
+		reason := "reference-invalid"
+		return "unavailable", &reason
 	}
+	_, found := reg.PackageByProvider(r.Provider)
 	var component *registry.Component
 	for i, c := range reg.Components {
-		if c.Alias == alias {
-			foundAlias = true
-			if c.Name == name && qualified {
-				component = &reg.Components[i]
-			}
+		if c.Provider == r.Provider && c.Name == r.Name {
+			component = &reg.Components[i]
 		}
 	}
 	reason := ""
 	switch {
-	case !foundAlias:
+	case !found:
 		reason = "package-missing"
 	case component == nil:
 		reason = "component-missing"
 	case component.Role != registry.RoleRepositoryLocator:
 		reason = "role-changed"
-	case !reg.PackageEnabled(alias):
+	case !reg.PackageEnabled(r.Provider):
 		reason = "package-disabled"
 	}
 	if reason != "" {

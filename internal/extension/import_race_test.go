@@ -9,6 +9,7 @@ import (
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/staging"
 	"github.com/gustaborges/work/internal/work"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 	"os"
 	"path/filepath"
 	"testing"
@@ -127,7 +128,7 @@ func TestImportRevalidatesInputsImmediatelyBeforeInvocation(t *testing.T) {
 	p.Component.Inputs = []string{"link:github.pull_request"}
 	c := p.Component
 	p.Reload = func() (*registry.Registry, error) {
-		return &registry.Registry{Components: []registry.Component{c}}, nil
+		return installfx.Reg(nil, c), nil
 	}
 	st, err := work.Read(p.Expected.SnapshotPath)
 	if err != nil {

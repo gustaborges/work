@@ -11,6 +11,7 @@ import (
 	"github.com/gustaborges/work/internal/ipc"
 	"github.com/gustaborges/work/internal/lockfile"
 	"github.com/gustaborges/work/internal/registry"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 )
 
 func shortLockWait(t *testing.T) {
@@ -64,7 +65,7 @@ func TestImportOneInvalidInputDeclarationHasReason(t *testing.T) {
 	c.Inputs = []string{"not-an-input"}
 	p.Component = c
 	p.Reload = func() (*registry.Registry, error) {
-		return &registry.Registry{Components: []registry.Component{c}}, nil
+		return installfx.Reg(nil, c), nil
 	}
 
 	_, err := ImportOne(context.Background(), p)
@@ -103,7 +104,7 @@ func TestImportOneAnnouncesOnlyWhenTheImporterStarts(t *testing.T) {
 		c.Inputs = []string{"link:github.issue"}
 		p.Component = c
 		p.Reload = func() (*registry.Registry, error) {
-			return &registry.Registry{Components: []registry.Component{c}}, nil
+			return installfx.Reg(nil, c), nil
 		}
 		p.Started = func() { t.Fatal("announced an Importer that never ran") }
 		p.invoke = func(context.Context, ipc.Target, ipc.ImporterInput) (ipc.Result, error) {

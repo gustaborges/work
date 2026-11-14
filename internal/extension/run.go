@@ -99,12 +99,24 @@ func (r *runner) warnRun(ctx context.Context, component, operation, effect strin
 // before any Linker runs, so a Linker never depends on another's result. It
 // reports false when the run was interrupted.
 func (r *runner) linkerPhase(ctx context.Context) bool {
-	for _, d := range Eligible(r.c.Registry, plugin.RoleLinker, StartFinalized, r.subject()) {
+	decisions, ambiguous := EligibleDiagnosed(r.c.Registry, plugin.RoleLinker, StartFinalized, r.subject())
+	r.warnAmbiguous(ambiguous, OpDiscover)
+	for _, d := range decisions {
 		if !r.runLinker(ctx, d) {
 			return false
 		}
 	}
 	return true
+}
+
+// warnAmbiguous reports subscribers withheld because a bare Starter filter
+// named several Starters. They are never run on a guess.
+func (r *runner) warnAmbiguous(list []Ambiguity, operation string) {
+	for _, a := range list {
+		r.warn(r.warning(diag.WarnExtensionStartFailed, a.Component.QualifiedName(), operation,
+			"it was not run: its Starter filter \""+a.Filter+"\" matches more than one installed Starter").
+			WithHint("Name the Starter as <plugin>@<marketplace>/<name> in the plugin's subscription."))
+	}
 }
 
 func (r *runner) reload(ctx context.Context, c registry.Component) (*registry.Registry, error) {

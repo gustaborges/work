@@ -1,6 +1,9 @@
 # ADR-0012: Component Model and Plugin Manifest
 
-**Status:** Accepted
+**Status:** Superseded in part for feature 009
+**Superseded by:** ADR-0024 (provider qualification); atomic packages, roles, static manifests, and activation semantics remain.
+
+The original decision body below is retained as historical evidence.
 
 **Date:** 2026-08-29
 

@@ -119,7 +119,7 @@ The slices are cumulative. No slice may break the demonstrable journeys of the p
 
 **End-to-end demonstration:**
 
-1. Install a local plugin fixture with `work plugin install <path> --link` and a package from a remote repository with `work plugin install <source>`.
+1. Register a marketplace (a local directory or a Git repository) with `work plugin marketplace add <source>` and install a plugin from it with `work plugin add <plugin>@<marketplace>`.
 2. Run `work start <specific-arg>` and select the Starter when two patterns collide.
 3. Resolve the Repository Reference through the F3 pipeline.
 4. Choose `contribution` and create a checkout of the resolved branch without slug/convention.
@@ -178,12 +178,12 @@ The slices are cumulative. No slice may break the demonstrable journeys of the p
 **End-to-end demonstration:**
 
 1. Enable and disable a plugin while preserving the unavailable reference of its Locator in the policy.
-2. Install a new Locator and confirm that it does not enter the policy automatically.
+2. Add a plugin that offers a new Locator and confirm that it does not enter the policy automatically.
 3. Add, remove, and reorder Locators through commands and the TUI, with the same effective configuration.
 4. Run `work plugin update --check` without changing the installation and apply `work plugin update <plugin>` or `work plugin update --all` explicitly after validating the new manifest.
 5. Attempt to remove a plugin referenced by the policy and require explicit dependency handling.
 
-**Includes:** `plugin list|install|enable|disable|update|uninstall`; `update --check` validation; consistent uninstall; states for installed, enabled, policy-included, and unavailable Locators; full policy and root operations; parity between TUI and non-interactive commands; interactive confirmation and explicit flags for automation; transactional validation of registry/configuration.
+**Includes:** `plugin list|add|enable|disable|update|remove` and `plugin marketplace add|list|upgrade|remove`; `update --check` validation; consistent uninstall; states for installed, enabled, policy-included, and unavailable Locators; full policy and root operations; parity between TUI and non-interactive commands; interactive confirmation and explicit flags for automation; transactional validation of registry/configuration.
 
 **Exit criterion:** every administrative mutation is explicit, inspectable, and recoverable by reinstalling/configuration; no installation changes precedence and no removal leaves a broken reference silently.
 

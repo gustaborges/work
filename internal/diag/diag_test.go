@@ -61,6 +61,11 @@ func TestCategoryTable(t *testing.T) {
 		{AdministrationRecoveryRequired, "administration-recovery-required", 54},
 		{AdministrationCleanupFailed, "administration-cleanup-failed", 55},
 		{AdministrationBusy, "administration-busy", 56},
+		{MarketplaceInvalid, "marketplace-invalid", 57},
+		{MarketplaceNameConflict, "marketplace-name-conflict", 58},
+		{MarketplaceSourceUnavailable, "marketplace-source-unavailable", 59},
+		{MarketplaceEntryUnavailable, "marketplace-entry-unavailable", 60},
+		{MarketplaceUpgradeFailed, "marketplace-upgrade-failed", 61},
 	}
 
 	if len(want) != len(All) {

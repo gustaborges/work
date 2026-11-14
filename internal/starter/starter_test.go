@@ -14,8 +14,15 @@ import (
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/workhome"
 	"github.com/gustaborges/work/seed"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 	fixtures "github.com/gustaborges/work/tests/fixtures/plugins"
 )
+
+// addComponent registers c with an enabled package for its provider.
+func addComponent(reg *registry.Registry, c registry.Component) {
+	installfx.EnsurePackage(reg, c.Provider)
+	reg.UpsertComponent(c)
+}
 
 func seededHome(t *testing.T) (workhome.Home, *registry.Registry) {
 	t.Helper()
@@ -45,7 +52,7 @@ func TestSelectReturnsFallbackStarter(t *testing.T) {
 }
 
 func TestSelectErrorsWithoutRegistration(t *testing.T) {
-	_, err := Select(&registry.Registry{})
+	_, err := Select(registry.New())
 	if diag.Token(err) != diag.BootstrapFailed.Token {
 		t.Fatalf("err = %v", err)
 	}
@@ -86,7 +93,7 @@ func buildTestdataStarter(t *testing.T, pkg string) (string, registry.Component)
 	}
 
 	plugins := t.TempDir()
-	src := filepath.Join(plugins, pkg+"-pkg", "source")
+	src := filepath.Join(plugins, "m", pkg+"-pkg", "source")
 	os.MkdirAll(src, 0o755)
 	name := pkg
 	if runtime.GOOS == "windows" {
@@ -95,7 +102,7 @@ func buildTestdataStarter(t *testing.T, pkg string) (string, registry.Component)
 	data, _ := os.ReadFile(bin)
 	os.WriteFile(filepath.Join(src, name), data, 0o755)
 
-	c := registry.Component{Alias: pkg + "-pkg", Name: pkg, Role: registry.RoleStarter, Entrypoint: pkg}
+	c := registry.Component{Provider: installfx.P(pkg + "-pkg"), Name: pkg, Role: registry.RoleStarter, Entrypoint: pkg}
 	return plugins, c
 }
 
@@ -177,7 +184,7 @@ func buildPluginFixtureStarter(t *testing.T, fixture, alias string) (string, reg
 	c0 := m.Components[0]
 
 	plugins := t.TempDir()
-	src := filepath.Join(plugins, alias, "source")
+	src := filepath.Join(plugins, "m", alias, "source")
 	if err := os.MkdirAll(src, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -193,14 +200,14 @@ func buildPluginFixtureStarter(t *testing.T, fixture, alias string) (string, reg
 		t.Fatal(err)
 	}
 
-	c := registry.Component{Alias: alias, Name: c0.Name, Role: registry.RoleStarter, Entrypoint: c0.Entrypoint, Pattern: c0.Pattern}
+	c := registry.Component{Provider: installfx.P(alias), Name: c0.Name, Role: registry.RoleStarter, Entrypoint: c0.Entrypoint, Pattern: c0.Pattern}
 	return plugins, c
 }
 
 func TestMatchZeroSpecificMatchesFallsBackToFallback(t *testing.T) {
 	_, reg := seededHome(t)
 	_, specific := buildPluginFixtureStarter(t, "specific-starter", "demo")
-	reg.UpsertComponent(specific)
+	addComponent(reg, specific)
 
 	got, out, err := Match(reg, "not-a-match")
 	if err != nil {
@@ -217,7 +224,7 @@ func TestMatchZeroSpecificMatchesFallsBackToFallback(t *testing.T) {
 func TestMatchOneSpecificMatchInvokedDirectly(t *testing.T) {
 	_, reg := seededHome(t)
 	_, specific := buildPluginFixtureStarter(t, "specific-starter", "demo")
-	reg.UpsertComponent(specific)
+	addComponent(reg, specific)
 
 	got, out, err := Match(reg, "demo-pr-1")
 	if err != nil {
@@ -226,15 +233,15 @@ func TestMatchOneSpecificMatchInvokedDirectly(t *testing.T) {
 	if out.Ambiguous != nil {
 		t.Errorf("Ambiguous = %v, want nil", out.Ambiguous)
 	}
-	if got.Alias != "demo" || got.Name != specific.Name {
+	if got.Provider.Plugin != "demo" || got.Name != specific.Name {
 		t.Errorf("Matched %+v, want the specific Starter", got)
 	}
 }
 
 func TestMatchNoMatchAndNoFallbackIsStarterNotMatched(t *testing.T) {
-	reg := &registry.Registry{}
+	reg := registry.New()
 	_, specific := buildPluginFixtureStarter(t, "specific-starter", "demo")
-	reg.UpsertComponent(specific)
+	addComponent(reg, specific)
 
 	_, _, err := Match(reg, "not-a-match")
 	if diag.Token(err) != diag.StarterNotMatched.Token {
@@ -246,14 +253,14 @@ func TestMatchTwoSpecificMatchesIsAmbiguous(t *testing.T) {
 	_, reg := seededHome(t)
 	_, specific := buildPluginFixtureStarter(t, "specific-starter", "demo")
 	_, colliding := buildPluginFixtureStarter(t, "colliding-starter", "other")
-	reg.UpsertComponent(specific)
-	reg.UpsertComponent(colliding)
+	addComponent(reg, specific)
+	addComponent(reg, colliding)
 
 	got, out, err := Match(reg, "demo-pr-1")
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
-	if got.Name != "" || got.Alias != "" {
+	if got.Name != "" || !got.Provider.IsZero() {
 		t.Errorf("Matched = %+v, want zero value on an ambiguous outcome", got)
 	}
 	if len(out.Ambiguous) != 2 {
@@ -337,16 +344,15 @@ func TestValidateResponsePublishedKeys(t *testing.T) {
 }
 
 func TestDisabledStartersExcluded(t *testing.T) {
-	off := false
-	r := &registry.Registry{Packages: []registry.Package{{Alias: "disabled", Enabled: &off}}, Components: []registry.Component{
-		{Alias: "disabled", Name: "specific", Role: registry.RoleStarter, Pattern: ".*"},
-		{Alias: "legacy", Name: "fallback", Role: registry.RoleStarter, StarterLayer: registry.LayerFallback},
-	}}
+	r := installfx.Reg([]string{"disabled"},
+		registry.Component{Provider: installfx.P("disabled"), Name: "specific", Role: registry.RoleStarter, Pattern: ".*", Entrypoint: "s"},
+		registry.Component{Provider: installfx.P("active"), Name: "fallback", Role: registry.RoleStarter, StarterLayer: registry.LayerFallback, Entrypoint: "f"},
+	)
 	c, _, err := Match(r, "anything")
-	if err != nil || c.Alias != "legacy" {
+	if err != nil || c.Provider.Plugin != "active" {
 		t.Fatalf("%+v %v", c, err)
 	}
-	r.Packages = append(r.Packages, registry.Package{Alias: "legacy", Enabled: &off})
+	installfx.SetPackageEnabled(r, "active", false)
 	if _, _, err := Match(r, "anything"); diag.ExitCode(err) != 35 {
 		t.Fatal(err)
 	}

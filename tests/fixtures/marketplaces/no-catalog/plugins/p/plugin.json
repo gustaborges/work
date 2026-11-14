@@ -1,0 +1,23 @@
+{
+  "name": "p",
+  "version": "1.0.0",
+  "components": [
+    {
+      "name": "run-p",
+      "role": "linker",
+      "key": "fixture.p",
+      "entrypoint": "bin/tool",
+      "manual": {
+        "display_name": "p"
+      }
+    }
+  ],
+  "conventions": [
+    {
+      "name": "freeform",
+      "prefixes": [
+        "{slug}"
+      ]
+    }
+  ]
+}

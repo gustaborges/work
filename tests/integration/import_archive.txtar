@@ -3,12 +3,12 @@ mkdir $WS
 gitrepo src
 exec work start $WORK/src --workspace $WS --base main --slug topic --prefix '{slug}' --yes
 preparepluginfixture manual-suite PKG
-exec work plugin install $PKG --as manual
+installplugin manual $PKG
 workid $WS/in-progress/src_topic/work-state.json ID
 cd $WS/in-progress/src_topic/worktree
-exec work link manual/linker 'saved reference'
-exec work import manual/importer
-! exec work import manual/importer
+exec work link manual-suite@manual/linker 'saved reference'
+exec work import manual-suite@manual/importer
+! exec work import manual-suite@manual/importer
 cd $WORK
 exec work archive $ID --yes
 today TODAY

@@ -1,14 +1,26 @@
 package repoconfig
 
 import (
-	"github.com/gustaborges/work/internal/registry"
 	"testing"
+
+	"github.com/gustaborges/work/internal/registry"
 )
 
-func TestAdminLocatorReasonPrecedence(t *testing.T) {
-	off := false
-	reg := &registry.Registry{Packages: []registry.Package{{Alias: "disabled", Enabled: &off}}, Components: []registry.Component{{Alias: "disabled", Name: "wrong", Role: "starter"}, {Alias: "disabled", Name: "clone", Role: registry.RoleRepositoryLocator}, {Alias: "legacy", Name: "clone", Role: registry.RoleRepositoryLocator}}}
-	for ref, want := range map[string]string{"missing/clone": "package-missing", "disabled/missing": "component-missing", "disabled/wrong": "role-changed", "disabled/clone": "package-disabled", "legacy/clone": ""} {
+func TestLocatorReasonPrecedence(t *testing.T) {
+	reg := regOf([]string{"disabled"},
+		registry.Component{Provider: prov("disabled"), Name: "wrong", Role: "starter", Entrypoint: "w"},
+		locatorComponent("disabled", "clone"),
+		locatorComponent("enabled", "clone"),
+	)
+	for ref, want := range map[string]string{
+		ref("missing", "clone"):  "package-missing",
+		ref("disabled", "none"):  "component-missing",
+		ref("disabled", "wrong"): "role-changed",
+		ref("disabled", "clone"): "package-disabled",
+		ref("enabled", "clone"):  "",
+		"disabled/clone":         "reference-invalid", // the retired alias form is not a reference
+		"clone":                  "reference-invalid",
+	} {
 		state, reason := LocatorState(reg, ref)
 		got := ""
 		if reason != nil {

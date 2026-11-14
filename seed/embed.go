@@ -4,9 +4,7 @@
 package seed
 
 import (
-	"crypto/sha256"
 	"embed"
-	"encoding/hex"
 	"fmt"
 	"runtime"
 )
@@ -19,6 +17,49 @@ var dist embed.FS
 
 //go:embed manifest/plugin.json
 var manifestJSON []byte
+
+//go:embed marketplace.json
+var marketplaceJSON []byte
+
+// ReferencePath is the catalog path of the reference package inside the
+// included marketplace.
+const ReferencePath = "plugins/work-reference"
+
+// MarketplaceJSON returns the included marketplace's catalog bytes. The
+// catalog is code-owned: it is never extracted into editable configuration.
+func MarketplaceJSON() []byte {
+	out := make([]byte, len(marketplaceJSON))
+	copy(out, marketplaceJSON)
+	return out
+}
+
+// PackageFile is one file of an embedded package.
+type PackageFile struct {
+	Content []byte
+	Exec    bool
+}
+
+// Package returns the host-platform files of the embedded package at a catalog
+// path: plugin.json plus the native starter and locator, with the executable
+// bit recorded for the binaries.
+func Package(path string) (map[string]PackageFile, error) {
+	if path != ReferencePath {
+		return nil, fmt.Errorf("seed: no embedded package at %q", path)
+	}
+	starter, locator, err := HostAssets()
+	if err != nil {
+		return nil, err
+	}
+	ext := ""
+	if runtime.GOOS == "windows" {
+		ext = ".exe"
+	}
+	return map[string]PackageFile{
+		"plugin.json":   {Content: ManifestJSON()},
+		"starter" + ext: {Content: starter, Exec: true},
+		"locator" + ext: {Content: locator, Exec: true},
+	}, nil
+}
 
 // ManifestJSON returns the seed plugin.json bytes.
 func ManifestJSON() []byte {
@@ -49,19 +90,4 @@ func AssetsFor(goos, goarch string) (starter, locator []byte, err error) {
 // HostAssets returns the binaries for the running platform.
 func HostAssets() (starter, locator []byte, err error) {
 	return AssetsFor(runtime.GOOS, runtime.GOARCH)
-}
-
-// ContentDigest is a stable sha256 over the host-platform binary pair and the
-// manifest. Bootstrap compares it against the recorded install to decide
-// whether a re-seed is needed.
-func ContentDigest() (string, error) {
-	starter, locator, err := HostAssets()
-	if err != nil {
-		return "", err
-	}
-	h := sha256.New()
-	h.Write(starter)
-	h.Write(locator)
-	h.Write(manifestJSON)
-	return hex.EncodeToString(h.Sum(nil)), nil
 }

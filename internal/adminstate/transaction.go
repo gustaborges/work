@@ -11,13 +11,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/gustaborges/work/internal/atomicfile"
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/lockfile"
-	"github.com/gustaborges/work/internal/plugin"
+	"github.com/gustaborges/work/internal/pluginid"
 	"github.com/gustaborges/work/internal/workhome"
 )
 
@@ -31,22 +30,26 @@ type FileChange struct {
 	Before Image  `json:"before"`
 	After  Image  `json:"after"`
 }
+
+// Move is one typed package transfer. It addresses a provider, never a path:
+// the live root, the transaction backup and the namespace parent are all
+// derived from the validated (marketplace, plugin) segments.
 type Move struct {
-	Alias        string `json:"alias"`
-	Remove       bool   `json:"remove,omitempty"`
-	Stage        string `json:"stage"`
-	BeforeExists bool   `json:"before_exists"`
-	BeforeDigest string `json:"before_digest"`
-	AfterDigest  string `json:"after_digest"`
+	Provider     pluginid.Provider `json:"provider"`
+	Remove       bool              `json:"remove,omitempty"`
+	Stage        string            `json:"stage"`
+	BeforeExists bool              `json:"before_exists"`
+	BeforeDigest string            `json:"before_digest"`
+	AfterDigest  string            `json:"after_digest"`
 }
 
-// OwnedPackageDigest inspects only the owned alias root; symlinks are hashed
+// OwnedPackageDigest inspects only the owned provider root; symlinks are hashed
 // as link text and never followed. Missing roots have an empty digest.
-func OwnedPackageDigest(h workhome.Home, alias string) (string, error) {
-	if plugin.ValidateAlias(alias) != nil {
-		return "", diag.New(diag.Usage, "supply exact installed plugin aliases")
+func OwnedPackageDigest(h workhome.Home, p pluginid.Provider) (string, error) {
+	root, err := h.PackageRoot(p)
+	if err != nil {
+		return "", diag.Wrap(diag.Usage, err, "supply exact installed plugin identities")
 	}
-	root := filepath.Join(h.PluginsDir(), alias)
 	if _, err := os.Lstat(root); errors.Is(err, os.ErrNotExist) {
 		return "", nil
 	} else if err != nil {
@@ -57,20 +60,28 @@ func OwnedPackageDigest(h workhome.Home, alias string) (string, error) {
 
 // Remove transfers only the owned root to the journal backup. Cleanup unlinks
 // linked roots without traversing their external sources.
-func (s *Session) Remove(alias string) error {
-	for _, m := range s.moves {
-		if m.Alias == alias {
-			return errors.New("duplicate package move")
-		}
+func (s *Session) Remove(p pluginid.Provider) error {
+	if s.hasMove(p) {
+		return errors.New("duplicate package move")
 	}
-	digest, err := OwnedPackageDigest(s.home, alias)
+	digest, err := OwnedPackageDigest(s.home, p)
 	if err != nil {
 		return err
 	}
-	s.moves = append(s.moves, Move{Alias: alias, Remove: true, BeforeExists: digest != "", BeforeDigest: digest})
+	s.moves = append(s.moves, Move{Provider: p, Remove: true, BeforeExists: digest != "", BeforeDigest: digest})
 	return nil
 }
 
+func (s *Session) hasMove(p pluginid.Provider) bool {
+	for _, m := range s.moves {
+		if m.Provider == p {
+			return true
+		}
+	}
+	return false
+}
+
+// Journal is the finite before/after record of one administrative mutation.
 type Journal struct {
 	Schema    int          `json:"schema"`
 	ID        string       `json:"id"`
@@ -90,24 +101,22 @@ type Session struct {
 	Recovered []string
 }
 
-func (s *Session) Replace(alias, stage string) error {
-	if plugin.ValidateAlias(alias) != nil {
-		return diag.New(diag.PluginInvalid, "invalid package alias")
+func (s *Session) Replace(p pluginid.Provider, stage string) error {
+	dest, err := s.home.PackageRoot(p)
+	if err != nil {
+		return diag.Wrap(diag.PluginInvalid, err, "invalid package identity")
 	}
-	for _, m := range s.moves {
-		if m.Alias == alias {
-			return errors.New("duplicate package replacement")
-		}
+	if s.hasMove(p) {
+		return errors.New("duplicate package replacement")
 	}
-	if filepath.Dir(stage) != s.home.PluginsDir() || !strings.HasPrefix(filepath.Base(stage), ".admin-stage-") {
+	if filepath.Dir(stage) != s.home.PluginsDir() || !workhome.IsStageName(filepath.Base(stage)) {
 		return errors.New("stage is not transaction-owned")
 	}
 	info, err := os.Lstat(stage)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return errors.New("invalid package stage")
 	}
-	m := Move{Alias: alias, Stage: filepath.Base(stage)}
-	dest := filepath.Join(s.home.PluginsDir(), alias)
+	m := Move{Provider: p, Stage: filepath.Base(stage)}
 	if _, err := os.Lstat(dest); err == nil {
 		m.BeforeExists = true
 		m.BeforeDigest, err = treeDigest(dest)
@@ -124,6 +133,19 @@ func (s *Session) Replace(alias, stage string) error {
 	s.moves = append(s.moves, m)
 	return nil
 }
+
+// NewStage creates a transaction-owned stage directory beside the live
+// packages (same filesystem, so publication is a rename). The caller fills it
+// and either passes it to Replace, which takes ownership, or removes it. It is
+// safe from orphan collection because collection also runs under the
+// administration lock this session holds.
+func (s *Session) NewStage() (string, error) {
+	if err := os.MkdirAll(s.home.PluginsDir(), 0o700); err != nil {
+		return "", err
+	}
+	return os.MkdirTemp(s.home.PluginsDir(), workhome.StagePrefix)
+}
+
 func acquire(ctx context.Context, h workhome.Home, timeout time.Duration) (func(), error) {
 	if ctx.Err() != nil {
 		return nil, cancelled(ctx)
@@ -197,7 +219,7 @@ func withWrite(ctx context.Context, h workhome.Home, operation string, fn func(*
 		return err
 	}
 	var files []FileChange
-	for i, name := range []string{"config", "registry", "memory", "lifecycle"} {
+	for i, name := range imageNames {
 		if bytes.Equal(models[i], after[i]) && !s.persist[name] {
 			continue
 		}
@@ -218,7 +240,7 @@ func withWrite(ctx context.Context, h workhome.Home, operation string, fn func(*
 	if err != nil {
 		return err
 	}
-	j := Journal{Schema: 1, ID: id, Operation: operation, Phase: "prepared", Files: files, Moves: s.moves}
+	j := Journal{Schema: ControlSchema, ID: id, Operation: operation, Phase: "prepared", Files: files, Moves: s.moves}
 	dir, _ := h.TransactionDir(id)
 	if err = os.MkdirAll(dir, 0700); err != nil {
 		return err
@@ -239,7 +261,7 @@ func withWrite(ctx context.Context, h workhome.Home, operation string, fn func(*
 		_ = cleanup(h, &j)
 		return err
 	}
-	pending := Control{Schema: 1, Epoch: c.Epoch + 1, Status: "pending", TransactionID: &id}
+	pending := Control{Schema: ControlSchema, Epoch: c.Epoch + 1, Status: "pending", TransactionID: &id}
 	if err = saveJSON(h.AdministrationFile(), pending); err != nil {
 		_ = cleanup(h, &j)
 		return err
@@ -248,7 +270,7 @@ func withWrite(ctx context.Context, h workhome.Home, operation string, fn func(*
 		if err := restoreBefore(h, &j); err != nil {
 			return recoveryError(errors.Join(cause, err))
 		}
-		if err := saveJSON(h.AdministrationFile(), Control{Schema: 1, Epoch: pending.Epoch + 1, Status: "stable"}); err != nil {
+		if err := saveJSON(h.AdministrationFile(), Control{Schema: ControlSchema, Epoch: pending.Epoch + 1, Status: "stable"}); err != nil {
 			return recoveryError(errors.Join(cause, err))
 		}
 		if err := cleanup(h, &j); err != nil {
@@ -260,22 +282,33 @@ func withWrite(ctx context.Context, h workhome.Home, operation string, fn func(*
 		return rollback(err)
 	}
 	for _, m := range j.Moves {
-		dest := filepath.Join(h.PluginsDir(), m.Alias)
-		backup := backupPath(h, id, m.Alias)
+		dest, e := h.PackageRoot(m.Provider)
+		if e != nil {
+			return rollback(e)
+		}
+		backup, e := h.BackupPath(id, m.Provider)
+		if e != nil {
+			return rollback(e)
+		}
 		if m.BeforeExists {
 			if err = os.Rename(dest, backup); err != nil {
 				return rollback(err)
 			}
 		}
-		if err = point("move-backup:" + m.Alias); err != nil {
+		if err = point("move-backup:" + m.Provider.String()); err != nil {
 			return rollback(err)
 		}
 		if !m.Remove {
+			if err = ensureNamespace(h, m.Provider.Marketplace); err != nil {
+				return rollback(err)
+			}
 			if err = os.Rename(filepath.Join(h.PluginsDir(), m.Stage), dest); err != nil {
 				return rollback(err)
 			}
+		} else {
+			pruneNamespace(h, m.Provider.Marketplace)
 		}
-		if err = point("move-publish:" + m.Alias); err != nil {
+		if err = point("move-publish:" + m.Provider.String()); err != nil {
 			return rollback(err)
 		}
 	}
@@ -301,7 +334,7 @@ func withWrite(ctx context.Context, h workhome.Home, operation string, fn func(*
 			return committedError(err)
 		}
 	}
-	if err = saveJSON(h.AdministrationFile(), Control{Schema: 1, Epoch: pending.Epoch + 1, Status: "stable"}); err != nil {
+	if err = saveJSON(h.AdministrationFile(), Control{Schema: ControlSchema, Epoch: pending.Epoch + 1, Status: "stable"}); err != nil {
 		return committedError(err)
 	}
 	if checkpoint != nil {
@@ -320,8 +353,13 @@ func withWrite(ctx context.Context, h workhome.Home, operation string, fn func(*
 func committedError(err error) error {
 	return diag.Wrap(diag.AdministrationCleanupFailed, err, "administrative changes were committed; rerun the mutating command to finish recovery and cleanup")
 }
+
+// imageNames is the finite allowlist of JSON state a journal may rewrite. The
+// order matches modelBytes and is part of the on-disk journal vocabulary.
+var imageNames = []string{"config", "registry", "memory", "lifecycle", "catalogs"}
+
 func modelBytes(s *Snapshot) ([][]byte, error) {
-	values := []any{s.Config, s.Registry, s.Memory, s.Lifecycle}
+	values := []any{s.Config, s.Registry, s.Memory, s.Lifecycle, s.Catalogs}
 	result := make([][]byte, len(values))
 	for i, v := range values {
 		b, e := json.MarshalIndent(v, "", "  ")
@@ -341,7 +379,9 @@ func statePath(h workhome.Home, name string) string {
 	case "memory":
 		return h.BranchConventionsFile()
 	case "lifecycle":
-		return h.ReferencePackageFile()
+		return h.LifecycleFile()
+	case "catalogs":
+		return h.CatalogsFile()
 	}
 	return ""
 }
@@ -381,9 +421,6 @@ func saveJSON(path string, v any) error {
 		return err
 	}
 	return writeImage(path, newImage(append(b, '\n')))
-}
-func backupPath(h workhome.Home, id, alias string) string {
-	return filepath.Join(h.PluginsDir(), ".admin-"+id+"-"+alias+"-before")
 }
 
 // treeDigest hashes owned paths without following symlinks, including a linked
@@ -430,10 +467,41 @@ func treeDigest(root string) (string, error) {
 	return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-// Persist records an authorized legacy adoption even if its projection is unchanged.
+// Persist forces the named image to be rewritten even when its typed value is
+// unchanged, for explicit choices (such as an empty policy) that must advance
+// the administrative revision.
 func (s *Session) Persist(name string) {
 	if s.persist == nil {
 		s.persist = map[string]bool{}
 	}
 	s.persist[name] = true
+}
+
+// ensureNamespace creates the marketplace directory that parents provider
+// roots, refusing a link or a non-directory in its place.
+func ensureNamespace(h workhome.Home, marketplace string) error {
+	dir, err := h.MarketplaceDir(marketplace)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(h.PluginsDir(), 0o700); err != nil {
+		return err
+	}
+	if info, err := os.Lstat(dir); err == nil {
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("marketplace storage is not a plain directory")
+		}
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return os.Mkdir(dir, 0o755)
+}
+
+// pruneNamespace removes an emptied marketplace directory. It never removes
+// content: os.Remove fails on a non-empty directory, which is the intent.
+func pruneNamespace(h workhome.Home, marketplace string) {
+	if dir, err := h.MarketplaceDir(marketplace); err == nil {
+		_ = os.Remove(dir)
+	}
 }

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/creack/pty"
+	"github.com/gustaborges/work/internal/pluginid"
 	"github.com/gustaborges/work/internal/work"
 )
 
@@ -31,7 +32,7 @@ func TestManualLinkJourney(t *testing.T) {
 			before, _ := os.ReadFile(path)
 			args := []string{"link"}
 			if mode == "value-omitted" || mode == "cancel-value" || mode == "direct" {
-				args = append(args, "manual-suite/linker")
+				args = append(args, "manual-suite@suite/linker")
 			}
 			if mode == "direct" {
 				args = append(args, "private-direct-value")
@@ -42,7 +43,7 @@ func TestManualLinkJourney(t *testing.T) {
 			c := startConsole(t, pty.Winsize{Rows: 24, Cols: 80}, cmd)
 			if mode == "both-omitted" || mode == "cancel-selection" {
 				c.expect("Choose a Linker")
-				c.expect("manual-suite/linker")
+				c.expect("manual-suite@suite/linker")
 				if mode == "cancel-selection" {
 					c.send("\x1b")
 				} else {
@@ -102,7 +103,7 @@ func TestManualLinkJourney(t *testing.T) {
 // size. Filtering and resize use the same controls as the existing selectors.
 func TestManualContextGeometry(t *testing.T) {
 	h := newF6Harness(t)
-	h.run(t, h.root, 0, "plugin", "install", fixtures.Prepare(t, "manual-suite"), "--as", "alternate")
+	h.install(t, "alternate", fixtures.Prepare(t, "manual-suite"))
 	for _, size := range []pty.Winsize{{Rows: 10, Cols: 40}, {Rows: 24, Cols: 80}, {Rows: 50, Cols: 160}} {
 		t.Run(fmt.Sprintf("%dx%d", size.Cols, size.Rows), func(t *testing.T) {
 			cmd := exec.Command(h.bin, "link")
@@ -110,15 +111,15 @@ func TestManualContextGeometry(t *testing.T) {
 			cmd.Dir = h.dir
 			c := startConsole(t, size, cmd)
 			c.expect("Choose a Linker")
-			c.expect("alternate/linker")
-			c.expect("manual/linker")
+			c.expect("manual-suite@alternate/linker")
+			c.expect("manual-suite@manual/linker")
 			assertNoLineExceeds(t, c.screen(), int(size.Cols))
 			c.send("\x1b[B\x1b[A")
 			if err := pty.Setsize(c.f, &pty.Winsize{Rows: 24, Cols: 80}); err != nil {
 				t.Fatal(err)
 			}
-			c.send("/manual")
-			c.expect("manual")
+			c.send("/@manual/")
+			c.expect("@manual/")
 			c.send("\r")
 			c.expect("Link value")
 			c.send("\r")
@@ -130,7 +131,7 @@ func TestManualContextGeometry(t *testing.T) {
 			// Replay the final screen at the resized dimensions.
 			c.rows, c.cols = 24, 80
 			screen := c.screen()
-			if !strings.Contains(screen, "value supplied") || !strings.Contains(screen, "manual/linker") || strings.Contains(screen, "private-geometry-value") || strings.Contains(screen, "enter a non-empty value") {
+			if !strings.Contains(screen, "value supplied") || !strings.Contains(screen, "manual-suite@manual/linker") || strings.Contains(screen, "private-geometry-value") || strings.Contains(screen, "enter a non-empty value") {
 				t.Fatal(screen)
 			}
 		})
@@ -147,7 +148,7 @@ func TestManualEmptySelectors(t *testing.T) {
 		{"import", false, "required inputs"}, {"import", true, "install or enable"}, {"link", true, "install or enable"},
 	} {
 		t.Run(fmt.Sprint(tc.command, tc.disabled), func(t *testing.T) {
-			if err := fixtures.SetPackageEnabled(filepath.Join(h.root, "home", "state", "registry.json"), "manual", !tc.disabled); err != nil {
+			if err := fixtures.SetPackageEnabled(filepath.Join(h.root, "home", "state", "registry.json"), manualProvider, !tc.disabled); err != nil {
 				t.Fatal(err)
 			}
 			cmd := exec.Command(h.bin, tc.command)
@@ -169,10 +170,10 @@ func TestManualSelectionRevalidated(t *testing.T) {
 	for _, command := range []string{"link", "import"} {
 		t.Run(command, func(t *testing.T) {
 			path := filepath.Join(h.root, "home", "state", "registry.json")
-			if err := fixtures.SetPackageEnabled(path, "manual", true); err != nil {
+			if err := fixtures.SetPackageEnabled(path, manualProvider, true); err != nil {
 				t.Fatal(err)
 			}
-			h.run(t, h.dir, 0, "link", "manual/linker", "original")
+			h.run(t, h.dir, 0, "link", "manual-suite@manual/linker", "original")
 			before, err := os.ReadFile(filepath.Join(h.dir, "work-state.json"))
 			if err != nil {
 				t.Fatal(err)
@@ -188,7 +189,7 @@ func TestManualSelectionRevalidated(t *testing.T) {
 			} else {
 				c.expect("Choose an Importer")
 			}
-			if err := fixtures.SetPackageEnabled(path, "manual", false); err != nil {
+			if err := fixtures.SetPackageEnabled(path, manualProvider, false); err != nil {
 				t.Fatal(err)
 			}
 			if command == "link" {
@@ -209,3 +210,6 @@ func TestManualSelectionRevalidated(t *testing.T) {
 		})
 	}
 }
+
+// manualProvider is the manual-suite fixture as the f6 harness installs it.
+var manualProvider = pluginid.Provider{Marketplace: "manual", Plugin: "manual-suite"}

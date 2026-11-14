@@ -20,7 +20,9 @@ const noneAdded = "none of its files were added"
 // after every Linker result was persisted. Each runs alone, so a later
 // Importer's plan sees what an earlier one incorporated.
 func (r *runner) importerPhase(ctx context.Context) {
-	for _, d := range Eligible(r.c.Registry, plugin.RoleImporter, StartFinalized, r.subject()) {
+	decisions, ambiguous := EligibleDiagnosed(r.c.Registry, plugin.RoleImporter, StartFinalized, r.subject())
+	r.warnAmbiguous(ambiguous, OpImport)
+	for _, d := range decisions {
 		if !r.runImporter(ctx, d) {
 			return
 		}

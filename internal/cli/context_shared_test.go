@@ -8,6 +8,7 @@ import (
 	"github.com/gustaborges/work/internal/plugin"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/workhome"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 	"os"
 	"path/filepath"
 	"strings"
@@ -42,9 +43,8 @@ func TestContextGlobalsNeverRepair(t *testing.T) {
 
 func TestSharedProviderReloadAndStreams(t *testing.T) {
 	home := workhome.At(t.TempDir())
-	off := false
-	selected := registry.Component{Alias: "manual", Name: "linker", Role: "linker", Key: "github.pull_request", Manual: &plugin.Manual{DisplayName: "PR"}}
-	r := &registry.Registry{Components: []registry.Component{selected}}
+	selected := registry.Component{Provider: installfx.P("manual"), Name: "linker", Role: "linker", Entrypoint: "linker", Key: "github.pull_request", Manual: &plugin.Manual{DisplayName: "PR"}}
+	r := installfx.Reg(nil, selected)
 	if err := registry.Save(home.RegistryFile(), r); err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestSharedProviderReloadAndStreams(t *testing.T) {
 	if _, err := reloadContextProvider(home, selected); err != nil {
 		t.Fatal(err)
 	}
-	r.Packages = []registry.Package{{Alias: "manual", Enabled: &off}}
+	installfx.SetPackageEnabled(r, "manual", false)
 	registry.Save(home.RegistryFile(), r)
 	if _, err := reloadContextProvider(home, selected); diag.ExitCode(err) != 39 {
 		t.Fatal(err)
@@ -78,12 +78,12 @@ func TestSharedProviderReloadAndStreams(t *testing.T) {
 
 func TestNoManualCandidateGuidance(t *testing.T) {
 	for _, role := range []string{plugin.RoleLinker, plugin.RoleImporter} {
-		err := noManualCandidates(&registry.Registry{}, role)
+		err := noManualCandidates(registry.New(), role)
 		if diag.ExitCode(err) != 41 || !strings.Contains(err.Error(), "install or enable") {
 			t.Fatal(err)
 		}
 	}
-	r := &registry.Registry{Components: []registry.Component{{Alias: "manual", Name: "importer", Role: plugin.RoleImporter, Manual: &plugin.Manual{DisplayName: "Import"}, Inputs: []string{"link:github.issue"}}}}
+	r := installfx.Reg(nil, registry.Component{Provider: installfx.P("manual"), Name: "importer", Role: plugin.RoleImporter, Entrypoint: "importer", Manual: &plugin.Manual{DisplayName: "Import"}, Inputs: []string{"link:github.issue"}})
 	err := noManualCandidates(r, plugin.RoleImporter)
 	if diag.ExitCode(err) != 41 || !strings.Contains(err.Error(), "required inputs") || !strings.Contains(err.Error(), "work link") {
 		t.Fatal(err)
@@ -103,7 +103,7 @@ func TestContextValidationPrecedesCatalog(t *testing.T) {
 	}{
 		{[]string{"link"}, 2}, {[]string{"import"}, 2},
 		{[]string{"link", "", "secret"}, 2}, {[]string{"import", ""}, 2},
-		{[]string{"link", "manual/linker", "secret"}, 21}, {[]string{"import", "manual/importer"}, 21},
+		{[]string{"link", "manual@m/linker", "secret"}, 21}, {[]string{"import", "manual@m/importer"}, 21},
 	} {
 		cmd := newRootCmd()
 		var out, ui bytes.Buffer

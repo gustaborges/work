@@ -68,7 +68,7 @@ func TestImporterOutputLandsBesideTheWorktreeNotInIt(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(h.ctx.WorktreePath, "notes")); !os.IsNotExist(err) {
 		t.Errorf("output leaked into the worktree: %v", err)
 	}
-	if n := importerCounts(h)["context-suite/importer"]; n != 2 {
+	if n := importerCounts(h)["context-suite@suite/importer"]; n != 2 {
 		t.Errorf("imported = %d, want 2 (directory and file)", n)
 	}
 }
@@ -151,7 +151,7 @@ func TestLaterImporterPlanSeesEarlierImportersFiles(t *testing.T) {
 		t.Fatalf("warnings = %+v", rep.Warnings)
 	}
 	counts := importerCounts(h)
-	if counts["context-suite/importer"] != 2 || counts["context-suite/importer2"] != 1 {
+	if counts["context-suite@suite/importer"] != 2 || counts["context-suite@suite/importer2"] != 1 {
 		t.Errorf("counts = %v, want importer 2 (dir+file) and importer2 1 (file into the existing dir)", counts)
 	}
 	var running []string
@@ -160,7 +160,7 @@ func TestLaterImporterPlanSeesEarlierImportersFiles(t *testing.T) {
 			running = append(running, e.Component)
 		}
 	}
-	if !slices.Equal(running, []string{"context-suite/importer", "context-suite/importer2"}) {
+	if !slices.Equal(running, []string{"context-suite@suite/importer", "context-suite@suite/importer2"}) {
 		t.Errorf("importer order = %v", running)
 	}
 }

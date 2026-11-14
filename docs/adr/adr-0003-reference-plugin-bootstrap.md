@@ -1,6 +1,9 @@
 # ADR-0003: Bootstrap of Reference Plugin Package on First Use
 
-**Status:** Accepted
+**Status:** Superseded in part for feature 009
+**Superseded by:** ADR-0028 (included source and conservative legacy transition); one-time initialization and durable removal principles remain.
+
+The original decision body below is retained as historical evidence.
 **Date:** 2026-08-23
 **Product context:** `docs/prd.md` — RF-10, RF-24, Section 2 (motivation), RNF-1, RNF-7
 **Governs:** `docs/add/add-0001-work-system-architecture.md`, Section 6

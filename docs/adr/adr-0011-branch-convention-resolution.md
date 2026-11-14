@@ -1,6 +1,9 @@
 # ADR-0011: Branch Convention Resolution per Repository — Interview with Memoization
 
-**Status:** Accepted
+**Status:** Superseded in part for feature 009
+**Superseded by:** ADR-0024 (provider-qualified conventions); repository identity, deliberate selection, and unavailable-memory preservation remain.
+
+The original decision body below is retained as historical evidence.
 **Date:** 2026-08-23
 **Product Context:** `docs/prd.md` — RF-5, RF-23, RF-24, RF-25, RNF-1, RNF-3, Roadmap (automatic convention discovery)
 **Governs:** `docs/add/add-0001-work-system-architecture.md`, Sections 6 and 8

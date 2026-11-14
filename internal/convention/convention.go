@@ -1,8 +1,8 @@
 // Package convention resolves a branch-naming convention and its prefix into a
-// concrete branch name. F1 seeds exactly one convention, "freeform", whose sole
-// prefix is "{slug}", so a derived name equals the slug; the package is written
-// against the general catalog so later slices add conventions without changing
-// callers.
+// concrete branch name. A convention is always addressed by its fully qualified
+// reference (plugin@marketplace/name): equal bare names from different
+// providers are independent conventions with their own prefixes, so a bare name
+// is never looked up here.
 package convention
 
 import (
@@ -14,9 +14,6 @@ import (
 	"github.com/gustaborges/work/internal/registry"
 )
 
-// Freeform is the name of the convention F1 always resolves to.
-const Freeform = "freeform"
-
 // Catalog is the set of known conventions, loaded from the component registry.
 type Catalog struct {
 	conventions []registry.Convention
@@ -27,14 +24,15 @@ func Load(reg *registry.Registry) Catalog {
 	return Catalog{conventions: reg.Effective().ListConventions()}
 }
 
-// Prefixes returns the prefixes offered by the named convention.
-func (c Catalog) Prefixes(conventionName string) ([]string, error) {
+// Prefixes returns the prefixes offered by the convention with the given
+// qualified reference.
+func (c Catalog) Prefixes(conventionRef string) ([]string, error) {
 	for _, cv := range c.conventions {
-		if cv.Name == conventionName {
+		if cv.Ref().String() == conventionRef {
 			return cv.Prefixes, nil
 		}
 	}
-	return nil, diag.Newf(diag.BootstrapFailed, "branch convention %q is not registered", conventionName)
+	return nil, diag.Newf(diag.BootstrapFailed, "branch convention %q is not registered", conventionRef)
 }
 
 // Interpolate expands a prefix template against a slug. The only token is

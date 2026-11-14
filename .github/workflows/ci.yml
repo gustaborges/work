@@ -39,5 +39,11 @@ jobs:
       # Note: unix-only pty tests (tests/integration/*_test.go with //go:build unix)
       # run only on the ubuntu/macos runners.
       - run: go test ./...
+      - name: Race detection on administrative packages
+        if: runner.os == 'Linux'
+        run: go test -race ./internal/adminstate/... ./internal/pluginadmin/... ./internal/marketplaceadmin/... ./internal/present/...
+      - name: Race detection on concurrency and recovery journeys
+        if: runner.os == 'Linux'
+        run: go test -race ./tests/integration -run 'Concurrency|Recovery|Concurrent'
       - name: Host build smoke test
         run: make build

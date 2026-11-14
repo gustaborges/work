@@ -14,6 +14,7 @@ import (
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/work"
 	"github.com/gustaborges/work/internal/workhome"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 )
 
 func TestStatusOutputContract(t *testing.T) {
@@ -109,7 +110,7 @@ func TestLinkOutputAndNoExecutableContract(t *testing.T) {
 	}
 	home := workhome.At(filepath.Join(t.TempDir(), "home"))
 	t.Setenv("WORK_HOME", home.Root())
-	reg := &registry.Registry{Components: []registry.Component{{Alias: "manual", Name: "linker", Role: plugin.RoleLinker, Key: "github.pull_request", Entrypoint: "absent", Runtime: "missing-runtime", Inputs: []string{"meta:missing.fact"}, Manual: &plugin.Manual{DisplayName: "Pull request"}}}}
+	reg := installfx.Reg(nil, registry.Component{Provider: installfx.P("manual"), Name: "linker", Role: plugin.RoleLinker, Key: "github.pull_request", Entrypoint: "absent", Runtime: "missing-runtime", Inputs: []string{"meta:missing.fact"}, Manual: &plugin.Manual{DisplayName: "Pull request"}})
 	if err := registry.Save(home.RegistryFile(), reg); err != nil {
 		t.Fatal(err)
 	}
@@ -121,12 +122,12 @@ func TestLinkOutputAndNoExecutableContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, value := range []string{" exact $shell; text ", "--leading-dash", "\n\tcontrol\x1b"} {
-		cmd := exec.Command(bin, "link", "manual/linker", "--", value)
+		cmd := exec.Command(bin, "link", "manual@m/linker", "--", value)
 		cmd.Dir = dir
 		var out, ui bytes.Buffer
 		cmd.Stdout = &out
 		cmd.Stderr = &ui
-		if err := cmd.Run(); err != nil || ui.Len() != 0 || out.String() != "work: linked opaque-id github.pull_request manual/linker\n" {
+		if err := cmd.Run(); err != nil || ui.Len() != 0 || out.String() != "work: linked opaque-id github.pull_request manual@m/linker\n" {
 			t.Fatal(err, out.String(), ui.String())
 		}
 		actual, err := work.Read(path)
@@ -135,7 +136,7 @@ func TestLinkOutputAndNoExecutableContract(t *testing.T) {
 		}
 	}
 	before, _ := os.ReadFile(path)
-	for _, args := range [][]string{{"link"}, {"link", "manual/linker"}, {"link", "manual/linker", ""}, {"link", "manual/linker", "value", "--json=false"}, {"link", "manual/linker", "value", "--yes"}} {
+	for _, args := range [][]string{{"link"}, {"link", "manual@m/linker"}, {"link", "manual@m/linker", ""}, {"link", "manual@m/linker", "value", "--json=false"}, {"link", "manual@m/linker", "value", "--yes"}} {
 		cmd := exec.Command(bin, args...)
 		cmd.Dir = dir
 		var out, ui bytes.Buffer

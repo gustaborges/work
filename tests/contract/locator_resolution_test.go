@@ -15,6 +15,7 @@ import (
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/locator"
 	"github.com/gustaborges/work/internal/registry"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 	fixtures "github.com/gustaborges/work/tests/fixtures/locators"
 )
 
@@ -98,9 +99,9 @@ func TestLocatorResolutionProjection(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			plugins := t.TempDir()
-			reg := &registry.Registry{}
-			fixtures.Install(t, reg, plugins, "fixture", "ok", "ok", tc.accepts)
-			d := locator.Deps{PluginsDir: plugins, Policy: []string{"fixture/ok"}, Roots: roots, Registry: reg}
+			reg := registry.New()
+			fixtures.Install(t, reg, plugins, installfx.P("fixture"), "ok", "ok", tc.accepts)
+			d := locator.Deps{PluginsDir: plugins, Policy: []string{"fixture@m/ok"}, Roots: roots, Registry: reg}
 
 			if !tc.wantElig {
 				_, err := locator.Resolve(context.Background(), d, tc.ref)
@@ -139,9 +140,9 @@ func TestLocatorResolutionOutcomeTable(t *testing.T) {
 		repo := makeRepo(t, t.TempDir(), "project")
 		t.Setenv("LOCATOR_FIXTURE_MATCHES", mustJSON(t, []string{repo}))
 		plugins := t.TempDir()
-		reg := &registry.Registry{}
-		fixtures.Install(t, reg, plugins, "fixture", "ok", "ok", []string{"name"})
-		d := locator.Deps{PluginsDir: plugins, Policy: []string{"fixture/ok"}, Registry: reg}
+		reg := registry.New()
+		fixtures.Install(t, reg, plugins, installfx.P("fixture"), "ok", "ok", []string{"name"})
+		d := locator.Deps{PluginsDir: plugins, Policy: []string{"fixture@m/ok"}, Registry: reg}
 
 		out, err := locator.Resolve(context.Background(), d, locator.Reference{Name: "project"})
 		if err != nil {
@@ -158,9 +159,9 @@ func TestLocatorResolutionOutcomeTable(t *testing.T) {
 		b := makeRepo(t, root, "b")
 		t.Setenv("LOCATOR_FIXTURE_MATCHES", mustJSON(t, []string{a, b}))
 		plugins := t.TempDir()
-		reg := &registry.Registry{}
-		fixtures.Install(t, reg, plugins, "fixture", "two", "two", []string{"name"})
-		d := locator.Deps{PluginsDir: plugins, Policy: []string{"fixture/two"}, Registry: reg}
+		reg := registry.New()
+		fixtures.Install(t, reg, plugins, installfx.P("fixture"), "two", "two", []string{"name"})
+		d := locator.Deps{PluginsDir: plugins, Policy: []string{"fixture@m/two"}, Registry: reg}
 
 		out, err := locator.Resolve(context.Background(), d, locator.Reference{Name: "project"})
 		if err != nil {
@@ -173,9 +174,9 @@ func TestLocatorResolutionOutcomeTable(t *testing.T) {
 
 	t.Run("every eligible locator returned [] -> no-repository-found (26)", func(t *testing.T) {
 		plugins := t.TempDir()
-		reg := &registry.Registry{}
-		fixtures.Install(t, reg, plugins, "fixture", "empty", "empty", []string{"name"})
-		d := locator.Deps{PluginsDir: plugins, Policy: []string{"fixture/empty"}, Registry: reg}
+		reg := registry.New()
+		fixtures.Install(t, reg, plugins, installfx.P("fixture"), "empty", "empty", []string{"name"})
+		d := locator.Deps{PluginsDir: plugins, Policy: []string{"fixture@m/empty"}, Registry: reg}
 
 		_, err := locator.Resolve(context.Background(), d, locator.Reference{Name: "project"})
 		wantLocatorToken(t, err, diag.NoRepositoryFound)
@@ -191,9 +192,9 @@ func TestLocatorResolutionOutcomeTable(t *testing.T) {
 		notARepo := t.TempDir()
 		t.Setenv("LOCATOR_FIXTURE_MATCHES", mustJSON(t, []string{notARepo}))
 		plugins := t.TempDir()
-		reg := &registry.Registry{}
-		fixtures.Install(t, reg, plugins, "fixture", "invalid", "invalid", []string{"name"})
-		d := locator.Deps{PluginsDir: plugins, Policy: []string{"fixture/invalid"}, Registry: reg}
+		reg := registry.New()
+		fixtures.Install(t, reg, plugins, installfx.P("fixture"), "invalid", "invalid", []string{"name"})
+		d := locator.Deps{PluginsDir: plugins, Policy: []string{"fixture@m/invalid"}, Registry: reg}
 
 		_, err := locator.Resolve(context.Background(), d, locator.Reference{Name: "project"})
 		wantLocatorToken(t, err, diag.RepositoryCandidateInvalid)
@@ -203,10 +204,10 @@ func TestLocatorResolutionOutcomeTable(t *testing.T) {
 		repo := makeRepo(t, t.TempDir(), "project")
 		t.Setenv("LOCATOR_FIXTURE_MATCHES", mustJSON(t, []string{repo}))
 		plugins := t.TempDir()
-		reg := &registry.Registry{}
-		fixtures.Install(t, reg, plugins, "fixtureA", "boom", "boom", []string{"name"})
-		fixtures.Install(t, reg, plugins, "fixtureB", "ok", "ok", []string{"name"})
-		d := locator.Deps{PluginsDir: plugins, Policy: []string{"fixtureA/boom", "fixtureB/ok"}, Registry: reg}
+		reg := registry.New()
+		fixtures.Install(t, reg, plugins, installfx.P("fixtureA"), "boom", "boom", []string{"name"})
+		fixtures.Install(t, reg, plugins, installfx.P("fixtureB"), "ok", "ok", []string{"name"})
+		d := locator.Deps{PluginsDir: plugins, Policy: []string{"fixtureA@m/boom", "fixtureB@m/ok"}, Registry: reg}
 
 		_, err := locator.Resolve(context.Background(), d, locator.Reference{Name: "project"})
 		wantLocatorToken(t, err, diag.LocatorFailed)

@@ -36,7 +36,7 @@ exec git -C $WORK/src for-each-ref refs/heads/rollme
 ! exists $WORK/dothome/state/work.db
 
 # Durable state survived every rollback.
-exists $WORK/dothome/plugins/work-reference/plugin.json
+exists $WORK/dothome/plugins/builtin/work-reference/source/plugin.json
 grep 'filesystem-repository-locator' $WORK/dothome/config/work.json
 grep '"workspace"' $WORK/dothome/config/work.json
 

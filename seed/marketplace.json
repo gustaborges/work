@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "name": "builtin",
+  "display_name": "Included",
+  "description": "Plugins distributed with the Work binary",
+  "plugins": [
+    {
+      "name": "work-reference",
+      "path": "plugins/work-reference",
+      "description": "Reference Starter and Repository Locator that work offline"
+    }
+  ]
+}

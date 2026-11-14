@@ -1,0 +1,23 @@
+{
+  "name": "sample",
+  "version": "1.0.0",
+  "components": [
+    {
+      "name": "run",
+      "role": "linker",
+      "key": "fixture.sample",
+      "entrypoint": "bin/tool",
+      "manual": {
+        "display_name": "sample"
+      }
+    }
+  ],
+  "conventions": [
+    {
+      "name": "freeform",
+      "prefixes": [
+        "{slug}"
+      ]
+    }
+  ]
+}

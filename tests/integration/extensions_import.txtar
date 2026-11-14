@@ -1,7 +1,7 @@
 # F5 — Importers run through exclusive staging (quickstart S9-S11).
 
 preparepluginfixture context-suite SUITE
-work plugin install $SUITE
+installplugin suite $SUITE
 gitrepo src/demo-ctx-1
 work-set-roots $WORK/dothome/config/work.json $WORK/src
 env WS=$WORK/ws
@@ -12,8 +12,8 @@ mkdir $WORK/tmp
 # S9: an Importer's output lands in the Work directory beside worktree/, never in it.
 env WORK_FIXTURE_MODE=linker-value,importer-ok,importer2-empty
 work start demo-ctx-1 --workspace $WS --base main --slug imported --prefix {slug} --yes
-stderr 'work: running context-suite/importer \(import\)'
-stderr 'work: context-suite/importer: imported 2 item\(s\)'
+stderr 'work: running context-suite@suite/importer \(import\)'
+stderr 'work: context-suite@suite/importer: imported 2 item\(s\)'
 ! stdout 'item\(s\)'
 ! stdout 'running'
 grep 'imported context' $WS/in-progress/demo-ctx-1_imported/notes/context.md
@@ -47,15 +47,15 @@ grep 'imported context' $WS/archived/${TODAY}-demo-ctx-1_imported/notes/context.
 # second contributes nothing and one warning names it and the relative path.
 env WORK_FIXTURE_MODE=linker-value,importer-ok,importer2-collide
 work start demo-ctx-1 --base main --slug collide --prefix {slug} --yes
-stderr 'warning: extension-output-refused: context-suite/importer2 \(import\) for Work [0-9A-HJKMNP-TV-Z]{26}: it would overwrite "notes/context.md"; none of its files were added'
+stderr 'warning: extension-output-refused: context-suite@suite/importer2 \(import\) for Work [0-9A-HJKMNP-TV-Z]{26}: it would overwrite "notes/context.md"; none of its files were added'
 grep 'imported context' $WS/in-progress/demo-ctx-1_collide/notes/context.md
 ! grep 'from importer2' $WS/in-progress/demo-ctx-1_collide/notes/context.md
-! stderr 'context-suite/importer2: imported'
+! stderr 'context-suite@suite/importer2: imported'
 
 # A refusal is all or nothing: the clean part of a mixed output is not added.
 env WORK_FIXTURE_MODE=linker-value,importer-mixed,importer2-empty
 work start demo-ctx-1 --base main --slug mixed --prefix {slug} --yes
-stderr 'warning: extension-output-refused: context-suite/importer \(import\)'
+stderr 'warning: extension-output-refused: context-suite@suite/importer \(import\)'
 stderr 'work-state.json'
 ! exists $WS/in-progress/demo-ctx-1_mixed/notes
 grep '"schema": 3' $WS/in-progress/demo-ctx-1_mixed/work-state.json
@@ -63,20 +63,20 @@ grep '"schema": 3' $WS/in-progress/demo-ctx-1_mixed/work-state.json
 # Output aimed at the worktree or the snapshot is refused without a trace.
 env WORK_FIXTURE_MODE=linker-value,importer-into-worktree,importer2-empty
 work start demo-ctx-1 --base main --slug intowt --prefix {slug} --yes
-stderr 'warning: extension-output-refused: context-suite/importer \(import\)'
+stderr 'warning: extension-output-refused: context-suite@suite/importer \(import\)'
 ! exists $WS/in-progress/demo-ctx-1_intowt/worktree/injected.md
 ! exists $WS/in-progress/demo-ctx-1_intowt/worktree/worktree
 
 env WORK_FIXTURE_MODE=linker-value,importer-over-state,importer2-empty
 work start demo-ctx-1 --base main --slug overstate --prefix {slug} --yes
-stderr 'warning: extension-output-refused: context-suite/importer \(import\)'
+stderr 'warning: extension-output-refused: context-suite@suite/importer \(import\)'
 grep '"schema": 3' $WS/in-progress/demo-ctx-1_overstate/work-state.json
 ! grep '^\{\}$' $WS/in-progress/demo-ctx-1_overstate/work-state.json
 
 # Symlinks in the output are refused (Unix; creating one may need privileges elsewhere).
 [!windows] env WORK_FIXTURE_MODE=linker-value,importer-symlink,importer2-empty
 [!windows] work start demo-ctx-1 --base main --slug symlink --prefix {slug} --yes
-[!windows] stderr 'warning: extension-output-refused: context-suite/importer \(import\)'
+[!windows] stderr 'warning: extension-output-refused: context-suite@suite/importer \(import\)'
 [!windows] stderr 'notes/link.md'
 [!windows] ! exists $WS/in-progress/demo-ctx-1_symlink/notes
 
@@ -87,7 +87,7 @@ stdout 'work: created '
 env WORK_FIXTURE_MODE=linker-value,importer-ok,importer2-empty
 env WORK_FAIL_AT=incorporate:1
 work start demo-ctx-1 --base main --slug rolledback --prefix {slug} --yes
-stderr 'warning: extension-persist-failed: context-suite/importer \(import\) for Work [0-9A-HJKMNP-TV-Z]{26}:'
+stderr 'warning: extension-persist-failed: context-suite@suite/importer \(import\) for Work [0-9A-HJKMNP-TV-Z]{26}:'
 ! exists $WS/in-progress/demo-ctx-1_rolledback/notes
 exists $WS/in-progress/demo-ctx-1_rolledback/worktree
 env WORK_FAIL_AT=
@@ -98,7 +98,7 @@ env WORK_FAIL_AT=
 env WORK_FIXTURE_MODE=linker-value,importer-overflow,importer2-empty
 work start demo-ctx-1 --base main --slug overflow --prefix {slug} --yes
 stdout 'work: created '
-stderr 'warning: extension-response-invalid: context-suite/importer'
+stderr 'warning: extension-response-invalid: context-suite@suite/importer'
 ! stdout 'warning:'
 ! exists $WS/in-progress/demo-ctx-1_overflow/notes
 [!windows] exec sh -c 'ls "$TMPDIR" | grep -c "^work-import-" || true'

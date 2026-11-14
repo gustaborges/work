@@ -1,0 +1,23 @@
+{
+  "name": "beta",
+  "version": "1.0.0",
+  "components": [
+    {
+      "name": "run-beta",
+      "role": "linker",
+      "key": "fixture.beta",
+      "entrypoint": "bin/tool",
+      "manual": {
+        "display_name": "beta"
+      }
+    }
+  ],
+  "conventions": [
+    {
+      "name": "freeform",
+      "prefixes": [
+        "{slug}"
+      ]
+    }
+  ]
+}

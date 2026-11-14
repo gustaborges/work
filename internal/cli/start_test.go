@@ -15,12 +15,14 @@ import (
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/gittest"
 	"github.com/gustaborges/work/internal/gitx"
+	"github.com/gustaborges/work/internal/pluginid"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/repoconv"
 	"github.com/gustaborges/work/internal/repoidentity"
 	"github.com/gustaborges/work/internal/work"
 	"github.com/gustaborges/work/internal/workhome"
 	"github.com/gustaborges/work/seed"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 	fixtures "github.com/gustaborges/work/tests/fixtures/plugins"
 )
 
@@ -198,7 +200,7 @@ func TestStartByNameEmptyPolicyIsNoEligibleLocatorDistinctFromNoRepositoryFound(
 	writeRepositoryRoot(t, home, root)
 
 	if _, _, code := runWorkHome(t, home, "repository", "policy", "remove",
-		"work-reference/filesystem-repository-locator"); code != 0 {
+		"work-reference@builtin/filesystem-repository-locator"); code != 0 {
 		t.Fatalf("policy remove: exit = %d", code)
 	}
 
@@ -278,8 +280,8 @@ func TestStartConventionSingleEnabledMemoizedSilently(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, ok := store.Get(id); !ok || got != "freeform" {
-		t.Errorf("memoized convention = (%q, %v), want (freeform, true)", got, ok)
+	if got, ok := store.Get(id); !ok || got.String() != "work-reference@builtin/freeform" || got.RegistrationID != pluginid.BuiltinRegistrationID {
+		t.Errorf("memoized convention = (%+v, %v), want the qualified builtin reference bound to the builtin source", got, ok)
 	}
 }
 
@@ -292,9 +294,7 @@ func TestStartConventionMultipleEnabledUnmemoizedNonInteractiveFails(t *testing.
 	needSeed(t)
 	home := t.TempDir()
 	src := fixtures.Prepare(t, "specific-starter")
-	if _, errb, code := runWorkHome(t, home, "plugin", "install", src); code != 0 {
-		t.Fatalf("plugin install: exit = %d\nstderr: %s", code, errb)
-	}
+	installfx.InstallAs(t, workhome.At(home), "suite", src, true)
 
 	repo := gittest.Repo(t)
 	ws := filepath.Join(t.TempDir(), "ws")
@@ -317,9 +317,7 @@ func TestStartConventionMemoizedIsReusedNonInteractively(t *testing.T) {
 	needSeed(t)
 	home := t.TempDir()
 	src := fixtures.Prepare(t, "specific-starter")
-	if _, errb, code := runWorkHome(t, home, "plugin", "install", src); code != 0 {
-		t.Fatalf("plugin install: exit = %d\nstderr: %s", code, errb)
-	}
+	installfx.InstallAs(t, workhome.At(home), "suite", src, true)
 
 	repo := gittest.Repo(t)
 	id, err := repoidentity.Identify(gitx.Open(repo))
@@ -331,7 +329,7 @@ func TestStartConventionMemoizedIsReusedNonInteractively(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.Set(id, "gitflow")
+	store.Set(id, repoconv.NewReference(installfx.RegistrationID("suite"), pluginid.Ref{Provider: pluginid.Provider{Marketplace: "suite", Plugin: "specific-starter"}, Name: "gitflow"}))
 	if err := repoconv.Save(wh.BranchConventionsFile(), store); err != nil {
 		t.Fatal(err)
 	}
@@ -359,8 +357,8 @@ func TestStartConventionMemoizedIsReusedNonInteractively(t *testing.T) {
 	if err := json.Unmarshal(data, &st); err != nil {
 		t.Fatal(err)
 	}
-	if st.Work.BranchConvention != "gitflow" {
-		t.Errorf("branch_convention = %q, want the memoized %q", st.Work.BranchConvention, "gitflow")
+	if st.Work.BranchConvention != "specific-starter@suite/gitflow" {
+		t.Errorf("branch_convention = %q, want the memoized qualified %q", st.Work.BranchConvention, "specific-starter@suite/gitflow")
 	}
 }
 
@@ -398,9 +396,7 @@ func TestAutomaticExtensionsPrintNothingWhenNothingIsEligible(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Only Starters are registered: there is no Linker or Importer to run.
-	reg := &registry.Registry{Components: []registry.Component{
-		{Alias: "work-reference", Name: "local-path-starter", Role: registry.RoleStarter},
-	}}
+	reg := installfx.Reg(nil, registry.Component{Provider: installfx.P("work-reference"), Name: "local-path-starter", Role: registry.RoleStarter, Entrypoint: "starter"})
 
 	for _, interactive := range []bool{false, true} {
 		var ui bytes.Buffer

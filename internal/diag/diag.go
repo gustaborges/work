@@ -80,6 +80,13 @@ var (
 	AdministrationRecoveryRequired = Category{Token: "administration-recovery-required", Code: 54}
 	AdministrationCleanupFailed    = Category{Token: "administration-cleanup-failed", Code: 55}
 	AdministrationBusy             = Category{Token: "administration-busy", Code: 56}
+
+	// Marketplace distribution categories.
+	MarketplaceInvalid           = Category{Token: "marketplace-invalid", Code: 57}
+	MarketplaceNameConflict      = Category{Token: "marketplace-name-conflict", Code: 58}
+	MarketplaceSourceUnavailable = Category{Token: "marketplace-source-unavailable", Code: 59}
+	MarketplaceEntryUnavailable  = Category{Token: "marketplace-entry-unavailable", Code: 60}
+	MarketplaceUpgradeFailed     = Category{Token: "marketplace-upgrade-failed", Code: 61}
 )
 
 // All lists every category including OK, ordered by exit code. Tests assert the
@@ -94,6 +101,7 @@ var All = []Category{
 	StarterNotMatched, StarterAmbiguous, StarterResponseInvalid, ConventionUnknown,
 	ManualComponentUnavailable, ManualComponentAmbiguous, NoEligibleComponent, RequiredInputMissing, LinkFailed, ExtensionStartFailed, ExtensionFailed, ExtensionResponseInvalid, ExtensionOutputRefused, ExtensionPersistFailed, ExtensionCleanupFailed,
 	PluginUpdateFailed, PluginUninstallFailed, PluginPolicyDependency, AdministrationConflict, AdministrationRecoveryRequired, AdministrationCleanupFailed, AdministrationBusy,
+	MarketplaceInvalid, MarketplaceNameConflict, MarketplaceSourceUnavailable, MarketplaceEntryUnavailable, MarketplaceUpgradeFailed,
 }
 
 // IsManualOperation reports whether c is one of the categories a manual link or

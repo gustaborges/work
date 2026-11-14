@@ -1,28 +1,35 @@
-# `work plugin list [--json]` (F4, US1): empty before any install, populated
-# after, sorted by alias, and pure (never mutates) — contracts/cli-work-plugin.md.
+# `work plugin list [--json]`: empty before any install, populated after,
+# sorted by marketplace then plugin, and pure (never mutates).
 
-# Empty before any install.
+# Empty before any install; the pure read must not create a Work home.
 work plugin list
 ! stdout .
 work plugin list --json
-stdout '^\[\]$'
+stdout '"installed": \[\]'
+stdout '"available": \[\]'
+stdout '"catalog_errors": \[\]'
+! exists $WORK_HOME
 
-# After installing two packages, list is sorted by alias and shows every
-# component/convention.
+# After installing two packages from different marketplaces, list is sorted by
+# marketplace and shows full provider references for every contribution.
 preparepluginfixture colliding-starter ZEBRA
-work plugin install $ZEBRA --as zebra-plugin
+installplugin zebra $ZEBRA
 preparepluginfixture specific-starter APPLE
-work plugin install $APPLE --as apple-plugin
+installplugin apple $APPLE
 
 work plugin list
-stdout '(?m)^apple-plugin  local-pinned  '
-stdout '(?m)^zebra-plugin  local-pinned  '
+stdout '(?m)^specific-starter@apple  local  '
+stdout '(?m)^colliding-starter@zebra  local  '
 stdout '  specific-starter \(starter\)'
 
 work plugin list --json
-stdout '"alias": "apple-plugin"'
-stdout '"alias": "zebra-plugin"'
-stdout '"conventions": \['
+stdout '"id": "specific-starter@apple"'
+stdout '"id": "colliding-starter@zebra"'
+stdout '"marketplace": "apple"'
+stdout '"source_kind": "local"'
+stdout '"specific-starter@apple/gitflow"'
+! stdout '"alias"'
+! stdout '"origin"'
 
 # Purity: list never mutates the registry.
 cp $WORK_HOME/state/registry.json before.json

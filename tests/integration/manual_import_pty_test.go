@@ -26,7 +26,7 @@ func TestManualImportJourney(t *testing.T) {
 			seedWorks(t, bin, env, repo, ws, "topic")
 			installPluginFixture(t, bin, env, "manual-suite")
 			dir := filepath.Join(ws, "in-progress", "demo_topic")
-			cmd := exec.Command(bin, "link", "manual-suite/linker", "saved reference")
+			cmd := exec.Command(bin, "link", "manual-suite@suite/linker", "saved reference")
 			cmd.Env = env
 			cmd.Dir = dir
 			if out, err := cmd.CombinedOutput(); err != nil {
@@ -35,7 +35,7 @@ func TestManualImportJourney(t *testing.T) {
 			before, _ := os.ReadFile(filepath.Join(dir, "work-state.json"))
 			args := []string{"import"}
 			if mode == "explicit" || mode == "interrupt" {
-				args = append(args, "manual-suite/importer")
+				args = append(args, "manual-suite@suite/importer")
 			}
 			log := filepath.Join(home, "launches.jsonl")
 			env = append(env, "WORK_FIXTURE_LOG="+log)
@@ -62,8 +62,8 @@ func TestManualImportJourney(t *testing.T) {
 			c := startConsole(t, pty.Winsize{Rows: 24, Cols: 80}, cmd)
 			if mode == "omitted" || mode == "cancel-selection" {
 				c.expect("Choose an Importer")
-				c.expect("manual-suite/importer")
-				if strings.Contains(c.screen(), "manual-suite/needs-input") || strings.Contains(c.screen(), "manual-suite/automatic-only") {
+				c.expect("manual-suite@suite/importer")
+				if strings.Contains(c.screen(), "manual-suite@suite/needs-input") || strings.Contains(c.screen(), "manual-suite@suite/automatic-only") {
 					t.Fatal(c.screen())
 				}
 				if mode == "cancel-selection" {
@@ -91,7 +91,7 @@ func TestManualImportJourney(t *testing.T) {
 				t.Fatal("snapshot changed")
 			}
 			if want == 0 {
-				if !strings.Contains(c.screen(), "work: imported ") || !strings.Contains(c.screen(), "manual-suite/importer 4") {
+				if !strings.Contains(c.screen(), "work: imported ") || !strings.Contains(c.screen(), "manual-suite@suite/importer 4") {
 					t.Fatal(c.screen())
 				}
 			} else {

@@ -1,31 +1,26 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/008-sustainable-operation/plan.md`
+`specs/009-marketplace-distribution/plan.md`
 
-Active feature: **F7 — Sustainable Platform Operation** (`specs/008-sustainable-operation/`).
-M1–M3 (T001–T037) are implemented and validated; M4–M8 remain pending.
-Design artifacts: `plan.md`, `research.md`, `data-model.md`, `quickstart.md`,
-and `contracts/`. Progress is in `tasks.md`; MVP evidence is in `validation.md`.
+Active feature: **Marketplace-only plugin distribution** (`specs/009-marketplace-distribution/`).
+Builds on F1–F7 (`specs/008-sustainable-operation/` still defines the
+administrative lock, journal, epoch and recovery rules). Design artifacts:
+`plan.md`, `research.md`, `data-model.md`, `quickstart.md`, `contracts/`;
+progress is in `tasks.md` and `checklists/implementation.md`.
 
-Builds on F1–F6. Stack remains Go 1.26, Cobra, Bubble Tea/Lip Gloss through
-`internal/present`, system Git, existing portable locks/atomic-file helpers,
-`modernc.org/sqlite` for the existing Work index, and the embedded offline seed.
-Work snapshot schema and database version remain 3; no dependency upgrade.
-
-F7 completes plugin enable/disable/update/uninstall and administrative hubs.
-Pure administrative reads never bootstrap, repair, create locks or application
-state. Mutations use one administrative lock, a finite before/after journal,
-and a monotonic stable/pending epoch; all existing config/registry/convention
-memory writers must participate. Review/fetch happens outside the lock.
-Update applies the exact reviewed candidate; opaque versions compare only for
-equality. Updates commit per package; selected uninstall commits as a set.
-`--remove-policy-references` is separate from `--yes` confirmation.
-Durable seed removal survives bootstrap/upgrades; `plugin install --embedded`
-explicitly restores it offline without policy insertion, even on fresh state.
-Pinned snapshots reject escaping/cyclic symlinks and escaping entrypoints;
-linked sources remain developer-owned. Unavailable conventions remain stored
-until explicitly replaced. New administrative errors occupy codes 50–56.
+Plugins are installed only as `plugin@marketplace` copies from registered
+marketplaces (Git or local) or the code-owned `builtin` provider; there are no
+aliases, link mode or embedded install. Registration and `marketplace upgrade`
+change discovery only; `plugin update` applies the exact reviewed candidate from
+each plugin's recorded source. Whole-source removal is one reviewed transaction.
+`--remove-policy-references` is separate from `--yes`. `work plugin` and
+`work plugin marketplace` open one persistent manager (Installed / Marketplaces).
+Stack is unchanged: Go 1.26, Cobra, Bubble Tea/Lip Gloss through
+`internal/present`, system Git, portable locks/atomic files, `modernc.org/sqlite`
+for the Work index, and the embedded offline seed. Work snapshot schema and
+database version remain 3; no dependency upgrade. Administrative error codes are
+50–56 and 57–61 (marketplace).
 
 Protect component invocation through current-revision validation and execution
 under the administrative lock; release before Work/branch locks. Never acquire

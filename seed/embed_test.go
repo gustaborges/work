@@ -120,17 +120,6 @@ func TestInspectReleaseMatrix(t *testing.T) {
 	})
 }
 
-func TestContentDigestStable(t *testing.T) {
-	d1, err := ContentDigest()
-	if err != nil {
-		t.Fatal(err)
-	}
-	d2, _ := ContentDigest()
-	if d1 != d2 || len(d1) != 64 {
-		t.Errorf("digest unstable or wrong length: %q / %q", d1, d2)
-	}
-}
-
 func TestManifestJSONParses(t *testing.T) {
 	if len(ManifestJSON()) == 0 {
 		t.Fatal("empty manifest")
@@ -142,4 +131,31 @@ func TestManifestJSONParses(t *testing.T) {
 		t.Errorf("ManifestJSON returns a mutable alias")
 	}
 	_ = runtime.GOOS
+}
+
+func TestIncludedPackageProjection(t *testing.T) {
+	if _, _, err := HostAssets(); err != nil {
+		t.Skipf("no embedded seed for this platform (%v)", err)
+	}
+	files, err := Package(ReferencePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 3 || len(files["plugin.json"].Content) == 0 || files["plugin.json"].Exec {
+		t.Fatalf("files = %v", files)
+	}
+	for name, f := range files {
+		if name != "plugin.json" && (!f.Exec || len(f.Content) == 0) {
+			t.Errorf("%s must be a non-empty executable", name)
+		}
+	}
+	if _, err := Package("plugins/other"); err == nil {
+		t.Error("an unknown package path was served")
+	}
+	// The catalog is code-owned and returned as a copy.
+	a, b := MarketplaceJSON(), MarketplaceJSON()
+	a[0] = 'X'
+	if b[0] == 'X' || len(b) == 0 {
+		t.Error("MarketplaceJSON must return an independent copy")
+	}
 }

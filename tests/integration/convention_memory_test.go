@@ -71,7 +71,7 @@ func TestConventionMemoizedOnFirstUseAndReusedFromASecondClone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("convention show: %v\n%s", err, out)
 	}
-	if !strings.Contains(string(out), "work: convention freeform") {
+	if !strings.Contains(string(out), "work: convention work-reference@builtin/freeform") {
 		t.Errorf("convention show (clone) = %q, want the first clone's memoized choice", out)
 	}
 

@@ -40,4 +40,4 @@ stderr 'error: no-base-branch:'
 ! exists $WORK/dothome/state/work.db
 
 # The seed install is intact (bootstrap is allowed to persist).
-exists $WORK/dothome/plugins/work-reference/plugin.json
+exists $WORK/dothome/plugins/builtin/work-reference/source/plugin.json

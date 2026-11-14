@@ -49,9 +49,9 @@ func TestExtensionOutputIsOnlyOnTheUIChannel(t *testing.T) {
 
 	ui := s.ui()
 	for _, want := range []string{
-		"work: running context-suite/linker (discover)",
-		"work: context-suite/linker: linked github.pull_request",
-		"⚠ context-suite/importer: it exited unsuccessfully",
+		"work: running context-suite@suite/linker (discover)",
+		"work: context-suite@suite/linker: linked github.pull_request",
+		"⚠ context-suite@suite/importer: it exited unsuccessfully",
 	} {
 		if !strings.Contains(ui, want) {
 			t.Errorf("UI channel missing %q:\n%s", want, ui)

@@ -13,6 +13,7 @@ import (
 	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/workhome"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 )
 
 func TestRepositoryExplicitHelpExitZero(t *testing.T) {
@@ -42,7 +43,7 @@ func TestRepositoryLocatorListShowsSeedLocator(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0\n%s", code, out)
 	}
-	if !strings.Contains(out, "work-reference/filesystem-repository-locator") {
+	if !strings.Contains(out, "work-reference@builtin/filesystem-repository-locator") {
 		t.Errorf("locator list missing the seed entry:\n%s", out)
 	}
 	if !strings.Contains(out, "(in policy)") {
@@ -69,17 +70,17 @@ func TestRepositoryPolicyListShowsSeedAtPosition1(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
 	}
-	if !strings.Contains(out, "1  work-reference/filesystem-repository-locator  (available)") {
+	if !strings.Contains(out, "1  work-reference@builtin/filesystem-repository-locator  (available)") {
 		t.Errorf("policy list = %q", out)
 	}
 }
 
 func TestRepositoryPolicyMoveRequiresExactlyOneDirection(t *testing.T) {
 	needSeed(t)
-	if _, _, code := runSeededWork(t, "repository", "policy", "move", "work-reference/filesystem-repository-locator"); code != 2 {
+	if _, _, code := runSeededWork(t, "repository", "policy", "move", "work-reference@builtin/filesystem-repository-locator"); code != 2 {
 		t.Fatalf("neither flag: exit = %d, want 2", code)
 	}
-	if _, _, code := runSeededWork(t, "repository", "policy", "move", "work-reference/filesystem-repository-locator",
+	if _, _, code := runSeededWork(t, "repository", "policy", "move", "work-reference@builtin/filesystem-repository-locator",
 		"--before", "x", "--after", "y"); code != 2 {
 		t.Fatalf("both flags: exit = %d, want 2", code)
 	}
@@ -97,14 +98,14 @@ func TestRepositoryPolicyRemoveKeepsComponentInstalled(t *testing.T) {
 	needSeed(t)
 	home := filepath.Join(t.TempDir(), "dothome")
 	if _, _, code := runSeededWorkHome(t, home, "repository", "policy", "remove",
-		"work-reference/filesystem-repository-locator"); code != 0 {
+		"work-reference@builtin/filesystem-repository-locator"); code != 0 {
 		t.Fatalf("remove: exit = %d, want 0", code)
 	}
 	out, _, code := runSeededWorkHome(t, home, "repository", "locator", "list")
 	if code != 0 {
 		t.Fatalf("locator list: exit = %d, want 0", code)
 	}
-	if !strings.Contains(out, "work-reference/filesystem-repository-locator") {
+	if !strings.Contains(out, "work-reference@builtin/filesystem-repository-locator") {
 		t.Errorf("component should still be listed after policy removal:\n%s", out)
 	}
 	if strings.Contains(out, "(in policy)") {
@@ -215,8 +216,9 @@ func TestRepositoryInstallingLocatorDoesNotTouchPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("registry.Load: %v", err)
 	}
+	installfx.EnsurePackage(reg, installfx.P("acme"))
 	reg.UpsertComponent(registry.Component{
-		Alias: "acme", Name: "corp-index", Role: registry.RoleRepositoryLocator,
+		Provider: installfx.P("acme"), Name: "corp-index", Role: registry.RoleRepositoryLocator,
 		Entrypoint: "corp-index", Accepts: []string{"name"}, DisplayName: "Corp Index",
 	})
 	if err := registry.Save(h.RegistryFile(), reg); err != nil {
@@ -235,11 +237,11 @@ func TestRepositoryInstallingLocatorDoesNotTouchPolicy(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("locator list: exit = %d", code)
 	}
-	if !strings.Contains(out, "acme/corp-index") {
+	if !strings.Contains(out, "acme@m/corp-index") {
 		t.Errorf("new locator not listed:\n%s", out)
 	}
 	for _, line := range strings.Split(out, "\n") {
-		if strings.Contains(line, "acme/corp-index") && strings.Contains(line, "(in policy)") {
+		if strings.Contains(line, "acme@m/corp-index") && strings.Contains(line, "(in policy)") {
 			t.Errorf("newly installed locator should not be in_policy: %q", line)
 		}
 	}

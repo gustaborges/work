@@ -7,54 +7,54 @@
 bootstrapseed
 
 work repository policy list
-stdout '(?m)^1  work-reference/filesystem-repository-locator  \(available\)$'
+stdout '(?m)^1  work-reference@builtin/filesystem-repository-locator  \(available\)$'
 
 work repository policy list --json
-stdout '"ref": "work-reference/filesystem-repository-locator"'
+stdout '"ref": "work-reference@builtin/filesystem-repository-locator"'
 stdout '"position": 1'
 stdout '"available": true'
 
 registerlocator acme corp-index name
 
-work repository policy add acme/corp-index --after work-reference/filesystem-repository-locator
-stdout 'work: policy now work-reference/filesystem-repository-locator, acme/corp-index'
+work repository policy add acme@m/corp-index --after work-reference@builtin/filesystem-repository-locator
+stdout 'work: policy now work-reference@builtin/filesystem-repository-locator, acme@m/corp-index'
 
 work repository policy list
-stdout '(?m)^1  work-reference/filesystem-repository-locator  \(available\)$'
-stdout '(?m)^2  acme/corp-index  \(available\)$'
+stdout '(?m)^1  work-reference@builtin/filesystem-repository-locator  \(available\)$'
+stdout '(?m)^2  acme@m/corp-index  \(available\)$'
 
-work repository policy move acme/corp-index --before work-reference/filesystem-repository-locator
-stdout 'work: policy now acme/corp-index, work-reference/filesystem-repository-locator'
+work repository policy move acme@m/corp-index --before work-reference@builtin/filesystem-repository-locator
+stdout 'work: policy now acme@m/corp-index, work-reference@builtin/filesystem-repository-locator'
 
 # move requires exactly one of --before/--after.
-! work repository policy move acme/corp-index
+! work repository policy move acme@m/corp-index
 stderr 'error: usage:'
-! work repository policy move acme/corp-index --before x --after y
+! work repository policy move acme@m/corp-index --before x --after y
 stderr 'error: usage:'
 
 # An unknown <LOCATOR> is exit 2.
 ! work repository policy add nonexistent/thing
 stderr 'error: usage:'
 
-work repository policy remove acme/corp-index
-stdout 'work: policy now work-reference/filesystem-repository-locator'
+work repository policy remove acme@m/corp-index
+stdout 'work: policy now work-reference@builtin/filesystem-repository-locator'
 
 # Removal keeps the component installed; it just leaves the policy.
 work repository locator list
-stdout 'acme/corp-index'
-! stdout 'acme/corp-index.*\(in policy\)'
+stdout 'acme@m/corp-index'
+! stdout 'acme@m/corp-index.*\(in policy\)'
 
-work repository policy replace work-reference/filesystem-repository-locator
+work repository policy replace work-reference@builtin/filesystem-repository-locator
 work repository policy list
-stdout '(?m)^1  work-reference/filesystem-repository-locator  \(available\)$'
+stdout '(?m)^1  work-reference@builtin/filesystem-repository-locator  \(available\)$'
 ! stdout '(?m)^2 '
 
 # --json is rejected on every mutation.
-! work repository policy add acme/corp-index --json
+! work repository policy add acme@m/corp-index --json
 stderr 'error: usage:'
 
 # Canonical duplicates fail rather than collapsing; preserve the previous order.
-! work repository policy replace acme/corp-index corp-index
+! work repository policy replace acme@m/corp-index corp-index
 stderr 'error: usage:'
 work repository policy list
-stdout '(?m)^1  work-reference/filesystem-repository-locator'
+stdout '(?m)^1  work-reference@builtin/filesystem-repository-locator'

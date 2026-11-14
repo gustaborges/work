@@ -9,6 +9,7 @@ import (
 
 	"github.com/gustaborges/work/internal/plugin"
 	"github.com/gustaborges/work/internal/registry"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 )
 
 func parseFixture(t *testing.T, name string) error {
@@ -77,7 +78,7 @@ func TestPrepareStagesScriptsAndBinaries(t *testing.T) {
 	}
 }
 
-func TestManualFixtureAliasesAndRetainedState(t *testing.T) {
+func TestManualFixtureRetainedEnablement(t *testing.T) {
 	dir := Prepare(t, "manual-suite")
 	for _, name := range []string{"linker", "importer", "needs-input", "automatic-only"} {
 		if runtime.GOOS == "windows" {
@@ -88,18 +89,21 @@ func TestManualFixtureAliasesAndRetainedState(t *testing.T) {
 		}
 	}
 	path := filepath.Join(t.TempDir(), "registry.json")
-	r := &registry.Registry{Packages: []registry.Package{{Alias: "manual"}, {Alias: "alternate"}}}
+	manual, alternate := installfx.P("manual"), installfx.P("alternate")
+	r := registry.New()
+	r.UpsertPackage(installfx.Package(manual, true))
+	r.UpsertPackage(installfx.Package(alternate, true))
 	if err := registry.Save(path, r); err != nil {
 		t.Fatal(err)
 	}
-	if err := SetPackageEnabled(path, "manual", false); err != nil {
+	if err := SetPackageEnabled(path, manual, false); err != nil {
 		t.Fatal(err)
 	}
 	r, err := registry.Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Packages[0].Enabled == nil || *r.Packages[0].Enabled || r.Packages[1].Enabled != nil {
+	if r.PackageEnabled(manual) || !r.PackageEnabled(alternate) {
 		t.Fatalf("state: %+v", r.Packages)
 	}
 }

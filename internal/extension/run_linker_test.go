@@ -26,7 +26,7 @@ func TestLinkerValueIsStoredWithProvenance(t *testing.T) {
 		t.Fatalf("provenance = %+v", h.idx.entries)
 	}
 	p := h.idx.entries[0]
-	if p.Section != "links" || p.Key != "github.pull_request" || p.SourceComponent != "context-suite/linker" ||
+	if p.Section != "links" || p.Key != "github.pull_request" || p.SourceComponent != "context-suite@suite/linker" ||
 		p.SourceOperation != "discover" || p.WorkID != h.ctx.State.Work.ID || p.RecordedAt == "" {
 		t.Errorf("provenance = %+v", p)
 	}
@@ -90,7 +90,7 @@ func TestSameKeyLinkersLastInOrderWins(t *testing.T) {
 	if got := h.snapshot().Links["github.pull_request"]; got != "https://example.test/pr/212-from-linker2" {
 		t.Errorf("link = %q, want linker2's value", got)
 	}
-	if n := len(h.idx.entries); n != 2 || h.idx.entries[1].SourceComponent != "context-suite/linker2" {
+	if n := len(h.idx.entries); n != 2 || h.idx.entries[1].SourceComponent != "context-suite@suite/linker2" {
 		t.Errorf("provenance = %+v", h.idx.entries)
 	}
 }
@@ -170,13 +170,13 @@ func TestRunOrderAndResultAreIdenticalAcrossRepeats(t *testing.T) {
 				order = append(order, e.Component)
 			}
 		}
-		if !slices.Equal(order, []string{"context-suite/linker", "context-suite/linker2"}) {
+		if !slices.Equal(order, []string{"context-suite@suite/linker", "context-suite@suite/linker2"}) {
 			t.Fatalf("run %d: order = %v", i, order)
 		}
 		if got := h.snapshot().Links["github.pull_request"]; got != "https://example.test/pr/212-from-linker2" {
 			t.Fatalf("run %d: link = %q", i, got)
 		}
-		if n := len(h.idx.entries); n != 2 || h.idx.entries[1].SourceComponent != "context-suite/linker2" {
+		if n := len(h.idx.entries); n != 2 || h.idx.entries[1].SourceComponent != "context-suite@suite/linker2" {
 			t.Fatalf("run %d: provenance = %+v", i, h.idx.entries)
 		}
 	}

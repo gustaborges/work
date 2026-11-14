@@ -67,7 +67,7 @@ func newF6Harness(t *testing.T) *f6Harness {
 		t.Fatal(err)
 	}
 	h.id = state.Work.ID
-	h.run(t, root, 0, "plugin", "install", fixtures.Prepare(t, "manual-suite"), "--as", "manual")
+	h.install(t, "manual", fixtures.Prepare(t, "manual-suite"))
 	return h
 }
 func (h *f6Harness) run(t *testing.T, dir string, want int, args ...string) (string, string) {
@@ -104,8 +104,8 @@ func TestManualContextStreams(t *testing.T) {
 			if mode == "dumb" {
 				h.env = append(h.env, "TERM=dumb")
 			}
-			out, ui := h.run(t, h.dir, 0, "link", "manual/linker", value)
-			if out != "work: linked "+h.id+" github.pull_request manual/linker\n" || ui != "" {
+			out, ui := h.run(t, h.dir, 0, "link", "manual-suite@manual/linker", value)
+			if out != "work: linked "+h.id+" github.pull_request manual-suite@manual/linker\n" || ui != "" {
 				t.Fatal(out, ui)
 			}
 			out, ui = h.run(t, h.dir, 0, "status")
@@ -120,17 +120,17 @@ func TestManualContextStreams(t *testing.T) {
 				t.Fatal(out, ui, err)
 			}
 			h.env = append(h.env, "WORK_FIXTURE_MODE=importer-empty")
-			out, ui = h.run(t, h.dir, 0, "import", "manual/importer")
-			if out != "work: imported "+h.id+" manual/importer 0\n" || ui != "work: running manual/importer (import)\n" {
+			out, ui = h.run(t, h.dir, 0, "import", "manual-suite@manual/importer")
+			if out != "work: imported "+h.id+" manual-suite@manual/importer 0\n" || ui != "work: running manual-suite@manual/importer (import)\n" {
 				t.Fatal(out, ui)
 			}
 			h.env = append(h.env, "WORK_FIXTURE_MODE=importer-exit1")
-			out, ui = h.run(t, h.dir, 45, "import", "manual/importer")
+			out, ui = h.run(t, h.dir, 45, "import", "manual-suite@manual/importer")
 			if out != "" || strings.Count(ui, "error: extension-failed:") != 1 || !strings.Contains(ui, h.id) || strings.Contains(ui, "simulated importer failure") || strings.Contains(ui, "private-reference") || strings.ContainsAny(ui, "\x1b\t") {
 				t.Fatal(out, ui)
 			}
 			h.env = append(h.env, "WORK_DEBUG=1")
-			out, ui = h.run(t, h.dir, 45, "import", "manual/importer")
+			out, ui = h.run(t, h.dir, 45, "import", "manual-suite@manual/importer")
 			if out != "" || !strings.Contains(ui, "simulated importer failure") || strings.Count(ui, "error: extension-failed:") != 1 {
 				t.Fatal(out, ui)
 			}

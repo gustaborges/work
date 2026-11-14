@@ -1,313 +1,119 @@
 package plugininstall
 
 import (
-	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"errors"
 	"fmt"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"runtime"
-	"slices"
-	"strings"
-	"sync"
 
+	"github.com/gustaborges/work/internal/adminstate"
 	"github.com/gustaborges/work/internal/diag"
+	"github.com/gustaborges/work/internal/marketplace"
 	"github.com/gustaborges/work/internal/plugin"
 	"github.com/gustaborges/work/internal/registry"
 )
 
-// Prepared retains exactly one parsed manifest and frozen pinned source.
-// Linked sources deliberately remain developer-managed; their metadata is
-// the baseline captured here, never silently refreshed by inventory reads.
+// Prepared is one resolved marketplace entry that was validated for selected
+// installation and copied into a private stage. It carries the actual source,
+// entry, revision and digest facts the entry was resolved with, so what gets
+// recorded is exactly what was reviewed.
 type Prepared struct {
-	ContentDir                                 string
-	Manifest                                   *plugin.Manifest
-	Alias, Origin, Identity, Reference, Digest string
-	link                                       bool
-	explicitAlias                              bool
-	cleanup                                    func()
-	once                                       sync.Once
+	Entry    *marketplace.ResolvedEntry
+	Manifest *plugin.Manifest
+	Stage    string
 }
 
-func (p *Prepared) Close() {
-	p.once.Do(func() {
-		if p.cleanup != nil {
-			p.cleanup()
-		}
-	})
+// ProvenanceOf is the registry provenance of an installed copy of entry.
+func ProvenanceOf(e *marketplace.ResolvedEntry) registry.Provenance {
+	return registry.Provenance{
+		RegistrationID: e.RegistrationID, Kind: e.Source.Kind, Source: e.Source.Source, Branch: e.Source.Branch,
+		MarketplaceName: e.Provider.Marketplace, PluginName: e.Provider.Plugin, Path: e.Entry.Path,
+		Revision: e.Revision, CatalogDigest: e.CatalogDigest,
+	}
 }
 
-// ValidateRequest checks source/option grammar without retrieving content or
-// consulting administrative state, so invalid invocations cannot recover it.
-func ValidateRequest(source string, opts Options) error {
-	if strings.TrimSpace(source) == "" {
-		return diag.New(diag.Usage, "supply a plugin SOURCE")
-	}
-	if opts.Link && !isLocalSource(source) {
-		return diag.New(diag.Usage, "--link requires a local SOURCE (a remote SOURCE is always pinned by content)")
-	}
-	if alias := strings.TrimSpace(opts.Alias); alias != "" && plugin.ValidateAlias(alias) != nil {
-		return diag.New(diag.PluginInvalid, "--as is not a valid alias")
-	}
-	return nil
-}
-
-func Prepare(ctx context.Context, source string, opts Options) (_ *Prepared, err error) {
-	if ctx.Err() != nil {
-		return nil, diag.Wrap(diag.Cancelled, ctx.Err(), "plugin preparation cancelled")
-	}
-	if err = ValidateRequest(source, opts); err != nil {
-		return nil, err
-	}
-	local := isLocalSource(source)
-	alias := strings.TrimSpace(opts.Alias)
-	dir, origin, identity, reference, release, err := obtainContent(source, local, opts.Link)
-	if release != nil {
-		defer release()
-	}
+// Prepare validates entry for selected installation and materializes its
+// package into stage/source with the wrapper metadata beside it. It is the only
+// way package content reaches a stage: there is no path, URL or manifest
+// argument, and the copy comes from the entry's fixed content.
+//
+// Discovery tolerates a missing runtime or entrypoint; installation does not,
+// because a package that could never start is refused up front instead of
+// warned about forever. stage must be an empty directory the caller owns.
+func Prepare(entry *marketplace.ResolvedEntry, stage string) (*Prepared, error) {
+	tree, manifest, err := Validate(entry)
 	if err != nil {
 		return nil, err
 	}
-	p := &Prepared{Origin: origin, Identity: identity, Reference: reference, link: opts.Link, explicitAlias: alias != ""}
-	defer func() {
-		if err != nil {
-			p.Close()
-		}
-	}()
-	if opts.Link {
-		p.ContentDir = dir
-	} else {
-		// A SOURCE that is itself a symlink to the package directory is a
-		// legitimate layout; WalkDir would otherwise treat the root as an
-		// absolute package symlink and reject it.
-		if resolved, e := filepath.EvalSymlinks(dir); e == nil {
-			dir = resolved
-		}
-		if err = validatePinned(dir); err != nil {
-			return nil, diag.Wrap(diag.PluginInvalid, err, "plugin content contains unsafe paths or file kinds")
-		}
-		tmp, e := os.MkdirTemp("", "work-plugin-prepared-*")
-		if e != nil {
-			return nil, e
-		}
-		p.cleanup = func() { _ = os.RemoveAll(tmp) }
-		p.ContentDir = filepath.Join(tmp, "content")
-		if err = copyTree(dir, p.ContentDir); err != nil {
-			return nil, diag.Wrap(diag.PluginInstallFailed, err, "cannot freeze plugin content")
-		}
-		if err = validatePinned(p.ContentDir); err != nil {
-			return nil, diag.Wrap(diag.PluginInvalid, err, "frozen plugin content is unsafe")
-		}
+	if err = tree.CopyTo(filepath.Join(stage, "source")); err != nil {
+		return nil, diag.Wrap(diag.PluginInstallFailed, err, "cannot copy the plugin package")
 	}
-	b, err := os.ReadFile(filepath.Join(p.ContentDir, "plugin.json"))
-	if err != nil {
-		return nil, diag.Wrap(diag.PluginInvalid, err, "cannot read plugin.json")
-	}
-	p.Manifest, err = plugin.Parse(b)
-	if err != nil {
-		return nil, diag.Wrap(diag.PluginInvalid, err, "plugin.json is invalid")
-	}
-	if alias == "" {
-		alias = p.Manifest.Name
-	}
-	p.Alias = alias
-	if err = preflightRuntimes(p.Manifest); err != nil {
-		return nil, err
-	}
-	surface := []string{"plugin.json"}
-	for _, c := range p.Manifest.Components {
-		if !filepath.IsLocal(c.Entrypoint) || strings.Contains(c.Entrypoint, "\\") {
-			return nil, diag.New(diag.PluginInvalid, "component entrypoint must stay inside its package")
-		}
-		rel := c.Entrypoint
-		if c.Runtime == "" && runtime.GOOS == "windows" {
-			rel += ".exe"
-		}
-		info, e := os.Stat(filepath.Join(p.ContentDir, rel))
-		if e != nil || !info.Mode().IsRegular() {
-			return nil, diag.New(diag.PluginInvalid, "component entrypoint is unavailable")
-		}
-		surface = append(surface, rel)
-	}
-	if p.link {
-		p.Digest, err = surfaceDigest(p.ContentDir, surface)
-	} else {
-		p.Digest, err = ContentDigest(p.ContentDir)
-	}
-	if err != nil {
-		return nil, diag.Wrap(diag.PluginInvalid, err, "cannot inspect plugin content")
-	}
-	if ctx.Err() != nil {
-		return nil, diag.Wrap(diag.Cancelled, ctx.Err(), "plugin preparation cancelled")
+	p := &Prepared{Entry: entry, Manifest: manifest, Stage: stage}
+	if err = WriteMeta(stage, p.Spec(true)); err != nil {
+		return nil, diag.Wrap(diag.PluginInstallFailed, err, "cannot record the plugin's origin")
 	}
 	return p, nil
 }
 
-func validatePinned(root string) error {
-	resolved, err := filepath.EvalSymlinks(root)
+// Validate proves that entry's fixed content is exactly what its offer
+// promised and that the package could be installed, without copying anything.
+// Maintenance checks use it to judge a candidate even when it would not be
+// applied; Prepare builds on it so both accept precisely the same packages.
+func Validate(entry *marketplace.ResolvedEntry) (*marketplace.Tree, *plugin.Manifest, error) {
+	tree, err := entry.Tree()
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			text, err := os.Readlink(path)
-			if err != nil {
-				return err
-			}
-			if filepath.IsAbs(text) || strings.Contains(text, "\\") {
-				return errors.New("absolute or nonportable package symlink")
-			}
-			target, err := filepath.EvalSymlinks(path)
-			if err != nil {
-				return err
-			}
-			rel, err := filepath.Rel(resolved, target)
-			if err != nil || !filepath.IsLocal(rel) {
-				return errors.New("escaping package symlink")
-			}
-			return nil
-		}
-		if !d.IsDir() && !info.Mode().IsRegular() {
-			return errors.New("special package file")
-		}
-		return nil
-	})
-}
-
-// surfaceDigest hashes only the manifest and declared entrypoints. Linked
-// trees stay developer-owned, so the baseline must not depend on unrelated
-// files such as VCS metadata, dependency folders, sockets or FIFOs.
-func surfaceDigest(root string, rels []string) (string, error) {
-	rels = slices.Clone(rels)
-	slices.Sort(rels)
-	rels = slices.Compact(rels)
-	h := sha256.New()
-	for _, rel := range rels {
-		path := filepath.Join(root, rel)
-		info, err := os.Stat(path)
-		if err != nil {
-			return "", err
-		}
-		b, err := os.ReadFile(path)
-		if err != nil {
-			return "", err
-		}
-		if _, err = fmt.Fprintf(h, "%q file %t %q\n", filepath.ToSlash(rel), info.Mode().Perm()&0111 != 0, b); err != nil {
-			return "", err
-		}
-	}
-	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
-}
-
-// ContentDigest normalizes relative paths, kinds, executability and link text.
-// It never follows a symlink, so linked external trees are never owned by it.
-func ContentDigest(root string) (string, error) {
-	h := sha256.New()
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
-		kind := "file"
-		var b []byte
-		switch {
-		case info.Mode()&os.ModeSymlink != 0:
-			kind = "link"
-			var text string
-			text, err = os.Readlink(path)
-			b = []byte(text)
-		case d.IsDir():
-			kind = "dir"
-		case info.Mode().IsRegular():
-			b, err = os.ReadFile(path)
-		default:
-			return errors.New("unsupported file kind")
-		}
-		if err != nil {
-			return err
-		}
-		_, err = fmt.Fprintf(h, "%q %s %t %q\n", filepath.ToSlash(rel), kind, info.Mode().Perm()&0111 != 0, b)
-		return err
-	})
+	raw, err := tree.ReadFile("plugin.json")
 	if err != nil {
-		return "", err
+		return nil, nil, fmt.Errorf("%w: plugin.json: %v", marketplace.ErrInvalid, err)
 	}
-	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
+	manifest, err := plugin.Parse(raw)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %v", marketplace.ErrInvalid, err)
+	}
+	if manifest.Name != entry.Provider.Plugin || manifest.Version != entry.Entry.Version {
+		return nil, nil, fmt.Errorf("%w: the package no longer matches its offer", marketplace.ErrInvalid)
+	}
+	if err = requireEntrypoints(tree, manifest); err != nil {
+		return nil, nil, err
+	}
+	if err = PreflightRuntimes(manifest); err != nil {
+		return nil, nil, err
+	}
+	return tree, manifest, nil
 }
 
-// ValidateCatalog is pure and repeated against the latest locked catalog.
-func (p *Prepared) ValidateCatalog(reg *registry.Registry) error {
-	existing, installed := reg.PackageByAlias(p.Alias)
-	if p.Alias == ReferenceAlias {
-		return aliasConflict(p.Manifest.Name, p.Alias, p.explicitAlias, "the reference package", "<source>")
-	}
-	if installed && existingIdentity(existing) != p.Identity {
-		return aliasConflict(p.Manifest.Name, p.Alias, p.explicitAlias, "another source", "<source>")
-	}
-	if installed && existing.PluginName != "" && existing.PluginName != p.Manifest.Name {
-		return diag.New(diag.PluginInvalid, "plugin name changed; private namespace ownership cannot change on reinstall")
-	}
-	for _, c := range p.Manifest.Components {
-		if c.IsFallbackStarter() {
-			if fb, ok := reg.StarterFallback(); ok && fb.Alias != p.Alias {
-				return diag.Newf(diag.PluginFallbackConflict, "a fallback Starter is already registered by %q", fb.Alias)
-			}
+// requireEntrypoints fails when a declared entrypoint is not a regular file of
+// the package. On Windows a native executable carries an ".exe" suffix that the
+// manifest omits.
+func requireEntrypoints(tree *marketplace.Tree, m *plugin.Manifest) error {
+	for _, c := range m.Components {
+		rel := c.Entrypoint
+		if runtime.GOOS == "windows" && c.Runtime == "" {
+			rel += ".exe"
+		}
+		if _, err := tree.ResolveFile(rel); err != nil {
+			return diag.Newf(diag.PluginInstallFailed, "component %q declares the entrypoint %q, which the package does not contain", c.Name, c.Entrypoint)
 		}
 	}
 	return nil
 }
-func (p *Prepared) Register(reg *registry.Registry) Result {
-	old, _ := reg.PackageByAlias(p.Alias)
-	names := []string{}
-	for _, cv := range p.Manifest.Conventions {
-		names = append(names, cv.Name)
+
+// Spec is the registration record of the prepared package.
+func (p *Prepared) Spec(enabled bool) Spec {
+	return Spec{
+		Provider: p.Entry.Provider, Manifest: p.Manifest, Enabled: enabled,
+		ContentDigest: p.Entry.Entry.PackageDigest, Provenance: ProvenanceOf(p.Entry),
 	}
-	pkg := registry.Package{Alias: p.Alias, Origin: p.Origin, Reference: p.Reference, Source: p.Identity, Version: p.Manifest.Version, ContentDigest: p.Digest, PluginName: p.Manifest.Name, Conventions: names, Enabled: old.Enabled}
-	reg.RemoveAlias(p.Alias)
-	reg.UpsertPackage(pkg)
-	for _, c := range p.Manifest.Components {
-		reg.UpsertComponent(ComponentEntry(p.Alias, c))
-	}
-	for _, cv := range p.Manifest.Conventions {
-		reg.UpsertConvention(registry.Convention{Name: cv.Name, Prefixes: cv.Prefixes})
-	}
-	return Result{Package: pkg, Components: p.Manifest.Components}
 }
 
-// Stage materializes an owned installation root on the destination filesystem.
-func (p *Prepared) Stage(pluginsDir string) (string, error) {
-	if err := os.MkdirAll(pluginsDir, 0700); err != nil {
-		return "", err
+// Publish hands the stage to the open administrative session and registers the
+// package's declarations, replacing everything the provider registered before.
+// Publication to the managed directory and registration commit together with
+// the session.
+func (p *Prepared) Publish(s *adminstate.Session, enabled bool) (Result, error) {
+	if err := s.Replace(p.Entry.Provider, p.Stage); err != nil {
+		return Result{}, err
 	}
-	stage, err := os.MkdirTemp(pluginsDir, ".admin-stage-")
-	if err != nil {
-		return "", err
-	}
-	if p.link {
-		err = linkSource(stage, p.ContentDir)
-	} else {
-		err = copyTree(p.ContentDir, sourceDir(stage))
-	}
-	if err != nil {
-		_ = os.RemoveAll(stage)
-		return "", err
-	}
-	return stage, nil
+	return Register(s.Registry, p.Spec(enabled))
 }

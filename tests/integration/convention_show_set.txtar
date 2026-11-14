@@ -27,10 +27,10 @@ work convention set freeform
 stdout 'work: convention set to freeform'
 
 work convention show
-stdout 'work: convention freeform'
+stdout 'work: convention work-reference@builtin/freeform'
 
 work convention show --json
-stdout '"convention": *"freeform"'
+stdout '"convention": *"work-reference@builtin/freeform"'
 
 # set again (idempotent overwrite) still succeeds.
 work convention set freeform

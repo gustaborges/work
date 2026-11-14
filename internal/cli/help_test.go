@@ -213,7 +213,7 @@ func TestImportHelpGrammarAndGroup(t *testing.T) {
 
 func TestAdminHubDirectInventoryAndFlags(t *testing.T) {
 	for _, path := range [][]string{
-		{"plugin", "list"}, {"plugin", "install"}, {"plugin", "enable"}, {"plugin", "disable"}, {"plugin", "update"}, {"plugin", "uninstall"},
+		{"plugin", "add"}, {"plugin", "list"}, {"plugin", "enable"}, {"plugin", "disable"}, {"plugin", "remove"}, {"plugin", "marketplace", "add"}, {"plugin", "marketplace", "list"}, {"plugin", "marketplace", "upgrade"},
 		{"repository", "locator", "list"}, {"repository", "policy", "list"}, {"repository", "policy", "add"}, {"repository", "policy", "remove"}, {"repository", "policy", "move"}, {"repository", "policy", "replace"},
 		{"repository", "root", "list"}, {"repository", "root", "add"}, {"repository", "root", "remove"}, {"repository", "root", "replace"}, {"convention", "show"}, {"convention", "set"},
 	} {
@@ -222,12 +222,18 @@ func TestAdminHubDirectInventoryAndFlags(t *testing.T) {
 			t.Fatalf("missing direct action %v: %v", path, err)
 		}
 	}
-	for name, flags := range map[string][]string{"install": {"embedded", "link", "as"}, "update": {"check", "all", "yes", "remove-policy-references"}, "uninstall": {"yes", "remove-policy-references"}} {
-		cmd, _, _ := newRootCmd().Find([]string{"plugin", name})
+	for name, flags := range map[string][]string{"add": {"marketplace", "yes", "remove-policy-references"}, "remove": {"marketplace", "yes", "remove-policy-references"}, "marketplace add": {"branch"}, "update": {"marketplace", "check", "all", "yes", "remove-policy-references"}, "marketplace remove": {"yes", "remove-policy-references"}} {
+		cmd, _, _ := newRootCmd().Find(strings.Fields("plugin " + name))
 		for _, flag := range flags {
 			if cmd.Flags().Lookup(flag) == nil {
 				t.Errorf("missing plugin %s --%s", name, flag)
 			}
+		}
+	}
+	// Retired commands and flags are absent, not aliased.
+	for _, retired := range []string{"install", "uninstall"} {
+		if cmd, _, _ := newRootCmd().Find([]string{"plugin", retired}); cmd != nil && cmd.Name() == retired {
+			t.Errorf("retired command plugin %s is still registered", retired)
 		}
 	}
 }

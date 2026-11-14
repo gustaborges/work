@@ -12,9 +12,9 @@ package locator
 
 import (
 	"context"
-	"strings"
 
 	"github.com/gustaborges/work/internal/ipc"
+	"github.com/gustaborges/work/internal/pluginid"
 	"github.com/gustaborges/work/internal/registry"
 )
 
@@ -137,7 +137,7 @@ func eligible(comp registry.Component, ref Reference) (ipc.RepositoryReference, 
 	return proj, matched
 }
 
-// availableComponent resolves a "<alias>/<name>" policy entry to a registered
+// availableComponent resolves a "<plugin>@<marketplace>/<name>" policy entry to a registered
 // repository-locator component. A policy entry that does not parse, or names
 // nothing registered with that role, is unavailable and is skipped by the
 // caller (R12, FR-025).
@@ -145,12 +145,12 @@ func availableComponent(reg *registry.Registry, ref string) (registry.Component,
 	if reg == nil {
 		return registry.Component{}, false
 	}
-	alias, name, ok := strings.Cut(ref, "/")
-	if !ok {
+	r, err := pluginid.ParseRef(ref)
+	if err != nil {
 		return registry.Component{}, false
 	}
 	for _, c := range reg.Components {
-		if c.Alias == alias && c.Name == name && c.Role == registry.RoleRepositoryLocator && reg.PackageEnabled(alias) {
+		if c.Provider == r.Provider && c.Name == r.Name && c.Role == registry.RoleRepositoryLocator && reg.PackageEnabled(r.Provider) {
 			return c, true
 		}
 	}

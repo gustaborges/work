@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "name": "demo",
+  "display_name": "Demo Plugins",
+  "plugins": [
+    {
+      "name": "alpha",
+      "path": "plugins/alpha",
+      "description": "alpha plugin"
+    },
+    {
+      "name": "beta",
+      "path": "plugins/beta",
+      "description": "beta plugin"
+    },
+    {
+      "name": "gamma",
+      "path": "plugins/gamma",
+      "description": "gamma plugin"
+    }
+  ]
+}

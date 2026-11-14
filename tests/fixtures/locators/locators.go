@@ -12,7 +12,9 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/gustaborges/work/internal/pluginid"
 	"github.com/gustaborges/work/internal/registry"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 )
 
 // Build compiles the fixture directory <repoRoot>/tests/fixtures/locators/<fixture>
@@ -35,15 +37,16 @@ func Build(t *testing.T, fixture string) string {
 }
 
 // Install builds the named fixture and registers it in reg as a
-// repository-locator component identified by (alias, name), with entrypoint
+// repository-locator component identified by (provider, name), with entrypoint
 // laid out under pluginsDir exactly where registry.Component.EntrypointPath
-// expects it. accepts is the component's declared `accepts` vocabulary.
-func Install(t *testing.T, reg *registry.Registry, pluginsDir, alias, name, fixture string, accepts []string) registry.Component {
+// expects it. accepts is the component's declared `accepts` vocabulary. A
+// dummy package for the provider is recorded when none exists.
+func Install(t *testing.T, reg *registry.Registry, pluginsDir string, provider pluginid.Provider, name, fixture string, accepts []string) registry.Component {
 	t.Helper()
 	bin := Build(t, fixture)
 
 	entrypoint := fixture
-	src := filepath.Join(pluginsDir, alias, "source")
+	src := filepath.Join(pluginsDir, provider.Marketplace, provider.Plugin, "source")
 	if err := os.MkdirAll(src, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", src, err)
 	}
@@ -59,8 +62,9 @@ func Install(t *testing.T, reg *registry.Registry, pluginsDir, alias, name, fixt
 		t.Fatalf("install fixture binary: %v", err)
 	}
 
+	installfx.EnsurePackage(reg, provider)
 	c := registry.Component{
-		Alias:       alias,
+		Provider:    provider,
 		Name:        name,
 		Role:        registry.RoleRepositoryLocator,
 		Entrypoint:  entrypoint,

@@ -8,6 +8,7 @@ import (
 	"github.com/gustaborges/work/internal/plugin"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/staging"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,7 +22,7 @@ func importParams(t *testing.T) ImportParams {
 	c.Name = "importer"
 	c.Inputs = nil
 	return ImportParams{Home: p.Home, Expected: p.Expected, Component: c, Reload: func() (*registry.Registry, error) {
-		return &registry.Registry{Components: []registry.Component{c}}, nil
+		return installfx.Reg(nil, c), nil
 	}, invoke: func(_ context.Context, _ ipc.Target, in ipc.ImporterInput) (ipc.Result, error) {
 		if err := os.Mkdir(filepath.Join(in.OutputDir, "notes"), 0755); err != nil {
 			t.Fatal(err)

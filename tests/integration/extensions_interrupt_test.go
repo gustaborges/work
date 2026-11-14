@@ -81,7 +81,7 @@ func TestInterruptDuringAutomaticPhasesKeepsTheWork(t *testing.T) {
 
 	c := newConsole(t, bin, env, "start", "demo-ctx-1",
 		"--workspace", ws, "--base", "main", "--slug", "hang", "--prefix", "{slug}", "--yes")
-	c.expect("work: running context-suite/linker (discover)")
+	c.expect("work: running context-suite@suite/linker (discover)")
 	select {
 	case err := <-ready:
 		if err != nil {

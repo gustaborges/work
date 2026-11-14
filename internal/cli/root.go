@@ -25,11 +25,14 @@ func newRootCmd() *cobra.Command {
 		Short:         "Isolated, reproducible units of work backed by git worktrees",
 		SilenceErrors: true,
 		SilenceUsage:  true,
-		Args:          cobra.NoArgs,
+		Args:          noArgsUsage,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runBareWork(cmd)
 		},
 	}
+	// Unknown commands and flags are ordinary usage errors (exit 2), never a
+	// translation of retired syntax.
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return diag.Wrap(diag.Usage, err, err.Error()) })
 
 	// Only read commands honor --json; mutating commands reject it. It stays
 	// hidden until F1's first read command needs it, so it never appears in the
@@ -64,6 +67,15 @@ func newRootCmd() *cobra.Command {
 	installHelp(root)
 
 	return root
+}
+
+// noArgsUsage rejects any operand of a command that only dispatches to
+// subcommands, as a usage error rather than cobra's generic one.
+func noArgsUsage(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return nil
+	}
+	return diag.Newf(diag.Usage, "unknown command %q for %q; see `%s --help`", args[0], cmd.CommandPath(), cmd.CommandPath())
 }
 
 // runBareWork handles `work` with no subcommand. In an interactive terminal it

@@ -21,6 +21,7 @@ import (
 	"github.com/gustaborges/work/internal/starter"
 	"github.com/gustaborges/work/internal/workhome"
 	"github.com/gustaborges/work/seed"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 	fixtures "github.com/gustaborges/work/tests/fixtures/plugins"
 )
 
@@ -58,7 +59,7 @@ func registerFixtureStarterInto(t *testing.T, reg *registry.Registry, pluginsDir
 	}
 	c0 := m.Components[0]
 
-	src := filepath.Join(pluginsDir, alias, "source")
+	src := filepath.Join(pluginsDir, "m", alias, "source")
 	if err := os.MkdirAll(src, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -74,8 +75,9 @@ func registerFixtureStarterInto(t *testing.T, reg *registry.Registry, pluginsDir
 		t.Fatal(err)
 	}
 
+	installfx.EnsurePackage(reg, installfx.P(alias))
 	reg.UpsertComponent(registry.Component{
-		Alias: alias, Name: c0.Name, Role: registry.RoleStarter,
+		Provider: installfx.P(alias), Name: c0.Name, Role: registry.RoleStarter,
 		Entrypoint: c0.Entrypoint, Pattern: c0.Pattern,
 	})
 }
@@ -111,7 +113,7 @@ func TestStarterMatchContract(t *testing.T) {
 		if out.Ambiguous != nil {
 			t.Fatalf("Ambiguous = %v, want nil (exactly one match)", out.Ambiguous)
 		}
-		if comp.Alias != "demo" {
+		if comp.Provider.Plugin != "demo" {
 			t.Fatalf("Matched %+v, want the specific Starter", comp)
 		}
 
@@ -158,12 +160,12 @@ func TestStarterMatchContract(t *testing.T) {
 		if len(out.Ambiguous) != 2 {
 			t.Fatalf("Ambiguous = %+v, want exactly 2 colliding components", out.Ambiguous)
 		}
-		if comp.Alias != "" || comp.Name != "" {
+		if !comp.Provider.IsZero() || comp.Name != "" {
 			t.Fatalf("Component = %+v, want the zero value on an ambiguous outcome — neither invoked yet", comp)
 		}
 		seen := map[string]bool{}
 		for _, c := range out.Ambiguous {
-			seen[c.Alias] = true
+			seen[c.Provider.Plugin] = true
 		}
 		if !seen["demo"] || !seen["collide"] {
 			t.Fatalf("Ambiguous = %+v, want both demo and collide named", out.Ambiguous)

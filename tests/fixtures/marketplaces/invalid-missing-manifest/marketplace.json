@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "name": "x",
+  "plugins": [
+    {
+      "name": "p",
+      "path": "plugins/p"
+    }
+  ]
+}

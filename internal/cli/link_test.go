@@ -15,13 +15,14 @@ import (
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/work"
 	"github.com/gustaborges/work/internal/workhome"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 )
 
 func linkContext(t *testing.T) (workhome.Home, string, *work.State) {
 	t.Helper()
 	home := workhome.At(filepath.Join(t.TempDir(), "home"))
 	t.Setenv("WORK_HOME", home.Root())
-	reg := &registry.Registry{Components: []registry.Component{{Alias: "manual", Name: "linker", Role: plugin.RoleLinker, Key: "github.pull_request", Runtime: "missing-runtime", Entrypoint: "does-not-exist", Manual: &plugin.Manual{DisplayName: "PR"}, Inputs: []string{"meta:missing.discovery"}}}}
+	reg := installfx.Reg(nil, registry.Component{Provider: installfx.P("manual"), Name: "linker", Role: plugin.RoleLinker, Key: "github.pull_request", Runtime: "missing-runtime", Entrypoint: "does-not-exist", Manual: &plugin.Manual{DisplayName: "PR"}, Inputs: []string{"meta:missing.discovery"}})
 	if err := registry.Save(home.RegistryFile(), reg); err != nil {
 		t.Fatal(err)
 	}
@@ -42,11 +43,11 @@ func TestLinkDirectExactReceiptAndProvenance(t *testing.T) {
 	var out, ui bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&ui)
-	cmd.SetArgs([]string{"link", "manual/linker", "--", value})
+	cmd.SetArgs([]string{"link", "manual@m/linker", "--", value})
 	if err := cmd.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if out.String() != "work: linked opaque-id github.pull_request manual/linker\n" || ui.Len() != 0 {
+	if out.String() != "work: linked opaque-id github.pull_request manual@m/linker\n" || ui.Len() != 0 {
 		t.Fatal(out.String(), ui.String())
 	}
 	after, err := work.Read(path)
@@ -62,7 +63,7 @@ func TestLinkDirectExactReceiptAndProvenance(t *testing.T) {
 	}
 	defer db.Close()
 	ps, err := db.Provenance("opaque-id")
-	if err != nil || len(ps) != 1 || ps[0].SourceOperation != "link" || ps[0].SourceComponent != "manual/linker" {
+	if err != nil || len(ps) != 1 || ps[0].SourceOperation != "link" || ps[0].SourceComponent != "manual@m/linker" {
 		t.Fatal(ps, err)
 	}
 	row, found, err := db.Get("opaque-id")
@@ -73,7 +74,7 @@ func TestLinkDirectExactReceiptAndProvenance(t *testing.T) {
 func TestLinkAutomationUsageNeverMutates(t *testing.T) {
 	_, path, _ := linkContext(t)
 	before, _ := os.ReadFile(path)
-	for _, args := range [][]string{{"link"}, {"link", "manual/linker"}, {"link", "manual/linker", ""}, {"link", "manual/linker", "value", "--json=false"}, {"link", "manual/linker", "value", "extra"}, {"link", "manual/linker", "value", "--yes"}} {
+	for _, args := range [][]string{{"link"}, {"link", "manual@m/linker"}, {"link", "manual@m/linker", ""}, {"link", "manual@m/linker", "value", "--json=false"}, {"link", "manual@m/linker", "value", "extra"}, {"link", "manual@m/linker", "value", "--yes"}} {
 		root := newRootCmd()
 		root.SetArgs(args)
 		var out bytes.Buffer
@@ -105,7 +106,7 @@ func TestLinkSelectedRowPreservesOtherRowsAndProvenance(t *testing.T) {
 	if err := db.UpsertWithProvenance(other, []projection.Provenance{otherSource}); err != nil {
 		t.Fatal(err)
 	}
-	for _, args := range [][]string{{"link", "manual/linker", "value"}, {"link", "manual/linker", "replacement"}} {
+	for _, args := range [][]string{{"link", "manual@m/linker", "value"}, {"link", "manual@m/linker", "replacement"}} {
 		cmd := newRootCmd()
 		cmd.SetArgs(args)
 		cmd.SetOut(&bytes.Buffer{})
@@ -141,7 +142,7 @@ func TestLinkIndexFailureIsCommittedSuccess(t *testing.T) {
 	var out, ui bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&ui)
-	root.SetArgs([]string{"link", "manual/linker", "secret-value"})
+	root.SetArgs([]string{"link", "manual@m/linker", "secret-value"})
 	if err := root.Execute(); err != nil {
 		t.Fatal(err)
 	}

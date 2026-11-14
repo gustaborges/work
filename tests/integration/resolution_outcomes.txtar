@@ -16,7 +16,7 @@ stderr 'error: no-repository-found:'
 mkdir not-a-repo
 setfixturematches $WORK/not-a-repo
 installlocatorfixture fixtureinvalid invalid invalid name
-work repository policy replace fixtureinvalid/invalid
+work repository policy replace fixtureinvalid@m/invalid
 
 ! work start whatever --workspace $WS --base main --slug y --prefix {slug} --yes
 stderr 'error: repository-candidate-invalid:'
@@ -26,7 +26,7 @@ stderr 'not-a-repo'
 # --- locator-failed (29): a Locator errors; a later entry is never
 # consulted (no fallback). ---
 installlocatorfixture fixtureboom boom boom name
-work repository policy replace fixtureboom/boom work-reference/filesystem-repository-locator
+work repository policy replace fixtureboom@m/boom work-reference@builtin/filesystem-repository-locator
 
 ! work start payments --workspace $WS --base main --slug z --prefix {slug} --yes
 stderr 'error: locator-failed:'

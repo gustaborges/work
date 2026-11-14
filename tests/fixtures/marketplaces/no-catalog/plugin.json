@@ -1,0 +1,23 @@
+{
+  "name": "rootonly",
+  "version": "1.0.0",
+  "components": [
+    {
+      "name": "run-rootonly",
+      "role": "linker",
+      "key": "fixture.rootonly",
+      "entrypoint": "bin/tool",
+      "manual": {
+        "display_name": "rootonly"
+      }
+    }
+  ],
+  "conventions": [
+    {
+      "name": "freeform",
+      "prefixes": [
+        "{slug}"
+      ]
+    }
+  ]
+}

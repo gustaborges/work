@@ -3,10 +3,11 @@ package contract
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/gustaborges/work/internal/plugininstall"
 	"github.com/gustaborges/work/internal/registry"
+	"github.com/gustaborges/work/internal/semconv"
 	"github.com/gustaborges/work/internal/work"
 	"github.com/gustaborges/work/internal/workhome"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 	fixtures "github.com/gustaborges/work/tests/fixtures/plugins"
 	"os"
 	"os/exec"
@@ -25,21 +26,21 @@ func TestManualImportProtocolAndResults(t *testing.T) {
 	if err := home.EnsureLayout(); err != nil {
 		t.Fatal(err)
 	}
-	reg := &registry.Registry{}
-	if _, err := plugininstall.Install(home.PluginsDir(), reg, fixtures.Prepare(t, "manual-suite"), plugininstall.Options{Alias: "manual"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.Save(home.RegistryFile(), reg); err != nil {
+	provider := installfx.InstallAs(t, home, "suite", fixtures.Prepare(t, "manual-suite"), true)
+	// Private values live under the key bound to the providing source instance.
+	nullableKey := semconv.StorageKey(provider, installfx.RegistrationID("suite"), "nullable")
+	reg, err := registry.Load(home.RegistryFile())
+	if err != nil {
 		t.Fatal(err)
 	}
 	for _, mode := range []string{"ok", "omitted", "empty", "exit1", "garbage", "overflow", "null", "mixed", "worktree", "snapshot", "apply", "launch"} {
 		t.Run(mode, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "in-progress", "demo")
 			os.MkdirAll(dir, 0755)
-			st := &work.State{Work: work.WorkSection{ID: "opaque-id", Status: "in-progress", StartMode: "contribution", Starter: "test", Branch: "branch", BaseBranch: "main", CreatedAt: "2026-01-01T00:00:00Z", LastAccessedAt: "2026-01-01T00:00:00Z"}, Links: map[string]string{"github.pull_request": "private reference"}, Meta: map[string]any{"plugin.manual-suite.nullable": nil, "unused": "hidden"}}
+			st := &work.State{Work: work.WorkSection{ID: "opaque-id", Status: "in-progress", StartMode: "contribution", Starter: "test", Branch: "branch", BaseBranch: "main", CreatedAt: "2026-01-01T00:00:00Z", LastAccessedAt: "2026-01-01T00:00:00Z"}, Links: map[string]string{"github.pull_request": "private reference"}, Meta: map[string]any{nullableKey: nil, "unused": "hidden"}}
 			path := filepath.Join(dir, "work-state.json")
 			if mode == "omitted" {
-				delete(st.Meta, "plugin.manual-suite.nullable")
+				delete(st.Meta, nullableKey)
 			}
 			work.Write(path, st)
 			before, _ := os.ReadFile(path)
@@ -75,7 +76,7 @@ func TestManualImportProtocolAndResults(t *testing.T) {
 				registry.Save(home.RegistryFile(), reg)
 				t.Cleanup(func() { reg.Components = saved; registry.Save(home.RegistryFile(), reg) })
 			}
-			cmd := exec.Command(bin, "import", "manual/importer")
+			cmd := exec.Command(bin, "import", "manual-suite@suite/importer")
 			cmd.Dir = dir
 			var out, ui bytes.Buffer
 			cmd.Stdout = &out
@@ -91,7 +92,7 @@ func TestManualImportProtocolAndResults(t *testing.T) {
 				t.Fatal(code, want, ui.String())
 			}
 			if want == 0 {
-				if out.String() != "work: imported opaque-id manual/importer "+count+"\n" {
+				if out.String() != "work: imported opaque-id manual-suite@suite/importer "+count+"\n" {
 					t.Fatal(out.String())
 				}
 			} else if out.Len() != 0 || strings.Count(ui.String(), "error:") != 1 {

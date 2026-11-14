@@ -20,12 +20,12 @@ func TestFailureClassesMapToStableWarnings(t *testing.T) {
 		component string
 		token     string
 	}{
-		{"linker-exit1,linker2-none", OpDiscover, "context-suite/linker", diag.WarnExtensionFailed},
-		{"linker-garbage,linker2-none", OpDiscover, "context-suite/linker", diag.WarnExtensionResponseInvalid},
-		{"linker-empty-value,linker2-none", OpDiscover, "context-suite/linker", diag.WarnExtensionResponseInvalid},
-		{"linker-value,importer-exit1,importer2-empty", OpImport, "context-suite/importer", diag.WarnExtensionFailed},
-		{"linker-value,importer-garbage,importer2-empty", OpImport, "context-suite/importer", diag.WarnExtensionResponseInvalid},
-		{"linker-value,importer-mixed,importer2-empty", OpImport, "context-suite/importer", diag.WarnExtensionOutputRefused},
+		{"linker-exit1,linker2-none", OpDiscover, "context-suite@suite/linker", diag.WarnExtensionFailed},
+		{"linker-garbage,linker2-none", OpDiscover, "context-suite@suite/linker", diag.WarnExtensionResponseInvalid},
+		{"linker-empty-value,linker2-none", OpDiscover, "context-suite@suite/linker", diag.WarnExtensionResponseInvalid},
+		{"linker-value,importer-exit1,importer2-empty", OpImport, "context-suite@suite/importer", diag.WarnExtensionFailed},
+		{"linker-value,importer-garbage,importer2-empty", OpImport, "context-suite@suite/importer", diag.WarnExtensionResponseInvalid},
+		{"linker-value,importer-mixed,importer2-empty", OpImport, "context-suite@suite/importer", diag.WarnExtensionOutputRefused},
 	}
 	for _, tc := range cases {
 		t.Run(tc.mode, func(t *testing.T) {
@@ -54,7 +54,7 @@ func TestFailureClassesMapToStableWarnings(t *testing.T) {
 
 func TestStartFailureWhenTheEntrypointIsMissing(t *testing.T) {
 	h := newHarness(t, "linker2-none")
-	entry := filepath.Join(h.ctx.Home.PluginsDir(), "context-suite", "source", "linker")
+	entry := filepath.Join(h.ctx.Home.PluginsDir(), "suite", "context-suite", "source", "linker")
 	if runtime.GOOS == "windows" {
 		entry += ".exe"
 	}
@@ -66,7 +66,7 @@ func TestStartFailureWhenTheEntrypointIsMissing(t *testing.T) {
 	if len(rep.Warnings) != 1 || rep.Warnings[0].Token != diag.WarnExtensionStartFailed {
 		t.Fatalf("warnings = %+v", rep.Warnings)
 	}
-	if rep.Warnings[0].Component != "context-suite/linker" {
+	if rep.Warnings[0].Component != "context-suite@suite/linker" {
 		t.Errorf("component = %q", rep.Warnings[0].Component)
 	}
 }
@@ -89,7 +89,7 @@ func TestOtherComponentsStillRunAfterAFailure(t *testing.T) {
 	h := newHarness(t, "linker-exit1,linker2-value,importer-ok,importer2-empty")
 	rep := Run(context.Background(), h.ctx)
 
-	if len(rep.Warnings) != 1 || rep.Warnings[0].Component != "context-suite/linker" {
+	if len(rep.Warnings) != 1 || rep.Warnings[0].Component != "context-suite@suite/linker" {
 		t.Fatalf("warnings = %+v", rep.Warnings)
 	}
 	if got := h.snapshot().Links["github.pull_request"]; got != "https://example.test/pr/212-from-linker2" {
@@ -161,7 +161,7 @@ func TestInterruptDuringALinkerStopsEverythingAfterIt(t *testing.T) {
 	if len(rep.Warnings) != 1 || rep.Warnings[0].Token != diag.WarnExtensionInterrupted {
 		t.Fatalf("warnings = %+v, want one interrupted", rep.Warnings)
 	}
-	if rep.Warnings[0].Component != "context-suite/linker" || rep.Warnings[0].Operation != OpDiscover {
+	if rep.Warnings[0].Component != "context-suite@suite/linker" || rep.Warnings[0].Operation != OpDiscover {
 		t.Errorf("warning = %+v", rep.Warnings[0])
 	}
 	for _, l := range h.launches() {

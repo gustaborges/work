@@ -20,7 +20,7 @@ func TestAdminConventionUnavailableAcrossClones(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatal(err, string(out))
 	}
-	h.run(t, h.root, 0, "plugin", "install", fixtures.Prepare(t, "admin-suite"), "--as", "a")
+	h.install(t, "a", fixtures.Prepare(t, "admin-suite"))
 	h.run(t, repo, 0, "convention", "set", "admin-team")
 	clone := filepath.Join(h.root, "clone")
 	cmd = exec.Command("git", "init", "-b", "main", clone)
@@ -31,7 +31,7 @@ func TestAdminConventionUnavailableAcrossClones(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatal(err, string(out))
 	}
-	h.run(t, h.root, 0, "plugin", "disable", "a")
+	h.run(t, h.root, 0, "plugin", "disable", "admin-suite@a")
 	before := adminTree(t, adminHome(h))
 	for _, dir := range []string{repo, clone} {
 		for range 20 {

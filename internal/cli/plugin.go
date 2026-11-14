@@ -8,17 +8,17 @@ import (
 func newPluginCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "plugin",
-		Short:         "Install, inspect, enable, disable, update and uninstall plugins",
+		Short:         "Register marketplaces and add, inspect, enable, disable and remove plugins",
 		SilenceErrors: true,
 		SilenceUsage:  true,
-		Args:          cobra.NoArgs,
+		Args:          noArgsUsage,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := hubGuard(cmd, "run `work plugin list`, `work plugin install <source>` or `work plugin --help`"); err != nil {
+			if err := hubGuard(cmd, "run `work plugin list`, `work plugin marketplace add <source>` or `work plugin --help`"); err != nil {
 				return err
 			}
-			return runPluginHub(cmd)
+			return runPluginHub(cmd, false)
 		},
 	}
-	cmd.AddCommand(newPluginInstallCmd(), newPluginListCmd(), newPluginEnableCmd(), newPluginDisableCmd(), newPluginUpdateCmd(), newPluginUninstallCmd())
+	cmd.AddCommand(newPluginAddCmd(), newPluginListCmd(), newPluginRemoveCmd(), newPluginUpdateCmd(), newPluginEnableCmd(), newPluginDisableCmd(), newPluginMarketplaceCmd())
 	return cmd
 }

@@ -14,7 +14,7 @@ import (
 )
 
 func TestAdminRollbackBoundaries(t *testing.T) {
-	for _, point := range []string{"prepared", "pending", "move-backup:a", "move-publish:a", "json:config", "json:registry", "before-commit"} {
+	for _, point := range []string{"prepared", "pending", "move-backup:a@m", "move-publish:a@m", "json:catalogs", "json:config", "json:registry", "before-commit"} {
 		t.Run(point, func(t *testing.T) {
 			h := workhome.At(t.TempDir())
 			if err := h.EnsureLayout(); err != nil {
@@ -26,26 +26,15 @@ func TestAdminRollbackBoundaries(t *testing.T) {
 				t.Fatal(err)
 			}
 			before, _ := os.ReadFile(h.ConfigFile())
-			dest := filepath.Join(h.PluginsDir(), "a")
-			if err := os.MkdirAll(dest, 0700); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(dest, "old"), []byte("old"), 0600); err != nil {
-				t.Fatal(err)
-			}
-			err := withWrite(context.Background(), h, "work plugin install fixture", func(s *Session) error {
-				stage, e := os.MkdirTemp(h.PluginsDir(), ".admin-stage-")
-				if e != nil {
-					return e
-				}
-				if e = os.WriteFile(filepath.Join(stage, "new"), []byte("new"), 0600); e != nil {
-					return e
-				}
-				if e = s.Replace("a", stage); e != nil {
+			dest := seedRoot(t, h, prov("a", "m"), "old", "old")
+			err := withWrite(context.Background(), h, "work plugin add fixture", func(s *Session) error {
+				stage := stageWith(t, s, "new", "new")
+				if e := s.Replace(prov("a", "m"), stage); e != nil {
 					return e
 				}
 				s.Config.Workspace = "new"
-				s.Registry.UpsertPackage(testPackage("a"))
+				s.Registry.UpsertPackage(testPackage(prov("a", "m")))
+				s.Persist("catalogs")
 				return nil
 			}, func(p string) error {
 				if p == point {
@@ -63,8 +52,10 @@ func TestAdminRollbackBoundaries(t *testing.T) {
 			if b, e := os.ReadFile(filepath.Join(dest, "old")); e != nil || string(b) != "old" {
 				t.Fatalf("old lost: %s %v", b, e)
 			}
-			if _, e := os.Stat(h.RegistryFile()); !os.IsNotExist(e) {
-				t.Fatal("absent before image lost")
+			for _, f := range []string{h.RegistryFile(), h.CatalogsFile()} {
+				if _, e := os.Stat(f); !os.IsNotExist(e) {
+					t.Fatalf("absent before image lost: %s", f)
+				}
 			}
 			if _, e := Read(context.Background(), h); e != nil {
 				t.Fatal(e)
@@ -133,31 +124,22 @@ func TestAdminFailedCompensationRetainsEvidence(t *testing.T) {
 	if err := h.EnsureLayout(); err != nil {
 		t.Fatal(err)
 	}
-	dest := filepath.Join(h.PluginsDir(), "a")
-	if err := os.MkdirAll(dest, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dest, "old"), []byte("old"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	err := withWrite(context.Background(), h, "work plugin enable a", func(s *Session) error {
-		stage, err := os.MkdirTemp(h.PluginsDir(), ".admin-stage-")
-		if err != nil {
-			return err
-		}
-		if err = os.WriteFile(filepath.Join(stage, "new"), []byte("new"), 0600); err != nil {
-			return err
-		}
-		return s.Replace("a", stage)
+	seedRoot(t, h, prov("a", "m"), "old", "old")
+	err := withWrite(context.Background(), h, "work plugin enable a@m", func(s *Session) error {
+		return s.Replace(prov("a", "m"), stageWith(t, s, "new", "new"))
 	}, func(p string) error {
-		if p != "move-backup:a" {
+		if p != "move-backup:a@m" {
 			return nil
 		}
 		c, err := loadControl(h)
 		if err != nil {
 			return err
 		}
-		if err = os.WriteFile(filepath.Join(backupPath(h, *c.TransactionID, "a"), "old"), []byte("corrupt evidence"), 0600); err != nil {
+		backup, err := h.BackupPath(*c.TransactionID, prov("a", "m"))
+		if err != nil {
+			return err
+		}
+		if err = os.WriteFile(filepath.Join(backup, "old"), []byte("corrupt evidence"), 0600); err != nil {
 			return err
 		}
 		return errors.New("injected")

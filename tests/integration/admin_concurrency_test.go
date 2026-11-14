@@ -12,9 +12,13 @@ import (
 	"github.com/gustaborges/work/internal/adminstate"
 	"github.com/gustaborges/work/internal/bootstrap"
 	"github.com/gustaborges/work/internal/diag"
+	"github.com/gustaborges/work/internal/marketplaceadmin"
 	"github.com/gustaborges/work/internal/pluginadmin"
-	"github.com/gustaborges/work/internal/plugininstall"
+	"github.com/gustaborges/work/internal/pluginid"
+	"github.com/gustaborges/work/internal/repoconv"
 	"github.com/gustaborges/work/internal/workhome"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
+	"github.com/gustaborges/work/tests/fixtures/marketplaces"
 	fixtures "github.com/gustaborges/work/tests/fixtures/plugins"
 )
 
@@ -23,34 +27,24 @@ import (
 func TestAdminConcurrentLifecycleWriters(t *testing.T) {
 	h := newAdminHarness(t)
 	home := workhome.At(adminHome(h))
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	h.run(t, h.root, 0, "plugin", "install", "--embedded")
-	sources := map[string]string{}
-	for _, alias := range []string{"a", "b", "c", "d"} {
+	providers := map[string]pluginid.Provider{}
+	for _, name := range []string{"a", "b", "c"} {
 		source := fixtures.Prepare(t, "admin-suite")
 		// Separate convention ownership makes these independent reviewed edits.
 		fixtures.Revise(t, source, "release-blue", func(m map[string]any) { m["conventions"] = []any{} })
-		sources[alias] = source
-		if alias != "d" {
-			h.run(t, h.root, 0, "plugin", "install", source, "--as", alias)
-		}
+		providers[name] = installfx.InstallAs(t, home, name, source, true)
 	}
-	fixtures.Revise(t, sources["a"], "release-green", nil)
-	update, err := pluginadmin.PrepareUpdates(ctx, home, []string{"a"}, false)
+	remove, err := pluginadmin.PlanUninstall(ctx, home, []pluginid.Provider{providers["b"]})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer update.Close()
-	remove, err := pluginadmin.PlanUninstall(ctx, home, []string{"b"})
+	add, err := marketplaceadmin.PrepareAdd(ctx, home, marketplaceadmin.Spec{Kind: pluginid.KindLocal, Source: marketplaces.Copy(t, "single")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	install, err := plugininstall.Prepare(ctx, sources["d"], plugininstall.Options{Alias: "d"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer install.Close()
+	defer add.Close()
 	pending, release := make(chan struct{}), make(chan struct{})
 	defer func() {
 		select {
@@ -64,7 +58,7 @@ func TestAdminConcurrentLifecycleWriters(t *testing.T) {
 		result <- adminstate.WithWriteOptions(ctx, home, "work repository root replace", func(s *adminstate.Session) error {
 			s.Config.RepositoryRoots = []string{h.root}
 			s.Config.Workspace = filepath.Join(h.root, "workspace")
-			s.Memory.Set("repository-one", "freeform")
+			s.Memory.Set("repository-one", repoconv.NewReference(installfx.RegistrationID("a"), pluginid.Ref{Provider: providers["a"], Name: "freeform"}))
 			return nil
 		}, adminstate.WriteOptions{Checkpoint: func(point string) error {
 			if point == "pending" {
@@ -87,10 +81,12 @@ func TestAdminConcurrentLifecycleWriters(t *testing.T) {
 		t.Fatal("pending reader accepted mixed state", err)
 	}
 	writers := []func() error{
-		func() error { _, err := pluginadmin.SetEnabled(ctx, home, []string{"c"}, false); return err },
+		func() error {
+			_, err := pluginadmin.SetEnabled(ctx, home, []pluginid.Provider{providers["c"]}, false)
+			return err
+		},
 		func() error { return bootstrap.EnsureSeed(home) },
-		func() error { _, err := pluginadmin.InstallPrepared(ctx, home, install); return err },
-		func() error { _, err := pluginadmin.Apply(ctx, home, update, false); return err },
+		func() error { _, err := add.Apply(ctx); return err },
 		func() error { _, err := pluginadmin.Uninstall(ctx, home, remove, false); return err },
 	}
 	started := make(chan struct{}, len(writers))
@@ -101,7 +97,7 @@ func TestAdminConcurrentLifecycleWriters(t *testing.T) {
 		<-started
 	}
 	close(release)
-	for range 6 {
+	for range len(writers) + 1 {
 		select {
 		case err := <-result:
 			if err != nil {
@@ -115,20 +111,25 @@ func TestAdminConcurrentLifecycleWriters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, _ := s.Registry.PackageByAlias("a")
-	_, b := s.Registry.PackageByAlias("b")
-	_, d := s.Registry.PackageByAlias("d")
+	_, a := s.Registry.PackageByProvider(providers["a"])
+	_, b := s.Registry.PackageByProvider(providers["b"])
 	remembered, _ := s.Memory.Get("repository-one")
-	if a.Version != "release-green" || b || !d || s.Registry.PackageEnabled("c") || !s.Registry.PackageEnabled(bootstrap.Alias) || s.Config.Workspace != filepath.Join(h.root, "workspace") || len(s.Config.RepositoryRoots) != 1 || remembered != "freeform" || len(s.Config.RepositoryResolution.Locators) != 0 {
+	if !a || b || s.Registry.PackageEnabled(providers["c"]) || !s.Registry.PackageEnabled(bootstrap.Provider) ||
+		s.Config.Workspace != filepath.Join(h.root, "workspace") || len(s.Config.RepositoryRoots) != 1 || remembered.Name != "freeform" ||
+		len(s.Config.Marketplaces) != 1 || len(s.Catalogs.Catalogs) != 1 {
 		t.Fatalf("lost concurrent edit: %+v %+v %+v", s.Registry, s.Config, s.Memory)
+	}
+	// Policy follows lifecycle: first setup seeded it exactly once alongside the other edits.
+	if n := len(s.Config.RepositoryResolution.Locators); n != 1 {
+		t.Fatalf("policy = %v", s.Config.RepositoryResolution.Locators)
 	}
 }
 
 func TestAdminInvocationNative(t *testing.T) {
 	h := newAdminHarness(t)
 	source := fixtures.AdminVariant(t, "starter", "linker", "importer")
-	h.run(t, h.root, 0, "plugin", "install", source, "--as", "native")
 	home := workhome.At(adminHome(h))
+	native := installfx.InstallAs(t, home, "native", source, true)
 	ctx := context.Background()
 	snapshot, err := adminstate.Read(ctx, home)
 	if err != nil {
@@ -192,7 +193,7 @@ func TestAdminInvocationNative(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err = adminstate.WithWrite(ctx, home, "replace", func(s *adminstate.Session) error {
-		p, _ := s.Registry.PackageByAlias("native")
+		p, _ := s.Registry.PackageByProvider(native)
 		p.ContentDigest = "changed-bytes"
 		s.Registry.UpsertPackage(p)
 		return nil

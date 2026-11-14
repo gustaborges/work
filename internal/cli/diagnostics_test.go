@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/gustaborges/work/internal/gittest"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 )
 
 // TestStartDiagnosticsContract drives `work start` into each failure category it
@@ -143,11 +144,11 @@ func TestManualDiagnosticsContract(t *testing.T) {
 		token string
 	}{
 		{[]string{"link"}, 2, "usage"},
-		{[]string{"link", "manual/linker", ""}, 2, "usage"},
+		{[]string{"link", "manual@m/linker", ""}, 2, "usage"},
 		{[]string{"import", ""}, 2, "usage"},
 		{[]string{"link", "unknown", "private-value"}, 39, "manual-component-unavailable"},
-		{[]string{"import", "manual/linker"}, 39, "manual-component-unavailable"},
-		{[]string{"import", "manual/importer"}, 42, "required-input-missing"},
+		{[]string{"import", "manual@m/linker"}, 39, "manual-component-unavailable"},
+		{[]string{"import", "manual@m/importer"}, 42, "required-input-missing"},
 		{[]string{"import", "importer"}, 40, "manual-component-ambiguous"},
 	} {
 		t.Run(strings.Join(tc.args, "/"), func(t *testing.T) {
@@ -156,8 +157,9 @@ func TestManualDiagnosticsContract(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, alias := range []string{"manual", "alternate"} {
-				r.Components = append(r.Components, registry.Component{Alias: alias, Name: "importer", Role: plugin.RoleImporter, Manual: &plugin.Manual{DisplayName: "Context"}, Inputs: []string{"link:github.issue", "meta:github.absent"}})
+			for _, owner := range []string{"manual", "alternate"} {
+				installfx.EnsurePackage(r, installfx.P(owner))
+				r.UpsertComponent(registry.Component{Provider: installfx.P(owner), Name: "importer", Role: plugin.RoleImporter, Entrypoint: "importer", Manual: &plugin.Manual{DisplayName: "Context"}, Inputs: []string{"link:github.issue", "meta:github.absent"}})
 			}
 			if err := registry.Save(home.RegistryFile(), r); err != nil {
 				t.Fatal(err)
