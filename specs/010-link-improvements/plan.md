@@ -77,7 +77,7 @@ docs/add/add-0001-work-system-architecture.md
 
 ## Phase 0 — Research
 
-Complete: [research.md](research.md), R1–R5. Important failure-path detail: adding a typed modes map directly to IPC would turn wrong-shaped values into UnusableRepo, violating code 37. Preserve the raw modes field for Starter-level validation.
+Complete: [research.md](research.md), R1–R5. Important failure-path detail: adding a typed modes map directly to IPC would turn wrong-shaped values into UnusableRepo, violating code 37. Keep the IPC field raw and decode it once in `starter.Invoke`, mapping shape failures to code 37 there, so `Reference` carries the decoded map.
 
 ## Phase 1 — Design
 

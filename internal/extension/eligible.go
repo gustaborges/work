@@ -20,6 +20,10 @@ import (
 // and every input it does not mark optional resolves. The order is bytewise on
 // "<plugin>@<marketplace>/<name>", so it does not depend on registry order; it
 // is reproducible, not a contract authors may rely on.
+//
+// For StartFinalized a Linker is also skipped when the link it would publish
+// is already in s.State.Links. s must therefore be the state the phase starts
+// from, not one taken after another Linker has published.
 func Eligible(reg *registry.Registry, role, event string, s Subject) []Decision {
 	decisions, _ := EligibleDiagnosed(reg, role, event, s)
 	return decisions
@@ -33,12 +37,13 @@ type Ambiguity struct {
 }
 
 // EligibleDiagnosed is Eligible plus the subscribers it refused to run because
-// a bare Starter name was ambiguous. Such a subscriber never executes.
+// a bare Starter name was ambiguous. Such a subscriber never executes. The
+// StartFinalized skip described on Eligible applies here too.
 func EligibleDiagnosed(reg *registry.Registry, role, event string, s Subject) ([]Decision, []Ambiguity) {
 	var out []Decision
 	var ambiguous []Ambiguity
 	for _, c := range reg.Effective().Extensions(role) {
-		if role == plugin.RoleLinker && event == "start:finalized" {
+		if role == plugin.RoleLinker && event == StartFinalized {
 			if key, ok := storedKey(reg, c.Provider, c.Key); ok {
 				if _, present := s.State.Links[key]; present {
 					continue

@@ -29,7 +29,7 @@ Keys in examples must satisfy existing Semantic Conventions publication rules. `
 - Validate base plus all overrides before repository resolution/materialization. Existing malformed-JSON/process failures outside the new modes field keep existing diagnostics.
 - Merge selected maps over base, shallowly, with selected values winning equal keys. No field deletion semantics. Absent selected mode leaves copied base maps intact. Do not mutate response maps.
 - Bind merged maps once with the selected Starter's provider/current source instance. Persist through existing creation path; unselected fields and modes map never persist.
-- Errors use starter-response-invalid (37), identify offending field/mode/key without values, and create no Work/branch/worktree.
+- Errors use starter-response-invalid (37), identify offending field/mode/key without values, and create no Work/branch/worktree. The mode is named in the user-visible message itself (not only in a wrapped cause) for key and value failures inside a mode entry. Starter-supplied names and keys are quoted, and every such error carries the same summary and hint as the other structural Starter failures.
 
 ## Contract evidence to add
 

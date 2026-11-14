@@ -1,7 +1,6 @@
 package starter
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -28,7 +27,7 @@ func TestBindStoresPrivateKeysAgainstThePublishingSourceInstance(t *testing.T) {
 	if err := ValidateResponse(ref, "sample"); err != nil {
 		t.Fatal(err)
 	}
-	ref.Modes = json.RawMessage(`{"new":{"links":{"plugin.sample.url":"https://example.test/selected"}}}`)
+	ref.Modes = map[string]ModeContext{"new": {Links: map[string]string{"plugin.sample.url": "https://example.test/selected"}}}
 	a := Bind(MergeMode(ref, "new"), component(alpha), reg)
 	b := Bind(ref, component(beta), reg)
 

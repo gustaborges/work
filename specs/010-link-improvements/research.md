@@ -4,8 +4,8 @@ All findings are from this checkout, 2026-11-14. No dependency research or upgra
 
 ## R1 — Wire decoding and error identity
 
-**Decision**: Add optional raw `modes` payload to `internal/ipc/ipc.go` and carry it into `internal/starter/starter.go`, where it is decoded into validated mode context. Missing or top-level null means no overrides; malformed non-null shapes are code 37. A present mode entry must be an object. Sort names for stable diagnostics.
-**Rationale**: InvokeStarter currently json.Unmarshal-decodes stdout; starter.Invoke wraps errors as UnusableRepo. A typed map alone misclassifies malformed modes. Retaining the new raw field localizes the new code-37 behavior without changing legacy IPC failures.
+**Decision**: Add optional raw `modes` payload to `internal/ipc/ipc.go` and keep it raw on the wire type only. `starter.Invoke` decodes it exactly once, right after the IPC call succeeds, into the typed `Reference.Modes` map and returns shape failures as code 37 directly, not wrapped as UnusableRepo. Missing or top-level null means no overrides; malformed non-null shapes are code 37. A present mode entry must be an object. Sort names for stable diagnostics.
+**Rationale**: InvokeStarter currently json.Unmarshal-decodes stdout; starter.Invoke wraps IPC errors as UnusableRepo. A typed map on the IPC type alone misclassifies malformed modes. Keeping the wire field raw and doing the typed decode in `Invoke` localizes the new code-37 behavior without changing legacy IPC failures, and means validation and merge read the same decoded map instead of each re-parsing raw bytes.
 **Alternatives considered**: Decode all Starter output anew or globally change IPC error mapping; both broaden unrelated behavior. A typed map plus tagged custom decoder is possible but unnecessary for this isolated addition.
 
 ## R2 — Validate, select, merge, bind

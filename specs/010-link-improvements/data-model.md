@@ -14,7 +14,8 @@ Authority: PRD FR-84–FR-86; ADR-0031; ADD §§7/9/11.
 ```text
 single subprocess response
   → decode existing fields + raw modes
-  → decode/validate every mode + existing base publication
+  → Invoke decodes modes once into Reference.Modes (shape errors: code 37)
+  → ValidateResponse checks every mode's keys/values + existing base publication
   → repository resolution and existing mode-selection journey
   → copy base links/meta, overlay selected mode by key
   → Bind effective maps to current provider/source instance
@@ -24,7 +25,7 @@ single subprocess response
   → Importers evaluate current state
 ```
 
-Invalid modes terminate with code 37 before materialization. Mode names and publication keys are checked in stable sorted order. Error messages identify field/key/mode, never contextual values. A metadata null is a present value and replaces a base value; a null or empty link value is invalid. Merge does not mutate the original response or its maps and does not recursively combine nested metadata.
+Invalid modes terminate with code 37 before materialization. Mode names and publication keys are checked in stable sorted order. Error messages identify field/key/mode, never contextual values; Starter-supplied mode names and keys are quoted so control characters cannot reach the terminal raw. A metadata null is a present value and replaces a base value; a null or empty link value is invalid. Merge does not mutate the original response or its maps and does not recursively combine nested metadata.
 
 ## Persisted state
 
