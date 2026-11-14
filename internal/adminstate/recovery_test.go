@@ -190,3 +190,37 @@ func TestAdminRecoveryUnsafeRemovalJournal(t *testing.T) {
 		})
 	}
 }
+
+func TestAdminRecoveryJournalRejectsTrailingData(t *testing.T) {
+	for name, tail := range map[string]string{"stray brace": "}", "stray bracket": "]", "second document": "{}"} {
+		t.Run(name, func(t *testing.T) {
+			h := workhome.At(t.TempDir())
+			id := "0123456789abcdef0123456789abcdef"
+			dir, err := h.TransactionDir(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			file := filepath.Join(dir, "journal.json")
+			j := Journal{Schema: 1, ID: id, Operation: "work plugin remove a@m --yes", Phase: "prepared", Moves: []Move{{Provider: prov("a", "m"), Remove: true}}}
+			if err := saveJSON(file, j); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := loadJournal(h, id); err != nil {
+				t.Fatalf("valid journal rejected: %v", err)
+			}
+			b, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(file, append(b, tail...), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := loadJournal(h, id); diag.ExitCode(err) != 54 {
+				t.Fatalf("loadJournal with trailing %q = %v, want exit 54", tail, err)
+			}
+		})
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/gustaborges/work/internal/jsonx"
 	"github.com/gustaborges/work/internal/plugin"
 	"github.com/gustaborges/work/internal/pluginid"
 )
@@ -58,7 +59,7 @@ func ParseCatalog(data []byte) (*Catalog, error) {
 	if err := dec.Decode(&doc); err != nil {
 		return nil, invalidf("marketplace.json is not valid JSON: %v", err)
 	}
-	if dec.More() {
+	if jsonx.TrailingData(dec) {
 		return nil, invalidf("marketplace.json has trailing content")
 	}
 	top, ok := doc.(map[string]any)

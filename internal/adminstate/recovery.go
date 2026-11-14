@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/gustaborges/work/internal/diag"
+	"github.com/gustaborges/work/internal/jsonx"
 	"github.com/gustaborges/work/internal/lockfile"
 	"github.com/gustaborges/work/internal/pluginid"
 	"github.com/gustaborges/work/internal/workhome"
@@ -50,7 +51,7 @@ func loadJournal(h workhome.Home, id string) (*Journal, error) {
 	var j Journal
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
-	if dec.Decode(&j) != nil || dec.More() || j.Schema != ControlSchema || j.ID != id || (j.Phase != "prepared" && j.Phase != "committed") || j.Operation == "" || len(j.Files)+len(j.Moves) == 0 {
+	if dec.Decode(&j) != nil || jsonx.TrailingData(dec) || j.Schema != ControlSchema || j.ID != id || (j.Phase != "prepared" && j.Phase != "committed") || j.Operation == "" || len(j.Files)+len(j.Moves) == 0 {
 		return nil, recoveryError(errors.New("malformed transaction journal"))
 	}
 	names := map[string]bool{}

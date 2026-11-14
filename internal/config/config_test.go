@@ -96,6 +96,8 @@ func TestStrictCurrentSchema(t *testing.T) {
 		"future schema":     `{"schema":2,"workspace":""}`,
 		"unknown field":     `{"schema":1,"workspace":"","extra":true}`,
 		"trailing":          valid + `{}`,
+		"stray brace":       valid + `}`,
+		"stray bracket":     valid + `]`,
 		"reserved name":     `{"schema":1,"marketplaces":[{"registration_id":"` + id + `","name":"BuiltIn","kind":"local","source":"/x"}]}`,
 		"builtin id":        `{"schema":1,"marketplaces":[{"registration_id":"builtin","name":"team","kind":"local","source":"/x"}]}`,
 		"bad kind":          `{"schema":1,"marketplaces":[{"registration_id":"` + id + `","name":"team","kind":"svn","source":"/x"}]}`,

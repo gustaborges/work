@@ -16,6 +16,7 @@ import (
 
 	"github.com/gustaborges/work/internal/atomicfile"
 	"github.com/gustaborges/work/internal/diag"
+	"github.com/gustaborges/work/internal/jsonx"
 	"github.com/gustaborges/work/internal/pluginid"
 )
 
@@ -138,7 +139,7 @@ func Decode(data []byte) (*Config, error) {
 	if err := dec.Decode(&c); err != nil {
 		return nil, err
 	}
-	if dec.More() {
+	if jsonx.TrailingData(dec) {
 		return nil, errors.New("trailing data")
 	}
 	if c.RepositoryRoots == nil {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 
+	"github.com/gustaborges/work/internal/jsonx"
 	"github.com/gustaborges/work/internal/pluginid"
 	"github.com/gustaborges/work/internal/workhome"
 )
@@ -51,7 +52,7 @@ func decodeLifecycle(b []byte) (*Lifecycle, error) {
 	var l Lifecycle
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&l); err != nil || dec.More() || l.Schema != LifecycleSchema || (l.Removed && !l.Initialized) {
+	if err := dec.Decode(&l); err != nil || jsonx.TrailingData(dec) || l.Schema != LifecycleSchema || (l.Removed && !l.Initialized) {
 		return nil, recoveryError(errors.New("invalid lifecycle state"))
 	}
 	return &l, nil

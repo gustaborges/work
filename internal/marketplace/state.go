@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/gustaborges/work/internal/atomicfile"
+	"github.com/gustaborges/work/internal/jsonx"
 	"github.com/gustaborges/work/internal/pluginid"
 )
 
@@ -203,7 +204,7 @@ func DecodeState(data []byte) (*State, error) {
 	if err := dec.Decode(&s); err != nil {
 		return nil, err
 	}
-	if dec.More() {
+	if jsonx.TrailingData(dec) {
 		return nil, errors.New("trailing data")
 	}
 	if s.Catalogs == nil {

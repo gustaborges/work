@@ -83,6 +83,8 @@ func TestStrictCurrentSchema(t *testing.T) {
 		"missing schema":    `{"entries":[]}`,
 		"future schema":     `{"schema":2,"entries":[]}`,
 		"unknown field":     `{"schema":1,"entries":[],"x":1}`,
+		"stray brace":       `{"schema":1,"entries":[]}}`,
+		"stray bracket":     `{"schema":1,"entries":[]}]`,
 		"bad instance":      `{"schema":1,"entries":[{"identity":"r","reference":{"registration_id":"zz","marketplace":"m","plugin":"p","name":"c"}}]}`,
 		"bad name":          `{"schema":1,"entries":[{"identity":"r","reference":{"registration_id":"` + instanceA + `","marketplace":"m","plugin":"p","name":"a/b"}}]}`,
 		"duplicate":         `{"schema":1,"entries":[{"identity":"r","reference":{"registration_id":"` + instanceA + `","marketplace":"m","plugin":"p","name":"c"}},{"identity":"r","reference":{"registration_id":"` + instanceA + `","marketplace":"m","plugin":"p","name":"d"}}]}`,

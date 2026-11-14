@@ -158,6 +158,8 @@ func TestDecodeRejectsPriorShapes(t *testing.T) {
 		"unversioned alias shape": `{"components":[{"alias":"p","name":"i","role":"importer","entrypoint":"i"}],"conventions":[],"packages":[{"alias":"p","origin":"local-linked","reference":"/x"}]}`,
 		"unknown field":           `{"schema":1,"packages":[],"components":[],"conventions":[],"extra":1}`,
 		"trailing document":       `{"schema":1,"packages":[],"components":[],"conventions":[]}{}`,
+		"stray brace":             `{"schema":1,"packages":[],"components":[],"conventions":[]}}`,
+		"stray bracket":           `{"schema":1,"packages":[],"components":[],"conventions":[]}]`,
 		"not json":                `{`,
 	} {
 		if _, err := Decode([]byte(doc)); err == nil {

@@ -123,6 +123,8 @@ func TestParseCatalogDetails(t *testing.T) {
 	bad("duplicate entries", `{"schema":1,"name":"t","plugins":[{"name":"a","path":"p"},{"name":"a","path":"q"}]}`)
 	bad("not an object", `[]`)
 	bad("trailing content", `{"schema":1,"name":"t","plugins":[]} {}`)
+	bad("stray closing brace", `{"schema":1,"name":"t","plugins":[]}}`)
+	bad("stray closing bracket", `{"schema":1,"name":"t","plugins":[]}]`)
 	bad("empty", ``)
 	bad("truncated", `{"schema":1,`)
 	bad("bad namespace", `{"schema":1,"name":"a/b","plugins":[]}`)
