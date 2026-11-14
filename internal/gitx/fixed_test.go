@@ -137,6 +137,87 @@ func TestMaterializeRecordsExecutableBitAndLinks(t *testing.T) {
 	}
 }
 
+// readTree maps every non-.git file under root to its bytes.
+func readTree(t *testing.T, root string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(root, p)
+		if rel == ".git" {
+			return filepath.SkipDir
+		}
+		if d.Type().IsRegular() {
+			b, err := os.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			out[filepath.ToSlash(rel)] = string(b)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func TestMaterializeIgnoresExportAttributesAndMatchesACheckout(t *testing.T) {
+	dir, url := publish(t, "main")
+	files := map[string]string{
+		".gitattributes": "tests/ export-ignore\nversion.txt export-subst\n*.bat text eol=crlf\nid.txt ident\n",
+		"tests/case.txt": "kept\n",
+		"version.txt":    "v=$Format:%H$\n",
+		"run.bat":        "echo hi\n",
+		"id.txt":         "$Id$\n",
+		"plain.txt":      "plain\n",
+	}
+	for name, content := range files {
+		p := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gittest.Git(t, dir, "add", "-A")
+	gittest.Git(t, dir, "commit", "--quiet", "-m", "attrs")
+	sha := trim(gittest.Git(t, dir, "rev-parse", "HEAD"))
+
+	f, err := FetchCommit(context.Background(), url, "main", sha, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	dest := filepath.Join(t.TempDir(), "out")
+	if _, err := f.Materialize(context.Background(), dest); err != nil {
+		t.Fatal(err)
+	}
+	got := readTree(t, dest)
+
+	if got["tests/case.txt"] != "kept\n" {
+		t.Errorf("export-ignore dropped tests/case.txt: %q", got["tests/case.txt"])
+	}
+	if got["version.txt"] != "v=$Format:%H$\n" {
+		t.Errorf("export-subst rewrote version.txt: %q", got["version.txt"])
+	}
+
+	clone := filepath.Join(t.TempDir(), "clone")
+	gittest.Git(t, t.TempDir(), "clone", "--quiet", url, clone)
+	want := readTree(t, clone)
+	if len(got) != len(want) {
+		t.Errorf("archive has %d files, clone has %d", len(got), len(want))
+	}
+	for name, content := range want {
+		if got[name] != content {
+			t.Errorf("%s differs from a clone checkout: archive %q, clone %q", name, got[name], content)
+		}
+	}
+}
+
 func TestMaterializeRejectsSubmodules(t *testing.T) {
 	dir, url := publish(t, "main")
 	sub, _ := publish(t, "main")

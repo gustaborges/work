@@ -116,6 +116,9 @@ func FetchCommit(ctx context.Context, source, branch, commit, parent string) (*F
 	if _, err := runCtx(ctx, dir, "init", "--bare", "--quiet"); err != nil {
 		return fail(err)
 	}
+	if err := neutralizeExportAttributes(dir); err != nil {
+		return fail(err)
+	}
 	if _, err := runCtx(ctx, dir, "fetch", "--quiet", "--no-tags", "--depth", "1", "--", source, commit); err != nil {
 		if ctx.Err() != nil {
 			return fail(ctx.Err())
@@ -130,6 +133,19 @@ func FetchCommit(ctx context.Context, source, branch, commit, parent string) (*F
 		return fail(unavailable(ctx, err))
 	}
 	return &Fetched{Dir: dir, Commit: commit}, nil
+}
+
+// neutralizeExportAttributes overrides export-ignore and export-subst for every
+// path of the scratch repository. Those attributes exist to slim or stamp
+// release tarballs: honouring them would drop files or rewrite content that a
+// plain checkout of the same commit contains. Other attributes (eol, ident)
+// are left alone so the result still equals a default clone.
+func neutralizeExportAttributes(gitDir string) error {
+	info := filepath.Join(gitDir, "info")
+	if err := os.MkdirAll(info, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(info, "attributes"), []byte("\n* -export-subst -export-ignore\n"), 0o644)
 }
 
 // Close removes the scratch repository.
@@ -149,8 +165,10 @@ func (f *Fetched) Materialize(ctx context.Context, dest string) (map[string]bool
 			return nil, fmt.Errorf("%w: submodule", ErrUnsafeContent)
 		}
 	}
-	// The installed bytes must be the committed bytes whatever the host's
-	// line-ending configuration, or the package digest would vary per machine.
+	// The archive must equal a default checkout of the commit whatever the
+	// host's git configuration, or the package digest would vary per machine.
+	// Line-ending settings are pinned here; export-* attributes are overridden
+	// in the scratch repository's info/attributes.
 	cmd := exec.CommandContext(ctx, "git", "-c", "core.autocrlf=false", "-c", "core.eol=lf", "archive", "--format=tar", f.Commit)
 	cmd.Dir = f.Dir
 	stdout, err := cmd.StdoutPipe()
