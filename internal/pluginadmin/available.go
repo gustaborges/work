@@ -42,6 +42,12 @@ type CatalogError struct {
 // missing or does not match its registration yields a CatalogError instead of
 // rows and is never repaired or fetched here.
 func Available(s *adminstate.Snapshot, only string) ([]Offered, []CatalogError) {
+	return available(s, only, marketplace.BuiltinSnapshot)
+}
+
+// available is Available with the binary-owned provider injected, so the
+// failure of the included offer can be exercised.
+func available(s *adminstate.Snapshot, only string, builtin func() (*marketplace.Snapshot, error)) ([]Offered, []CatalogError) {
 	rows := []Offered{}
 	errs := []CatalogError{}
 	add := func(namespace, revision string, entries []marketplace.Entry) {
@@ -67,8 +73,15 @@ func Available(s *adminstate.Snapshot, only string) ([]Offered, []CatalogError) 
 		}
 	}
 	if only == "" || only == pluginid.Builtin {
-		if snap, err := marketplace.BuiltinSnapshot(); err == nil {
+		if snap, err := builtin(); err == nil {
 			add(pluginid.Builtin, snap.Revision, snap.Offer.Entries)
+		} else {
+			// A binary built without its included offer is a defect to surface,
+			// not an empty provider; marketplaceadmin.List reports it as missing.
+			errs = append(errs, CatalogError{
+				Marketplace: pluginid.Builtin, Error: "marketplace-entry-unavailable",
+				Message: "the included offer cannot be read from this binary",
+			})
 		}
 	}
 	for _, m := range s.Config.Marketplaces {
