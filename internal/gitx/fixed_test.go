@@ -205,8 +205,11 @@ func TestMaterializeIgnoresExportAttributesAndMatchesACheckout(t *testing.T) {
 		t.Errorf("export-subst rewrote version.txt: %q", got["version.txt"])
 	}
 
+	// The reference checkout pins the same line-ending settings as Materialize:
+	// hosts such as Windows default to core.autocrlf=true, which would make a
+	// bare clone differ for reasons unrelated to export attributes.
 	clone := filepath.Join(t.TempDir(), "clone")
-	gittest.Git(t, t.TempDir(), "clone", "--quiet", url, clone)
+	gittest.Git(t, t.TempDir(), "-c", "core.autocrlf=false", "-c", "core.eol=lf", "clone", "--quiet", url, clone)
 	want := readTree(t, clone)
 	if len(got) != len(want) {
 		t.Errorf("archive has %d files, clone has %d", len(got), len(want))
