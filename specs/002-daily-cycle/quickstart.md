@@ -178,7 +178,10 @@ work archive "$id_dirty" "$id_clean" --yes ; echo $?
 snapshot `in-progress`), reported on stderr `note: <id_dirty>: worktree has uncommitted or
 untracked changes — left active (use --force-dirty)`; exit 0 (the eligible Work archived).
 Re-run with `--force-dirty` → `dirtywork` is archived too. Interactive form: an extra
-per-Work prompt appears for `dirtywork`; declining leaves it active and archives the rest.
+per-Work prompt appears for `dirtywork`; accepting **Archive anyway** archives it without
+`--force-dirty`, while declining **Keep active** leaves it active and archives the rest.
+Check both the picker and `work archive "$id_dirty"` in a terminal. An acknowledgement
+for `dirtywork` must not authorize another Work that becomes dirty after the prompts.
 
 ---
 

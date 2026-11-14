@@ -16,7 +16,8 @@ work archive [WORK...] [--yes] [--force-dirty]
   selects Works. Interactively, the confirmation view is still shown even with `--yes`
   unless `--yes` is combined with explicit ids… (see *Confirmation*).
 - `--force-dirty` — clears the dirty-worktree guard (FR-013). **Separate** from `--yes`;
-  neither implies the other.
+  neither implies the other. Required for dirty Works non-interactively; optional
+  interactively, where accepting each Work's extra acknowledgement is sufficient.
 - `--json` is **not** accepted (mutation; ADR-0017) → exit 2.
 
 ## Preconditions
@@ -40,11 +41,16 @@ work archive [WORK...] [--yes] [--force-dirty]
 3. **Confirmation view** — lists the checked Works and states: *"N worktree(s) will be
    destroyed. Snapshots move to `<workspace>/archived/`. Branches are kept."* `Enter` =
    confirm · `Esc` = back to the list. Nothing changes until confirm (FR-010).
-4. **Per-Work archive** — for each confirmed Work, in order, under an advisory lock on its
+4. **Dirty acknowledgement + per-Work archive** — before mutation, collect the extra
+   interactive acknowledgements for the selected dirty Works. Accepting **Archive anyway**
+   authorizes that Work without `--force-dirty`; declining **Keep active** leaves it fully
+   active and the batch continues. Then, for each eligible Work, under an advisory lock on its
    `id` (research R6):
    a. **dirty check** — `git -C <worktree> status --porcelain`. If non-empty and not
-      `--force-dirty`: show an extra per-Work prompt (default **no**). Declining leaves that
-      Work **fully active**; the batch continues (FR-013, SC-009).
+      covered by `--force-dirty` or that Work's recorded interactive acknowledgement,
+      leave the Work **fully active** and continue the batch (FR-013, SC-009). A Work
+      that becomes dirty after the prompts were prepared cannot inherit another Work's
+      acknowledgement; do not open another presentation session during mutation.
    b. atomic snapshot rewrite in place: `status = archived`, `archived_at = now`,
       `last_accessed_at = now`, `schema = 2` — **canonical commit** (FR-012).
    c. `git worktree remove --force <src>/worktree`; missing worktree → `git worktree prune`,
@@ -136,6 +142,8 @@ This is the ADR-0018 amendment tracked in the plan (research R5/R10).
   worktrees gone, their snapshots readable under `archived/` with `status = archived`, their
   rows `status = archived`; every non-selected Work unchanged (SC-003).
 - A Work left active for dirtiness has an intact worktree and an unchanged snapshot (SC-009).
+- An interactive dirty acknowledgement is sufficient without `--force-dirty`, applies
+  only to the named Work, and survives the handoff from confirmation to archive execution.
 - Fault injection (`WORK_FAIL_AT=snapshot|worktree|move|projection`) on any Work leaves that
   Work fully in one state and every earlier Work in the batch consistently archived
   (SC-005); the projection matches disk after the run (FR-018).

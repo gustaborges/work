@@ -66,7 +66,7 @@ persisted.
 | `id` | string | the Work |
 | `lock` | handle | `state/locks/<sha256(id)>.lock` (R17) |
 | `dirty` | bool | `git -C <worktree> status --porcelain` non-empty (R7) |
-| `acknowledged` | bool | interactive per-Work ack, or `--force-dirty` |
+| `acknowledged` | bool | accepted interactive acknowledgement keyed by this Work's id (sufficient without `--force-dirty`), or `--force-dirty`; never inherited from another Work |
 | `src_dir` | string | `<workspace>/in-progress/<repo>_<branch-sanitized>` |
 | `dst_dir` | string | `<workspace>/archived/<yyyymmdd>-<repo>_<branch-sanitized>[-<n>]` (R8) |
 | `steps` | stack of compensators | LIFO unwind on failure before commit |

@@ -407,6 +407,8 @@ work: archived 2 of 2
 
 A dirty worktree is **not** destroyed without `--force-dirty` (non-interactive) or
 an extra per-Work acknowledgement (interactive); it is left active and reported.
+Accepting **Archive anyway** in the TUI is sufficient without `--force-dirty`, whether
+you used the picker or supplied an explicit Work id. Approval applies only to that Work.
 Unknown or already-archived `id`s in a batch are reported and skipped, not fatal.
 `--json` is rejected.
 
@@ -449,7 +451,7 @@ only a warning; it never rolls the Work back.
 | 20 | `cancelled` | declined at the confirmation prompt, or interrupted before commit |
 | 21 | `target-not-found` | no Work has the `id` given to `work resume` / `work archive` |
 | 22 | `target-archived` | the `id` names an archived Work (cannot be resumed / already archived) |
-| 23 | `dirty-worktree` | the sole `work archive` target has uncommitted changes and no `--force-dirty` |
+| 23 | `dirty-worktree` | the sole non-interactive `work archive` target has uncommitted changes and no `--force-dirty` |
 | 24 | `archive-failed` | a post-commit archive step failed; the Work is archived on disk, the index self-heals next run |
 | 25 | `snapshot-unreadable` | a canonical snapshot could not be read during an index rebuild (surfaced as a `note:` and skipped) |
 | 50 | `plugin-update-failed` | one or more targets failed; inspect every reported outcome |
