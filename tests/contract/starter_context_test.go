@@ -8,6 +8,7 @@ import (
 	"github.com/gustaborges/work/internal/diag"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/starter"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 	fixtures "github.com/gustaborges/work/tests/fixtures/plugins"
 )
 
@@ -17,11 +18,11 @@ import (
 func TestStarterPublishedContextContract(t *testing.T) {
 	dir := fixtures.Prepare(t, "context-suite")
 	comp := registry.Component{
-		Alias: "context-suite", Name: "starter", Role: registry.RoleStarter, Entrypoint: "starter",
+		Provider: installfx.P("context-suite"), Name: "starter", Role: registry.RoleStarter, Entrypoint: "starter",
 	}
-	// Target resolves <pluginsDir>/<alias>/source/<entrypoint>.
+	// Target resolves <pluginsDir>/<marketplace>/<plugin>/source/<entrypoint>.
 	pluginsDir := t.TempDir()
-	src := filepath.Join(pluginsDir, comp.Alias, "source")
+	src := filepath.Join(pluginsDir, comp.Provider.Marketplace, comp.Provider.Plugin, "source")
 	copyDir(t, dir, src)
 
 	cases := []struct {

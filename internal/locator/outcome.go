@@ -24,7 +24,7 @@ func errNoEligibleLocator() error {
 	return diag.New(diag.NoEligibleLocator,
 		"no repository locator is configured to resolve this reference; install or enable a Locator and configure it with `work repository policy add <locator>`").
 		WithSummary("Nothing is set up to locate a repository from what you typed.").
-		WithHint("Run `work repository policy list`; install a Locator (`work plugin install --embedded`), enable it, then explicitly add it with `work repository policy add <locator>`, or pass a direct path.")
+		WithHint("Run `work repository policy list`; install a Locator (`work plugin add <plugin>@<marketplace>`), enable it, then explicitly add it with `work repository policy add <locator>`, or pass a direct path.")
 }
 
 // errCandidateInvalid is returned when the Locator that ended traversal

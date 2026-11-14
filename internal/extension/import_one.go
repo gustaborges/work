@@ -69,6 +69,7 @@ func ImportOne(ctx context.Context, p ImportParams) (result ImportResult, err er
 		}
 		return diag.Wrapf(cat, cause, "%s (import) for Work %s: %s", p.Component.QualifiedName(), p.Expected.State.Work.ID, message).WithHint(hint)
 	}
+	var reg *registry.Registry
 	validate := func() (workcontext.Context, registry.Component, error) {
 		if ctx.Err() != nil {
 			return workcontext.Context{}, registry.Component{}, failure(diag.Cancelled, ctx.Err())
@@ -77,7 +78,7 @@ func ImportOne(ctx context.Context, p ImportParams) (result ImportResult, err er
 		if err != nil {
 			return current, registry.Component{}, err
 		}
-		reg, err := p.Reload()
+		reg, err = p.Reload()
 		if err != nil {
 			return current, registry.Component{}, err
 		}
@@ -107,7 +108,7 @@ func ImportOne(ctx context.Context, p ImportParams) (result ImportResult, err er
 	if err != nil {
 		return result, err
 	}
-	inputs, missing, err := ResolveInputs(c.Inputs, Subject{State: current.State, WorktreePath: current.WorktreePath, Starter: p.Starter})
+	inputs, missing, err := ResolveInputs(reg, c.Provider, c.Inputs, Subject{State: current.State, WorktreePath: current.WorktreePath, Starter: p.Starter})
 	if err != nil {
 		return result, failure(diag.RequiredInputMissing, err)
 	}

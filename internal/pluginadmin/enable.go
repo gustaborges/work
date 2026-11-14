@@ -7,42 +7,60 @@ import (
 
 	"github.com/gustaborges/work/internal/adminstate"
 	"github.com/gustaborges/work/internal/diag"
-	"github.com/gustaborges/work/internal/plugin"
+	"github.com/gustaborges/work/internal/pluginid"
 	"github.com/gustaborges/work/internal/workhome"
 )
 
-// SetEnabled validates the complete exact-alias set before changing any
-// package. A satisfied request does not rewrite its bytes or publish an epoch.
-func SetEnabled(ctx context.Context, h workhome.Home, aliases []string, enabled bool) ([]string, error) {
-	targets := slices.Clone(aliases)
-	slices.Sort(targets)
-	targets = slices.Compact(targets)
-	if len(targets) == 0 {
-		return nil, diag.New(diag.Usage, "supply at least one installed plugin alias")
+// SortedProviders returns a deterministic, duplicate-free copy of targets.
+func SortedProviders(targets []pluginid.Provider) []pluginid.Provider {
+	out := slices.Clone(targets)
+	slices.SortFunc(out, func(a, b pluginid.Provider) int {
+		if c := strings.Compare(a.Marketplace, b.Marketplace); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Plugin, b.Plugin)
+	})
+	return slices.Compact(out)
+}
+
+// ProviderNames renders providers as plugin@marketplace.
+func ProviderNames(ps []pluginid.Provider) []string {
+	out := make([]string, len(ps))
+	for i, p := range ps {
+		out[i] = p.String()
 	}
-	for _, alias := range targets {
-		if plugin.ValidateAlias(alias) != nil {
-			return nil, diag.New(diag.Usage, "supply exact installed plugin aliases")
+	return out
+}
+
+// SetEnabled validates the complete exact-provider set before changing any
+// package. A satisfied request does not rewrite its bytes or publish an epoch.
+func SetEnabled(ctx context.Context, h workhome.Home, providers []pluginid.Provider, enabled bool) ([]pluginid.Provider, error) {
+	targets := SortedProviders(providers)
+	if len(targets) == 0 {
+		return nil, diag.New(diag.Usage, "supply at least one installed plugin as plugin@marketplace")
+	}
+	for _, p := range targets {
+		if p.Validate() != nil {
+			return nil, diag.New(diag.Usage, "supply exact installed plugins as plugin@marketplace")
 		}
 	}
 	verb := "disable"
 	if enabled {
 		verb = "enable"
 	}
-	err := adminstate.WithWrite(ctx, h, "work plugin "+verb+" "+strings.Join(targets, " "), func(s *adminstate.Session) error {
-		for _, alias := range targets {
-			if _, ok := s.Registry.PackageByAlias(alias); !ok {
-				return diag.Newf(diag.Usage, "plugin alias %q is not installed", alias)
+	err := adminstate.WithWrite(ctx, h, "work plugin "+verb+" "+strings.Join(ProviderNames(targets), " "), func(s *adminstate.Session) error {
+		for _, p := range targets {
+			if _, ok := s.Registry.PackageByProvider(p); !ok {
+				return diag.Newf(diag.Usage, "plugin %q is not installed", p)
 			}
 		}
-		for _, alias := range targets {
-			if s.Registry.PackageEnabled(alias) == enabled {
+		for _, p := range targets {
+			if s.Registry.PackageEnabled(p) == enabled {
 				continue
 			}
-			p, _ := s.Registry.PackageByAlias(alias)
-			value := enabled
-			p.Enabled = &value
-			s.Registry.UpsertPackage(p)
+			pkg, _ := s.Registry.PackageByProvider(p)
+			pkg.Enabled = enabled
+			s.Registry.UpsertPackage(pkg)
 		}
 		return nil
 	})

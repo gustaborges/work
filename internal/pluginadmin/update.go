@@ -3,516 +3,596 @@ package pluginadmin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"slices"
-	"strings"
 	"sync"
 
 	"github.com/gustaborges/work/internal/adminstate"
+	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/diag"
+	"github.com/gustaborges/work/internal/marketplace"
 	"github.com/gustaborges/work/internal/plugin"
+	"github.com/gustaborges/work/internal/pluginid"
 	"github.com/gustaborges/work/internal/plugininstall"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/workhome"
 )
 
-// UpdateResult is the public, credential-safe outcome of one resolved target.
-type UpdateResult struct {
-	Alias                   string       `json:"alias"`
-	Origin                  string       `json:"origin"`
-	Status                  string       `json:"status"`
-	CurrentVersion          *string      `json:"current_version"`
-	CandidateVersion        *string      `json:"candidate_version"`
-	CurrentReference        *string      `json:"current_reference"`
-	CandidateReference      *string      `json:"candidate_reference"`
-	CurrentDigest           *string      `json:"current_digest"`
-	CandidateDigest         *string      `json:"candidate_digest"`
-	PolicyReferencesRemoved []string     `json:"policy_references_removed"`
-	Error                   *UpdateError `json:"error"`
-}
+// Update statuses. Checks report the first four; applying reports updated or
+// not-applied for the targets it touched.
+const (
+	UpdateUnchanged  = "unchanged"
+	UpdateAvailable  = "update-available"
+	UpdateWithdrawn  = "withdrawn"
+	UpdateFailed     = "failed"
+	UpdateUpdated    = "updated"
+	UpdateNotApplied = "not-applied"
+)
+
+// UpdateError is the credential-safe failure of one target.
 type UpdateError struct {
 	Token   string `json:"token"`
 	Message string `json:"message"`
 }
 
-// ConventionEffect records enabled ownership before and after one candidate.
-type ConventionEffect struct {
-	Name                            string
-	AvailableBefore, AvailableAfter bool
-	OwnersBefore, OwnersAfter       []string
-}
-type updateCandidate struct {
-	baseline         registry.Package
-	components       []registry.Component
-	providers        []registry.Package
-	conventions      []registry.Convention
-	prepared         *plugininstall.Prepared
-	result           UpdateResult
-	added, withdrawn []string
-	modified         []string
-	effects          []ConventionEffect
+// UpdateResult is the public outcome of one installed plugin. Versions are
+// opaque: they are compared only for equality, never ordered.
+type UpdateResult struct {
+	ID                      string       `json:"id"`
+	Name                    string       `json:"name"`
+	Marketplace             string       `json:"marketplace"`
+	Status                  string       `json:"status"`
+	CurrentVersion          *string      `json:"current_version"`
+	CandidateVersion        *string      `json:"candidate_version"`
+	CurrentDigest           *string      `json:"current_digest"`
+	CandidateDigest         *string      `json:"candidate_digest"`
+	CandidateRevision       *string      `json:"candidate_revision"`
+	Added                   []string     `json:"declarations_added"`
+	Withdrawn               []string     `json:"declarations_withdrawn"`
+	Changed                 []string     `json:"declarations_changed"`
+	PolicyReferencesRemoved []string     `json:"policy_references_removed"`
+	Committed               bool         `json:"committed"`
+	CleanupPending          bool         `json:"cleanup_pending,omitempty"`
+	Error                   *UpdateError `json:"error"`
 }
 
-// UpdatePlan owns frozen source copies across review. Close is idempotent and
-// mandatory on every normal exit. Nothing is persisted during preparation.
+// updateTarget is the frozen reviewed candidate of one installed plugin: the
+// baseline it was judged against and, for an available update, the staged copy
+// that Apply publishes without retrieving anything again.
+type updateTarget struct {
+	provider    pluginid.Provider
+	prior       registry.Package
+	components  []registry.Component
+	conventions []registry.Convention
+	source      *config.Marketplace // nil for the builtin provider
+	manifest    *plugin.Manifest
+	entry       *marketplace.ResolvedEntry
+	prepared    *plugininstall.Prepared
+	lease       *adminstate.Lease
+	dropped     []string
+	effects     []ConventionEffect
+	result      UpdateResult
+	transferred bool
+}
+
+// UpdatePlan owns the frozen candidates across review. Close is mandatory on
+// every exit path and idempotent; nothing is persisted while preparing.
 type UpdatePlan struct {
-	Results    []UpdateResult
-	candidates []*updateCandidate
-	once       sync.Once
-	closed     bool
+	home    workhome.Home
+	Results []UpdateResult
+	targets []*updateTarget
+	epoch   uint64
+	once    sync.Once
+	closed  bool
 }
 
+// Close releases staged copies, resolved content and leases.
 func (p *UpdatePlan) Close() {
 	p.once.Do(func() {
 		p.closed = true
-		for _, c := range p.candidates {
-			if c.prepared != nil {
-				c.prepared.Close()
-			}
+		for _, t := range p.targets {
+			t.close()
 		}
 	})
 }
-func updateFailure(r *UpdateResult, err error) {
-	r.Status = "failed"
-	msg := "cannot prepare or apply this plugin; inspect its source and reinstall if needed"
-	if d, ok := errors.AsType[*diag.Error](err); ok {
-		msg = d.Msg
+
+func (t *updateTarget) close() {
+	if t.entry != nil {
+		t.entry.Close()
 	}
-	r.Error = &UpdateError{Token: diag.Token(err), Message: SafeText(msg)}
+	if t.prepared != nil && !t.transferred {
+		_ = os.RemoveAll(t.prepared.Stage)
+	}
+	t.lease.Release()
 }
-func updateAggregate(rows []UpdateResult) error {
-	for _, r := range rows {
-		if r.Status == "failed" {
-			return diag.New(diag.PluginUpdateFailed, "one or more plugin updates failed; inspect the per-plugin outcomes")
+
+// ConventionEffects lists conventions of the target whose availability the
+// update changes.
+func (p *UpdatePlan) ConventionEffects(id string) []ConventionEffect {
+	for _, t := range p.targets {
+		if t.result.ID == SafeText(id) {
+			return slices.Clone(t.effects)
 		}
 	}
 	return nil
 }
-func aliasComponents(reg *registry.Registry, alias string) []registry.Component {
-	out := []registry.Component{}
-	for _, c := range reg.Components {
-		if c.Alias == alias {
-			out = append(out, c)
+
+// InstalledProviders lists every installed plugin, optionally limited to one
+// marketplace, from a coherent snapshot.
+func InstalledProviders(s *adminstate.Snapshot, marketplaceName string) []pluginid.Provider {
+	out := []pluginid.Provider{}
+	for _, p := range s.Registry.ListPackages() {
+		if marketplaceName == "" || p.Provider.Marketplace == marketplaceName {
+			out = append(out, p.Provider)
 		}
 	}
 	return out
 }
-func providerFacts(reg *registry.Registry, names []string) ([]registry.Package, []registry.Convention) {
-	owners := []registry.Package{}
-	conventions := []registry.Convention{}
-	for _, p := range reg.ListPackages() {
-		for _, n := range names {
-			if slices.Contains(p.Conventions, n) {
-				enabled := reg.PackageEnabled(p.Alias)
-				relevant := []string{}
-				for _, name := range names {
-					if slices.Contains(p.Conventions, name) {
-						relevant = append(relevant, name)
-					}
-				}
-				owners = append(owners, registry.Package{Alias: p.Alias, Enabled: &enabled, Conventions: relevant})
-				break
-			}
-		}
+
+func failResult(r *UpdateResult, err error) {
+	r.Status = UpdateFailed
+	r.Error = &UpdateError{Token: diag.Token(err), Message: "this plugin could not be prepared or applied; its installed copy is unchanged"}
+	if d, ok := errors.AsType[*diag.Error](err); ok {
+		r.Error.Message = SafeText(d.Msg)
 	}
-	for _, n := range names {
-		if c, ok := reg.ConventionByName(n); ok {
-			conventions = append(conventions, c)
-		}
-	}
-	return owners, conventions
 }
-func affectedReferences(s *adminstate.Snapshot, c *updateCandidate) []string {
-	out := []string{}
-	for _, ref := range s.Config.RepositoryResolution.Locators {
-		alias, name, ok := strings.Cut(ref, "/")
-		if !ok || alias != c.baseline.Alias {
+
+// groupKey identifies the source and branch whose single current revision
+// every target of the group is judged against.
+func groupKey(p registry.Provenance) marketplace.Source {
+	return marketplace.Source{Kind: p.Kind, Source: p.Source, Branch: p.Branch}
+}
+
+// maintenanceSource proves that the recorded provenance still belongs to a
+// registered source instance (or the code-owned builtin) and returns the
+// source to resolve. Discovery state is deliberately not consulted: a missing
+// stored offer never prevents a check, but an absent or different registration
+// always does, so a name can never redirect maintenance to another origin.
+func maintenanceSource(cfg *config.Config, pkg registry.Package) (*config.Marketplace, error) {
+	pv := pkg.Provenance
+	if pv.Kind == pluginid.KindBuiltin {
+		if pv.RegistrationID != pluginid.BuiltinRegistrationID {
+			return nil, diag.New(diag.MarketplaceEntryUnavailable, "the recorded source of this plugin is inconsistent")
+		}
+		return nil, nil
+	}
+	for _, m := range cfg.Marketplaces {
+		if m.RegistrationID != pv.RegistrationID {
 			continue
 		}
-		// Updates withdraw registered Locators only, retaining unrelated stale refs.
-		oldLocator := false
-		for _, old := range c.components {
-			if old.Name == name && old.Role == registry.RoleRepositoryLocator {
-				oldLocator = true
-			}
+		if m.Name != pv.MarketplaceName || m.Kind != pv.Kind || m.Source != pv.Source || m.Branch != pv.Branch {
+			break
 		}
-		retained := false
-		for _, next := range c.prepared.Manifest.Components {
-			if next.Name == name && next.Role == registry.RoleRepositoryLocator {
-				retained = true
-			}
-		}
-		if oldLocator && !retained {
-			out = append(out, ref)
-		}
+		return &m, nil
 	}
-	return out
-}
-func candidateNames(c *updateCandidate) []string {
-	names := slices.Clone(c.baseline.Conventions)
-	if c.prepared != nil {
-		for _, cv := range c.prepared.Manifest.Conventions {
-			if !slices.Contains(names, cv.Name) {
-				names = append(names, cv.Name)
-			}
-		}
-	}
-	slices.Sort(names)
-	return names
-}
-func declarationChanges(c *updateCandidate) {
-	old, next := []string{}, []string{}
-	for _, v := range c.components {
-		old = append(old, "component "+v.Name+" ("+v.Role+")")
-	}
-	for _, v := range c.baseline.Conventions {
-		old = append(old, "convention "+v)
-	}
-	for _, v := range c.prepared.Manifest.Components {
-		next = append(next, "component "+v.Name+" ("+v.Role+")")
-	}
-	for _, v := range c.prepared.Manifest.Conventions {
-		next = append(next, "convention "+v.Name)
-	}
-	for _, v := range next {
-		if !slices.Contains(old, v) {
-			c.added = append(c.added, SafeText(v))
-		}
-	}
-	for _, v := range old {
-		if !slices.Contains(next, v) {
-			c.withdrawn = append(c.withdrawn, SafeText(v))
-		}
-	}
-	for _, next := range c.prepared.Manifest.Components {
-		for _, old := range c.components {
-			if old.Name == next.Name && old.Role == next.Role {
-				old.Revision = ""
-				if !reflect.DeepEqual(old, plugininstall.ComponentEntry(c.baseline.Alias, next)) {
-					c.modified = append(c.modified, SafeText("component "+next.Name))
-				}
-			}
-		}
-	}
-	for _, next := range c.prepared.Manifest.Conventions {
-		for _, old := range c.conventions {
-			if old.Name == next.Name && !slices.Equal(old.Prefixes, next.Prefixes) {
-				c.modified = append(c.modified, SafeText("convention "+next.Name))
-			}
-		}
-	}
+	return nil, diag.Newf(diag.MarketplaceEntryUnavailable, "the marketplace %q this plugin was copied from is no longer registered as it was; register it again and reinstall to change its source", pv.MarketplaceName)
 }
 
-// DeclarationChanges returns the determined added/withdrawn declarations.
-func (p *UpdatePlan) DeclarationChanges(alias string) (added, withdrawn []string) {
-	for _, c := range p.candidates {
-		if c.baseline.Alias == alias {
-			return slices.Clone(c.added), slices.Clone(c.withdrawn)
-		}
-	}
-	return nil, nil
-}
-func (p *UpdatePlan) ModifiedDeclarations(alias string) []string {
-	for _, c := range p.candidates {
-		if c.baseline.Alias == alias {
-			return slices.Clone(c.modified)
-		}
-	}
-	return nil
-}
-func (p *UpdatePlan) ConventionEffects(alias string) []ConventionEffect {
-	for _, c := range p.candidates {
-		if c.baseline.Alias == alias {
-			return slices.Clone(c.effects)
-		}
-	}
-	return nil
-}
-func conventionEffects(reg *registry.Registry, c *updateCandidate) []ConventionEffect {
-	after := *reg
-	after.Packages = slices.Clone(reg.Packages)
-	after.Components = slices.Clone(reg.Components)
-	after.Conventions = slices.Clone(reg.Conventions)
-	c.prepared.Register(&after)
-	out := []ConventionEffect{}
-	for _, name := range candidateNames(c) {
-		effect := ConventionEffect{Name: SafeText(name), OwnersBefore: []string{}, OwnersAfter: []string{}}
-		_, effect.AvailableBefore = reg.Effective().ConventionByName(name)
-		_, effect.AvailableAfter = after.Effective().ConventionByName(name)
-		for _, p := range reg.ListPackages() {
-			if reg.PackageEnabled(p.Alias) && slices.Contains(p.Conventions, name) {
-				effect.OwnersBefore = append(effect.OwnersBefore, SafeText(p.Alias))
-			}
-		}
-		for _, p := range after.ListPackages() {
-			if after.PackageEnabled(p.Alias) && slices.Contains(p.Conventions, name) {
-				effect.OwnersAfter = append(effect.OwnersAfter, SafeText(p.Alias))
-			}
-		}
-		if effect.AvailableBefore != effect.AvailableAfter || !slices.Equal(effect.OwnersBefore, effect.OwnersAfter) {
-			out = append(out, effect)
-		}
-	}
-	return out
-}
-func recordedSource(p registry.Package) string {
-	if p.Source != "" {
-		return p.Source
-	}
-	if p.Origin == registry.OriginRemotePinned {
-		if at := strings.LastIndex(p.Reference, "@"); at >= 0 {
-			return p.Reference[:at]
-		}
-	}
-	return p.Reference
-}
-
-// PrepareUpdates resolves every alias before retrieving anything, then freezes
-// one candidate per managed target outside all administrative locks.
-func PrepareUpdates(ctx context.Context, h workhome.Home, aliases []string, all bool) (_ *UpdatePlan, err error) {
-	if all && len(aliases) > 0 {
-		return nil, diag.New(diag.Usage, "--all excludes explicit aliases")
+// PrepareUpdates judges every provider against the current offer of its
+// recorded source, resolving each source and branch once, and freezes the
+// candidates of available updates. When stage is false (a check) nothing is
+// copied: every candidate is still fully validated, even at an equal version.
+//
+// Nothing is persisted and no administration lock is held while sources are
+// retrieved. Every provider is resolved before any source is contacted.
+func PrepareUpdates(ctx context.Context, h workhome.Home, providers []pluginid.Provider, stage bool) (_ *UpdatePlan, err error) {
+	targets := SortedProviders(providers)
+	if len(targets) == 0 {
+		return nil, diag.New(diag.Usage, "no installed plugins to inspect")
 	}
 	s, err := adminstate.Read(ctx, h)
 	if err != nil {
 		return nil, err
 	}
-	targets := slices.Clone(aliases)
-	if all || len(targets) == 0 {
-		for _, p := range s.Registry.ListPackages() {
-			targets = append(targets, p.Alias)
-		}
-	}
-	slices.Sort(targets)
-	targets = slices.Compact(targets)
-	for _, a := range targets {
-		if plugin.ValidateAlias(a) != nil {
-			return nil, diag.New(diag.Usage, "supply exact installed plugin aliases")
-		}
-		if _, ok := s.Registry.PackageByAlias(a); !ok {
-			return nil, diag.Newf(diag.Usage, "plugin alias %q is not installed", a)
-		}
-	}
-	plan := &UpdatePlan{Results: []UpdateResult{}}
+	plan := &UpdatePlan{home: h, Results: []UpdateResult{}, epoch: s.Epoch}
 	defer func() {
 		if err != nil {
 			plan.Close()
 		}
 	}()
-	for _, alias := range targets {
-		baseline, _ := s.Registry.PackageByAlias(alias)
-		c := &updateCandidate{baseline: baseline, components: aliasComponents(s.Registry, alias)}
-		r := UpdateResult{Alias: SafeText(alias), Origin: SafeText(baseline.Origin), CurrentVersion: nullable(baseline.Version), CurrentReference: nullable(SafeReference(baseline.Reference, baseline.Origin)), CurrentDigest: nullable(baseline.ContentDigest), PolicyReferencesRemoved: []string{}}
-		if ctx.Err() != nil {
-			r.Status = "not-applied"
-			r.Error = &UpdateError{Token: diag.Cancelled.Token, Message: "update preparation cancelled"}
-		} else {
-			switch baseline.Origin {
-			case registry.OriginLocalLinked:
-				r.Status = "source-managed"
-			case registry.OriginEmbedded:
-				r.Status = "not-applicable"
-			case registry.OriginLocalPinned, registry.OriginRemotePinned:
-				if baseline.Version == "" {
-					updateFailure(&r, diag.New(diag.PluginInvalid, "installed version is unknown; explicitly reinstall this plugin to establish a baseline"))
-					break
-				}
-				c.prepared, err = plugininstall.Prepare(ctx, recordedSource(baseline), plugininstall.Options{Alias: alias})
-				if err != nil {
-					updateFailure(&r, err)
-					err = nil
-					break
-				}
-				if e := c.prepared.ValidateCatalog(s.Registry); e != nil {
-					updateFailure(&r, e)
-					break
-				}
-				r.CandidateVersion = nullable(c.prepared.Manifest.Version)
-				r.CandidateReference = nullable(SafeReference(c.prepared.Reference, c.prepared.Origin))
-				r.CandidateDigest = nullable(c.prepared.Digest)
-				r.Status = "unchanged"
-				if baseline.Version != c.prepared.Manifest.Version {
-					r.Status = "update-available"
-				}
-				r.PolicyReferencesRemoved = affectedReferences(s, c)
-			default:
-				updateFailure(&r, diag.New(diag.PluginInvalid, "plugin origin cannot be updated; explicitly reinstall it"))
-			}
+	byGroup := map[marketplace.Source][]*updateTarget{}
+	var order []marketplace.Source
+	for _, p := range targets {
+		if p.Validate() != nil {
+			return nil, diag.New(diag.Usage, "supply exact installed plugins as plugin@marketplace")
 		}
-		c.providers, c.conventions = providerFacts(s.Registry, candidateNames(c))
-		if c.prepared != nil && r.Status != "failed" {
-			declarationChanges(c)
+		pkg, ok := s.Registry.PackageByProvider(p)
+		if !ok {
+			return nil, diag.Newf(diag.Usage, "plugin %q is not installed", p)
 		}
-		c.result = r
-		plan.candidates = append(plan.candidates, c)
-		plan.Results = append(plan.Results, r)
+		t := &updateTarget{provider: p, prior: pkg, components: s.Registry.ProviderComponents(p), conventions: s.Registry.ProviderConventions(p)}
+		t.result = UpdateResult{
+			ID: SafeText(p.String()), Name: SafeText(p.Plugin), Marketplace: SafeText(p.Marketplace),
+			CurrentVersion: nullable(pkg.Version), CurrentDigest: nullable(pkg.ContentDigest),
+			Added: []string{}, Withdrawn: []string{}, Changed: []string{}, PolicyReferencesRemoved: []string{},
+		}
+		plan.targets = append(plan.targets, t)
+		plan.Results = append(plan.Results, t.result)
+		if t.source, err = maintenanceSource(s.Config, pkg); err != nil {
+			failResult(&t.result, err)
+			err = nil
+			continue
+		}
+		key := groupKey(pkg.Provenance)
+		if _, seen := byGroup[key]; !seen {
+			order = append(order, key)
+		}
+		byGroup[key] = append(byGroup[key], t)
 	}
-	// Preview the complete successful batch in commit order so two withdrawals
-	// cannot both imply that the other's convention ownership will remain.
-	simulated := *s.Registry
-	simulated.Packages = slices.Clone(s.Registry.Packages)
-	simulated.Components = slices.Clone(s.Registry.Components)
-	simulated.Conventions = slices.Clone(s.Registry.Conventions)
-	for _, candidate := range plan.candidates {
-		if candidate.result.Status == "update-available" {
-			candidate.effects = conventionEffects(&simulated, candidate)
-			candidate.prepared.Register(&simulated)
+	for _, key := range order {
+		if err = ctx.Err(); err != nil {
+			return nil, ClassifySourceError(err)
 		}
+		plan.judgeGroup(ctx, s, key, byGroup[key], stage)
+	}
+	if err = ctx.Err(); err != nil {
+		return nil, ClassifySourceError(err)
+	}
+	plan.simulateEffects(s)
+	for i, t := range plan.targets {
+		plan.Results[i] = t.result
 	}
 	return plan, nil
 }
-func verifyCandidate(s *adminstate.Snapshot, c *updateCandidate) error {
-	current, ok := s.Registry.PackageByAlias(c.baseline.Alias)
-	if !ok || !reflect.DeepEqual(current, c.baseline) || !reflect.DeepEqual(aliasComponents(s.Registry, c.baseline.Alias), c.components) {
-		return diag.New(diag.AdministrationConflict, "reviewed plugin changed; review the update again")
-	}
-	owners, conventions := providerFacts(s.Registry, candidateNames(c))
-	if !reflect.DeepEqual(owners, c.providers) || !reflect.DeepEqual(conventions, c.conventions) {
-		return diag.New(diag.AdministrationConflict, "reviewed convention providers changed; review the update again")
-	}
-	if c.prepared != nil && c.result.Status != "failed" {
-		if !slices.Equal(affectedReferences(s, c), c.result.PolicyReferencesRemoved) {
-			return diag.New(diag.AdministrationConflict, "reviewed policy dependencies changed; review the update again")
+
+// judgeGroup opens one candidate for the group and judges each member.
+func (p *UpdatePlan) judgeGroup(ctx context.Context, s *adminstate.Snapshot, key marketplace.Source, members []*updateTarget, stage bool) {
+	cand, err := marketplace.OpenCandidate(ctx, key, os.TempDir())
+	if err != nil {
+		err = ClassifySourceError(err)
+		for _, t := range members {
+			failResult(&t.result, err)
 		}
-		if c.result.Status != "failed" {
-			if err := c.prepared.ValidateCatalog(s.Registry); err != nil {
-				return diag.New(diag.AdministrationConflict, "catalog constraints changed; review the update again")
+		return
+	}
+	defer cand.Close()
+	rev := SafeText(cand.Revision())
+	for _, t := range members {
+		if ctx.Err() != nil {
+			return
+		}
+		if cand.Offer().Name != t.prior.Provenance.MarketplaceName {
+			failResult(&t.result, diag.Newf(diag.MarketplaceNameConflict, "the source now publishes %q instead of %q; remove and register it again to change its namespace", cand.Offer().Name, t.prior.Provenance.MarketplaceName))
+			continue
+		}
+		t.result.CandidateRevision = &rev
+		p.judge(ctx, s, cand, t, stage)
+	}
+}
+
+func (p *UpdatePlan) judge(ctx context.Context, s *adminstate.Snapshot, cand *marketplace.Candidate, t *updateTarget, stage bool) {
+	entry, err := cand.Resolve(t.prior.Provenance.RegistrationID, t.provider.Plugin)
+	if errors.Is(err, marketplace.ErrNoEntry) {
+		// Withdrawal changes the offer, never the installed copy.
+		t.result.Status = UpdateWithdrawn
+		return
+	}
+	if err != nil {
+		failResult(&t.result, ClassifySourceError(err))
+		return
+	}
+	t.entry = entry
+	t.result.CandidateVersion = nullable(entry.Entry.Version)
+	t.result.CandidateDigest = nullable(entry.Entry.PackageDigest)
+	available := entry.Entry.Version != t.prior.Version
+	if available && stage {
+		lease, dir, lerr := adminstate.NewPackageStage(ctx, p.home)
+		if lerr != nil {
+			failResult(&t.result, lerr)
+			return
+		}
+		t.lease = lease
+		if t.prepared, err = plugininstall.Prepare(entry, dir); err != nil {
+			_ = os.RemoveAll(dir)
+			failResult(&t.result, ClassifySourceError(err))
+			return
+		}
+		t.manifest = t.prepared.Manifest
+	} else {
+		_, manifest, verr := plugininstall.Validate(entry)
+		if verr != nil {
+			failResult(&t.result, ClassifySourceError(verr))
+			return
+		}
+		t.manifest = manifest
+	}
+	if !available {
+		// Equal versions stay unchanged even when valid, changed bytes exist;
+		// replacing them is an explicit reinstall from a refreshed offer.
+		t.result.Status = UpdateUnchanged
+		return
+	}
+	if err = fallbackConflict(s.Registry, t.provider, t.manifest.Components); err != nil {
+		failResult(&t.result, err)
+		return
+	}
+	t.result.Status = UpdateAvailable
+	t.dropped = withdrawnReferences(s.Config, t.provider, t.components, t.manifest)
+	t.result.PolicyReferencesRemoved = slices.Clone(t.dropped)
+	t.declarationChanges()
+}
+
+// withdrawnReferences lists policy Locators owned by provider that the old
+// copy registered as repository locators and the candidate no longer declares.
+// Unrelated stale references are retained.
+func withdrawnReferences(cfg *config.Config, p pluginid.Provider, old []registry.Component, next *plugin.Manifest) []string {
+	registered := map[string]bool{}
+	for _, c := range old {
+		if c.Role == registry.RoleRepositoryLocator {
+			registered[c.Name] = true
+		}
+	}
+	kept := map[string]bool{}
+	for _, c := range next.Components {
+		if c.Role == registry.RoleRepositoryLocator {
+			kept[c.Name] = true
+		}
+	}
+	out := []string{}
+	for _, ref := range cfg.RepositoryResolution.Locators {
+		if r, err := pluginid.ParseRef(ref); err == nil && r.Provider == p && registered[r.Name] && !kept[r.Name] {
+			out = append(out, ref)
+		}
+	}
+	return out
+}
+
+func (t *updateTarget) declarationChanges() {
+	old, next := map[string]bool{}, map[string]bool{}
+	for _, c := range t.components {
+		old["component "+c.Name+" ("+c.Role+")"] = true
+	}
+	for _, c := range t.conventions {
+		old["convention "+c.Name] = true
+	}
+	for _, c := range t.manifest.Components {
+		next["component "+c.Name+" ("+c.Role+")"] = true
+	}
+	for _, c := range t.manifest.Conventions {
+		next["convention "+c.Name] = true
+	}
+	for _, k := range sortedKeys(next) {
+		if !old[k] {
+			t.result.Added = append(t.result.Added, SafeText(k))
+		}
+	}
+	for _, k := range sortedKeys(old) {
+		if !next[k] {
+			t.result.Withdrawn = append(t.result.Withdrawn, SafeText(k))
+		}
+	}
+	for _, c := range t.manifest.Components {
+		for _, prev := range t.components {
+			if prev.Name != c.Name || prev.Role != c.Role {
+				continue
+			}
+			prev.Revision = ""
+			if !reflect.DeepEqual(prev, plugininstall.ComponentEntry(t.provider, c)) {
+				t.result.Changed = append(t.result.Changed, SafeText("component "+c.Name))
 			}
 		}
 	}
-	return nil
+	for _, c := range t.manifest.Conventions {
+		for _, prev := range t.conventions {
+			if prev.Name == c.Name && !slices.Equal(prev.Prefixes, c.Prefixes) {
+				t.result.Changed = append(t.result.Changed, SafeText("convention "+c.Name))
+			}
+		}
+	}
 }
 
-// Check retrieves only explicitly, buffers exhaustive rows, and revalidates
-// target facts against a coherent snapshot before exposing any result.
-func Check(ctx context.Context, h workhome.Home, aliases []string) ([]UpdateResult, error) {
-	return check(ctx, h, aliases, nil)
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	slices.Sort(out)
+	return out
 }
-func check(ctx context.Context, h workhome.Home, aliases []string, afterPrepare func()) ([]UpdateResult, error) {
-	plan, err := PrepareUpdates(ctx, h, aliases, false)
+
+// simulateEffects previews the whole successful batch in commit order, so each
+// reviewed convention effect reflects the targets applied before it.
+func (p *UpdatePlan) simulateEffects(s *adminstate.Snapshot) {
+	sim := cloneRegistry(s.Registry)
+	for _, t := range p.targets {
+		if t.result.Status != UpdateAvailable {
+			continue
+		}
+		before := sim.Effective()
+		spec := plugininstall.Spec{
+			Provider: t.provider, Manifest: t.manifest, Enabled: t.prior.Enabled,
+			ContentDigest: t.result.valueDigest(), Provenance: plugininstall.ProvenanceOf(t.entry),
+		}
+		if _, err := plugininstall.Register(sim, spec); err != nil {
+			continue
+		}
+		after := sim.Effective()
+		names := map[string]bool{}
+		for _, c := range t.conventions {
+			names[c.Name] = true
+		}
+		for _, c := range t.manifest.Conventions {
+			names[c.Name] = true
+		}
+		for _, name := range sortedKeys(names) {
+			ref := pluginid.Ref{Provider: t.provider, Name: name}
+			_, was := before.ConventionByRef(ref)
+			_, will := after.ConventionByRef(ref)
+			if was != will {
+				t.effects = append(t.effects, ConventionEffect{Name: SafeText(ref.String()), AvailableBefore: was, AvailableAfter: will})
+			}
+		}
+	}
+}
+
+func (r UpdateResult) valueDigest() string {
+	if r.CandidateDigest == nil {
+		return ""
+	}
+	return *r.CandidateDigest
+}
+
+func cloneRegistry(r *registry.Registry) *registry.Registry {
+	c := *r
+	c.Packages = slices.Clone(r.Packages)
+	c.Components = slices.Clone(r.Components)
+	c.Conventions = slices.Clone(r.Conventions)
+	return &c
+}
+
+// Check prepares candidates for providers and reports them without staging or
+// persisting anything. The rows are exposed only if the administrative state
+// they were judged against is still current, so one result never mixes two
+// catalog revisions.
+func Check(ctx context.Context, h workhome.Home, providers []pluginid.Provider) ([]UpdateResult, error) {
+	plan, err := PrepareUpdates(ctx, h, providers, false)
 	if err != nil {
 		return nil, err
 	}
 	defer plan.Close()
-	if afterPrepare != nil {
-		afterPrepare()
-	}
-	s, err := adminstate.Read(ctx, h)
+	latest, err := adminstate.Read(ctx, h)
 	if err != nil {
 		return nil, err
 	}
-	for _, c := range plan.candidates {
-		if err = verifyCandidate(s, c); err != nil {
-			return nil, err
-		}
+	if latest.Epoch != plan.epoch {
+		return nil, diag.New(diag.AdministrationConflict, "installed plugins changed while checking; check again")
 	}
 	return plan.Results, updateAggregate(plan.Results)
 }
 
-// Apply commits each reviewed package independently. Authorization is checked
-// across the entire batch before the first package is staged.
-func Apply(ctx context.Context, h workhome.Home, plan *UpdatePlan, removePolicy bool) ([]UpdateResult, error) {
-	return ApplyWithOptions(ctx, h, plan, removePolicy, adminstate.WriteOptions{})
+// aggregatePrecedence ranks the outcomes that outrank the generic update
+// failure when a batch has several: a conflict or busy state tells the user
+// more than "failed".
+var aggregatePrecedence = []diag.Category{
+	diag.AdministrationConflict, diag.AdministrationBusy, diag.PluginPolicyDependency,
 }
-func ApplyWithOptions(ctx context.Context, h workhome.Home, plan *UpdatePlan, removePolicy bool, opts adminstate.WriteOptions) ([]UpdateResult, error) {
-	if plan.closed {
-		return nil, diag.New(diag.AdministrationConflict, "update candidates have been closed; review again")
+
+func updateAggregate(rows []UpdateResult) error {
+	failed, best := false, len(aggregatePrecedence)
+	for _, r := range rows {
+		if r.Status != UpdateFailed {
+			continue
+		}
+		failed = true
+		if r.Error == nil {
+			continue
+		}
+		for rank, c := range aggregatePrecedence {
+			if r.Error.Token == c.Token && rank < best {
+				best = rank
+			}
+		}
 	}
-	for _, c := range plan.candidates {
-		if c.result.Status == "update-available" && len(c.result.PolicyReferencesRemoved) > 0 && !removePolicy {
+	const summary = "one or more plugin updates failed; inspect the per-plugin outcomes"
+	switch {
+	case best < len(aggregatePrecedence):
+		return diag.New(aggregatePrecedence[best], summary)
+	case failed:
+		return diag.New(diag.PluginUpdateFailed, summary)
+	}
+	return nil
+}
+
+// verify compares exactly the facts the candidate depended on with the
+// current state, under the administration lock.
+func (t *updateTarget) verify(s *adminstate.Snapshot) error {
+	conflict := func(why string) error {
+		return diag.Newf(diag.AdministrationConflict, "%s; review the update again", why)
+	}
+	cur, ok := s.Registry.PackageByProvider(t.provider)
+	if !ok || !reflect.DeepEqual(cur, t.prior) {
+		return conflict("the reviewed plugin changed")
+	}
+	if !reflect.DeepEqual(s.Registry.ProviderComponents(t.provider), t.components) ||
+		!reflect.DeepEqual(s.Registry.ProviderConventions(t.provider), t.conventions) {
+		return conflict("the reviewed declarations changed")
+	}
+	if t.source != nil {
+		reg, ok := registrationByID(s.Config, t.source.RegistrationID)
+		if !ok || reg != *t.source {
+			return conflict("the marketplace registration changed")
+		}
+	}
+	if !slices.Equal(withdrawnReferences(s.Config, t.provider, t.components, t.manifest), t.dropped) {
+		return conflict("the policy references that depend on this plugin changed")
+	}
+	return fallbackConflict(s.Registry, t.provider, t.manifest.Components)
+}
+
+func registrationByID(cfg *config.Config, id string) (config.Marketplace, bool) {
+	for _, m := range cfg.Marketplaces {
+		if m.RegistrationID == id {
+			return m, true
+		}
+	}
+	return config.Marketplace{}, false
+}
+
+// ApplyUpdates publishes each reviewed available update in its own
+// transaction. The exact frozen candidate is applied: nothing is retrieved
+// again, and a target whose reviewed facts drifted fails alone without
+// widening what was authorized. Independent successes survive sibling
+// failures; cancellation, recovery and cleanup failures stop the remainder.
+func ApplyUpdates(ctx context.Context, plan *UpdatePlan, removePolicy bool) ([]UpdateResult, error) {
+	return ApplyUpdatesWithOptions(ctx, plan, removePolicy, adminstate.WriteOptions{})
+}
+
+// ApplyUpdatesWithOptions is ApplyUpdates with transaction checkpoint hooks for tests.
+func ApplyUpdatesWithOptions(ctx context.Context, plan *UpdatePlan, removePolicy bool, opts adminstate.WriteOptions) ([]UpdateResult, error) {
+	if plan == nil || plan.closed {
+		return nil, diag.New(diag.AdministrationConflict, "update candidates were closed; review the update again")
+	}
+	for _, t := range plan.targets {
+		if t.result.Status == UpdateAvailable && len(t.dropped) > 0 && !removePolicy {
 			return nil, diag.New(diag.PluginPolicyDependency, "update withdraws policy Locators; explicitly approve --remove-policy-references")
 		}
 	}
-	rows := make([]UpdateResult, len(plan.candidates))
-	for i, c := range plan.candidates {
-		rows[i] = c.result
-	}
+	rows := slices.Clone(plan.Results)
 	var stop error
-	for i, c := range plan.candidates {
-		if stop != nil || ctx.Err() != nil {
-			if stop == nil {
-				stop = diag.Wrap(diag.Cancelled, ctx.Err(), "update batch cancelled")
-			}
-			rows[i].Status = "not-applied"
-			rows[i].Error = &UpdateError{Token: diag.Token(stop), Message: "update was not applied"}
-			continue
+	for i, t := range plan.targets {
+		if stop == nil && ctx.Err() != nil {
+			stop = ClassifySourceError(ctx.Err())
 		}
-		if c.result.Status != "update-available" {
-			snapshot, err := adminstate.Read(ctx, h)
-			if err == nil {
-				err = verifyCandidate(snapshot, c)
-			}
-			if err != nil {
-				updateFailure(&rows[i], err)
-				// A concurrent-change conflict only affects this package; recovery,
-				// cleanup and cancellation make further targets unsafe to attempt.
-				switch diag.ExitCode(err) {
-				case diag.AdministrationRecoveryRequired.Code, diag.AdministrationCleanupFailed.Code, diag.Cancelled.Code:
-					stop = err
-				}
+		if stop != nil {
+			if t.result.Status == UpdateAvailable {
+				rows[i].Status = UpdateNotApplied
+				rows[i].Error = &UpdateError{Token: diag.Token(stop), Message: "the update was not applied"}
 			}
 			continue
 		}
-		type facts struct {
-			providers   []registry.Package
-			conventions []registry.Convention
+		if t.result.Status != UpdateAvailable {
+			continue
 		}
-		refreshed := map[*updateCandidate]facts{}
-		err := adminstate.WithWriteOptions(ctx, h, "work plugin update "+c.baseline.Alias+" --yes", func(s *adminstate.Session) error {
-			if err := verifyCandidate(s.Snapshot, c); err != nil {
+		operation := "work plugin update " + t.provider.String() + " --yes"
+		err := adminstate.WithWriteOptions(ctx, plan.home, operation, func(s *adminstate.Session) error {
+			if err := t.verify(s.Snapshot); err != nil {
 				return err
 			}
-			digest, err := plugininstall.ContentDigest(c.prepared.ContentDir)
-			if err != nil || digest != c.prepared.Digest {
-				return diag.New(diag.AdministrationConflict, "prepared content changed; review the update again")
-			}
-			stage, err := c.prepared.Stage(h.PluginsDir())
-			if err != nil {
-				return diag.Wrap(diag.PluginUpdateFailed, err, "cannot stage plugin update")
-			}
-			if err = s.Replace(c.baseline.Alias, stage); err != nil {
-				_ = os.RemoveAll(stage)
+			if _, err := t.prepared.Publish(s, t.prior.Enabled); err != nil {
 				return err
 			}
-			// Only advance remaining provider facts that still match under this lock.
-			// This recognizes this batch's own approved changes without accepting
-			// unrelated provider drift that occurred since review.
-			eligible := []*updateCandidate{}
-			for _, next := range plan.candidates[i+1:] {
-				owners, conventions := providerFacts(s.Registry, candidateNames(next))
-				if reflect.DeepEqual(owners, next.providers) && reflect.DeepEqual(conventions, next.conventions) {
-					eligible = append(eligible, next)
-				}
-			}
-			c.prepared.Register(s.Registry)
-			for _, next := range eligible {
-				owners, conventions := providerFacts(s.Registry, candidateNames(next))
-				refreshed[next] = facts{owners, conventions}
-			}
-			refs := c.result.PolicyReferencesRemoved
-			s.Config.RepositoryResolution.Locators = slices.DeleteFunc(slices.Clone(s.Config.RepositoryResolution.Locators), func(ref string) bool { return slices.Contains(refs, ref) })
+			t.transferred = true
+			s.Config.RepositoryResolution.Locators = slices.DeleteFunc(slices.Clone(s.Config.RepositoryResolution.Locators),
+				func(ref string) bool { return slices.Contains(t.dropped, ref) })
 			return nil
 		}, opts)
-		if err == nil || diag.ExitCode(err) == diag.AdministrationCleanupFailed.Code {
-			for next, f := range refreshed {
-				next.providers = f.providers
-				next.conventions = f.conventions
+		committed := err == nil || diag.ExitCode(err) == diag.AdministrationCleanupFailed.Code
+		switch {
+		case err == nil:
+			rows[i].Status, rows[i].Committed = UpdateUpdated, true
+		case committed:
+			rows[i].Status, rows[i].Committed, rows[i].CleanupPending = UpdateUpdated, true, true
+			rows[i].Error = &UpdateError{Token: diag.Token(err), Message: "the update was committed but cleanup is pending"}
+		default:
+			if _, typed := errors.AsType[*diag.Error](err); !typed {
+				err = diag.Wrap(diag.PluginUpdateFailed, err, "plugin update failed; the previous copy was restored")
 			}
+			failResult(&rows[i], err)
 		}
-		if err == nil {
-			rows[i].Status = "updated"
-			continue
-		}
-		if diag.ExitCode(err) == diag.AdministrationCleanupFailed.Code {
-			rows[i].Status = "updated"
-			rows[i].Error = &UpdateError{Token: diag.Token(err), Message: "update committed; cleanup requires recovery"}
-		} else {
-			updateFailure(&rows[i], err)
-		}
-		// Same stop set as candidate verification above.
 		switch diag.ExitCode(err) {
-		case diag.AdministrationRecoveryRequired.Code, diag.AdministrationCleanupFailed.Code, diag.Cancelled.Code:
+		case diag.Cancelled.Code, diag.AdministrationRecoveryRequired.Code, diag.AdministrationCleanupFailed.Code:
 			stop = err
 		}
 	}
@@ -520,4 +600,16 @@ func ApplyWithOptions(ctx context.Context, h workhome.Home, plan *UpdatePlan, re
 		return rows, stop
 	}
 	return rows, updateAggregate(rows)
+}
+
+// UpdateSummary renders one result's version change for human review.
+func UpdateSummary(r UpdateResult) string {
+	value := func(v *string) string {
+		if v == nil {
+			return "unknown"
+		}
+		return *v
+	}
+	return fmt.Sprintf("%s: %s  version %s → %s  digest %s → %s", r.ID, r.Status,
+		value(r.CurrentVersion), value(r.CandidateVersion), value(r.CurrentDigest), value(r.CandidateDigest))
 }

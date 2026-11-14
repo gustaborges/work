@@ -87,14 +87,21 @@ func PublishLink(ctx context.Context, p PublishParams) (PublishResult, error) {
 		if latest.Key != p.Component.Key {
 			return result, diag.New(diag.ManualComponentUnavailable, "the selected manual Linker's key has changed; select it again")
 		}
-	} else if semconv.ValidatePublished(reg.PluginNameOf(p.Component.Alias), p.Component.Key) != nil {
+	} else if semconv.ValidatePublished(p.Component.Provider.Plugin, p.Component.Key) != nil {
 		return result, failure(fmt.Errorf("invalid published key"))
 	}
 	current, err := publicationContext(ctx, p.Expected)
 	if err != nil {
 		return result, err
 	}
-	current.State.Links[p.Component.Key] = p.Value
+	pkg, ok := reg.PackageByProvider(p.Component.Provider)
+	if !ok {
+		return result, diag.New(diag.ManualComponentUnavailable, "the publishing plugin is no longer installed; select it again")
+	}
+	// A private key is stored against the publishing source instance so a
+	// homonymous provider, or a re-registered source, never reads or overwrites it.
+	linkKey := semconv.BindPublished(p.Component.Provider, pkg.Provenance.RegistrationID, p.Component.Key)
+	current.State.Links[linkKey] = p.Value
 	if ctx.Err() != nil {
 		return result, cancelled()
 	}
@@ -115,7 +122,7 @@ func PublishLink(ctx context.Context, p PublishParams) (PublishResult, error) {
 		now = time.Now
 	}
 	if p.Record != nil {
-		entry := projection.Provenance{WorkID: id, Section: "links", Key: p.Component.Key, SourceComponent: p.Component.QualifiedName(), SourceOperation: p.Operation, RecordedAt: now().UTC().Format(time.RFC3339)}
+		entry := projection.Provenance{WorkID: id, Section: "links", Key: linkKey, SourceComponent: p.Component.QualifiedName(), SourceOperation: p.Operation, RecordedAt: now().UTC().Format(time.RFC3339)}
 		if err := p.Record(current, entry); err != nil {
 			result.Diagnostics = append(result.Diagnostics, fmt.Sprintf("%s: link provenance was not recorded: %v", p.Component.QualifiedName(), err))
 		}

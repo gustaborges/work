@@ -1,6 +1,9 @@
 # ADR-0019: Progressive CLI Surface with Static Home and Grouped Help
 
-**Status:** Accepted
+**Status:** Superseded in part for feature 009
+**Superseded by:** ADR-0025 (plugin/marketplace grammar and manager destinations); static home, grouped help, and unrelated commands remain.
+
+The original decision body below is retained as historical evidence.
 
 **Date:** 2026-09-07
 

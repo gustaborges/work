@@ -5,12 +5,17 @@ import "testing"
 func TestRecoveryCommandNamesOnlyCommandsTheUserRan(t *testing.T) {
 	const generic = "the interrupted administrative command"
 	for operation, want := range map[string]string{
-		"work plugin install":                  "work plugin install",
-		"work plugin install --embedded":       "work plugin install",
+		"work plugin marketplace add ./x":      "work plugin marketplace add",
+		"work plugin marketplace upgrade":      "work plugin marketplace upgrade",
+		"work plugin marketplace evil":         generic,
+		"work plugin marketplace":              generic,
+		"work plugin install a":                generic,
+		"work plugin update a --yes":           "work plugin update",
+		"work plugin marketplace remove x":     "work plugin marketplace remove",
 		"work plugin enable a b":               "work plugin enable",
 		"work plugin disable a":                "work plugin disable",
-		"work plugin update a":                 "work plugin update",
-		"work plugin uninstall a":              "work plugin uninstall",
+		"work plugin remove a@m":               "work plugin remove",
+		"work plugin add a@m":                  "work plugin add",
 		"work repository policy add":           "work repository policy",
 		"work repository policy move":          "work repository policy",
 		"work repository policy remove":        "work repository policy",

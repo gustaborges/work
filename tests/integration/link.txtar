@@ -4,12 +4,12 @@ mkdir $WS
 gitrepo src
 exec work start $WORK/src --workspace $WS --base main --slug topic --prefix '{slug}' --yes
 preparepluginfixture manual-suite PKG
-exec work plugin install $PKG --as manual
+installplugin manual $PKG
 env WORK_FIXTURE_LOG=$WORK/launches.jsonl
 workid $WS/in-progress/src_topic/work-state.json ID
 cd $WS/in-progress/src_topic/worktree
-exec work link manual/linker ' exact $literal; value '
-stdout '^work: linked .* github.pull_request manual/linker\n$'
+exec work link manual-suite@manual/linker ' exact $literal; value '
+stdout '^work: linked .* github.pull_request manual-suite@manual/linker\n$'
 ! stdout 'literal'
 ! stderr .
 exec work status --json
@@ -18,33 +18,33 @@ stdout '"github.pull_request":" exact \$literal; value "'
 exec work link linker -- --leading-dash
 exec work status --json
 stdout '"github.pull_request":"--leading-dash"'
-! exec work link manual/linker ''
+! exec work link manual-suite@manual/linker ''
 stderr 'usage'
 ! stdout .
 ! exec work link
 stderr 'usage'
-! exec work link manual/linker
+! exec work link manual-suite@manual/linker
 stderr 'usage'
-! exec work link manual/linker value --json=false
+! exec work link manual-suite@manual/linker value --json=false
 stderr 'usage'
-! exec work link manual/importer value
+! exec work link manual-suite@manual/importer value
 stderr 'manual-component-unavailable'
 cd $WORK
-exec work plugin install $PKG --as alternate
+installplugin alternate $PKG
 cd $WS/in-progress/src_topic/worktree
 ! exec work link linker value
 stderr 'manual-component-ambiguous'
-stderr 'alternate/linker, manual/linker'
-exec work link alternate/linker replacement
-stdout 'github.pull_request alternate/linker'
+stderr 'manual-suite@alternate/linker, manual-suite@manual/linker'
+exec work link manual-suite@alternate/linker replacement
+stdout 'github.pull_request manual-suite@alternate/linker'
 ! exists $WORK/launches.jsonl
 cd $WORK
-! exec work link manual/linker value
+! exec work link manual-suite@manual/linker value
 stderr 'target-not-found'
 ! stdout .
 exec work archive $ID --yes
 today TODAY
 cd $WS/archived/$TODAY-src_topic
-! exec work link manual/linker value
+! exec work link manual-suite@manual/linker value
 stderr 'target-archived'
 ! stdout .

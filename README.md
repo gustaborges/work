@@ -71,64 +71,64 @@ State lives under `~/.work` (override with `WORK_HOME`):
 
 ## Plugin manager
 
-Run `work plugin` in a terminal to open the installed inventory. Rows show each
-plugin's name and Enabled/Disabled state. Use ↑/↓ to select, Enter for details,
-Space to enable/disable, `/` to search, and ←/→ to switch destinations, including
-Install plugin. Enter/Tab focuses the install form; Esc restores tab navigation
-while keeping its draft.
+Run `work plugin` in a terminal to open the manager on **Installed**, or
+`work plugin marketplace` to open it on **Marketplaces**. Installed rows show
+each plugin's qualified `plugin@marketplace` identity and Enabled/Disabled
+state under complete installed/enabled totals. Use ↑/↓ to select, Space to mark
+rows, `a` for actions on the marked rows (or every row shown), `f` to filter
+by marketplace, `/` to search, Enter for details and ←/→ to switch views.
 
-**Official** lists the bundled reference package and offers explicit offline
-installation. **Install plugin** shows an editable local path or git URL,
-with an optional alias and a link mode for local development. Details expose
-update checks and uninstall; reviews show the exact change and require separate
-approval for removing policy references.
+Marketplaces lists each source with its kind (Included with Work, Git
+repository, Local directory). Source details browse its offered plugins, show
+what is installed from it, upgrade its catalog or remove it. Adding a
+marketplace is a form with a source and, for Git, an optional branch.
 
-Actions, declined reviews, and recoverable errors keep the manager open. Esc
-returns to the parent screen; from the inventory it clears an active search,
-then closes. Normal exit restores the terminal and prints only
-`Changes saved successfully.` Start interview feedback is unchanged.
+Every change is reviewed first and shows the exact effect; separate approval is
+required to remove policy references. Actions, declined reviews and recoverable
+errors keep the manager open. Esc returns to the parent screen; from the top it
+clears an active search, then closes. Normal exit restores the terminal and
+prints only `Changes saved successfully.`
 
-Direct commands and automation remain available through `work plugin --help`.
-See the [plugin contract](specs/008-sustainable-operation/contracts/cli-work-plugin.md)
-for flags, output and dependency authorization. Official is currently a category
-for the bundled offering; marketplace registration/discovery is not implemented.
+Direct commands and automation remain available through `work plugin --help`;
+see [marketplaces and plugins](docs/marketplaces.md) and the
+[CLI contract](specs/009-marketplace-distribution/contracts/cli-work-plugin.md).
 
 ## Administrative commands and recovery
 
 ```sh
+work plugin marketplace add https://example.org/team/plugins.git
+work plugin add acme@team
 work plugin list --json
-work plugin disable acme
-work plugin enable acme
-work plugin update --check acme --json
-work plugin update acme --yes
-work plugin uninstall acme --yes --remove-policy-references
-work plugin install --embedded
+work plugin disable acme@team
+work plugin enable acme@team
+work plugin update --check acme@team --json
+work plugin update acme@team --yes
+work plugin remove acme@team --yes --remove-policy-references
+work plugin marketplace remove team --yes
 
-work repository policy add acme/clone
-work repository policy move acme/clone --before work-reference/filesystem-repository-locator
+work repository policy add acme@team/clone
+work repository policy move acme@team/clone --before work-reference@builtin/filesystem-repository-locator
 work repository root add /path/to/repositories
 work convention show --json
 work convention set freeform
 ```
 
-Use exact installed aliases for plugin management. Installation, enablement and
-updates leave policy membership/order unchanged unless an update withdraws a
-referenced Locator and you approve removing that reference. Disabled and missing
-policy entries remain visible with an availability reason. Remembered conventions
-also remain visible when their providers are unavailable; explicitly set an
-available replacement before starting a new Work noninteractively.
+Use exact `plugin@marketplace` identities for plugin management. Installation,
+enablement and updates leave policy membership/order unchanged unless an update
+withdraws a referenced Locator and you approve removing that reference. Disabled
+and missing policy entries remain visible with an availability reason. Remembered
+conventions also remain visible when their providers are unavailable; explicitly
+set an available replacement before starting a new Work noninteractively.
 
 Updates compare the author's opaque version string, then apply the exact candidate
-prepared for review. Local pinned packages use a frozen copy; remote pinned packages
-use the source's default revision. Linked packages report `source-managed` and are
-refreshed by explicit reinstall. The bundled package reports `not-applicable` and
-uses offline `install --embedded`. Removing a linked package preserves its external
-source. Removing the bundled package survives later setup and upgrades; explicit
-embedded installation restores it without inserting a policy entry.
+prepared for review. Installed plugins are independent copies; removing a
+marketplace removes the plugins installed from it, and removing the included
+`work-reference` plugin survives later setup and upgrades. Add it again with
+`work plugin add work-reference@builtin`.
 
 `--yes` confirms a determined update/removal; policy dependency removal separately
 requires `--remove-policy-references`. Updates commit independently per package and
-report every target; an uninstall set commits together. Existing Works and remembered
+report every target; a removal set commits together. Existing Works and remembered
 conventions survive these operations. Read commands and update checks never bootstrap,
 repair state, create locks or open the Work database.
 
@@ -186,7 +186,7 @@ are shown only in debug mode.
 
 In a terminal, omit the provider to choose from eligible manual components;
 `work link LINKER` collects only the value. Non-interactive calls require every
-argument. Qualified `alias/name` identities resolve ambiguous bare names.
+argument. Qualified `plugin@marketplace/name` identities resolve ambiguous bare names.
 Providers must declare manual availability; Importers also require all declared
 mandatory inputs. Missing links can be supplied with `work link`; unavailable
 providers require an installed/enabled package. Package enable/disable commands
@@ -297,7 +297,7 @@ A plugin can declare **Linkers** (discover a link for the Work) and **Importers*
 Work. With only the reference package installed nothing extra happens or is printed.
 
 After the three result lines above, each eligible component reports on stderr, in a
-fixed order (`<alias>/<name>` ascending, Linkers first):
+fixed order (`<plugin>@<marketplace>/<name>` ascending, Linkers first):
 
 ```
 work: running acme/pr-linker (discover)
@@ -313,7 +313,7 @@ work: acme/notes-importer: imported 2 item(s)
   none of them would overwrite anything, touch `worktree/` or `work-state.json`, or be a
   symlink. Otherwise none of them are added.
 - **An extension can never fail the start.** Any problem is one warning on stderr
-  (`warning: <token>: <alias>/<name> (<operation>) for Work <id>: <summary>`), the Work stays
+  (`warning: <token>: <plugin>@<marketplace>/<name> (<operation>) for Work <id>: <summary>`), the Work stays
   usable and the exit code stays 0. Tokens: `extension-start-failed`, `extension-failed`,
   `extension-response-invalid`, `extension-output-refused`, `extension-persist-failed`,
   `extension-interrupted`. Set `WORK_DEBUG=1` to add the exit status and the extension's

@@ -3,10 +3,9 @@
 package integration
 
 import (
-	"fmt"
 	"github.com/creack/pty"
-	fixtures "github.com/gustaborges/work/tests/fixtures/plugins"
-	"net/url"
+	"github.com/gustaborges/work/internal/bootstrap"
+	"github.com/gustaborges/work/internal/workhome"
 	"os/exec"
 	"path/filepath"
 	"reflect"
@@ -50,49 +49,6 @@ func hubExit(c *console, menu string) {
 	if enters, leaves := strings.Count(raw, "\x1b[?1049h"), strings.Count(raw, "\x1b[?1049l"); enters != 1 || leaves != 1 {
 		c.t.Fatalf("hub restarted its terminal session: %d enters, %d leaves", enters, leaves)
 	}
-}
-
-func TestAdminPluginHubToggleUpdateRemoval(t *testing.T) {
-	bin := buildWorkBin(t)
-	env, dir, home := ptyEnv(t)
-	src := fixtures.Prepare(t, "admin-suite")
-	hubRun(t, bin, env, dir, "plugin", "install", src, "--as", "a")
-	hubRun(t, bin, env, dir, "repository", "policy", "add", "a/clone")
-	c := newConsoleIn(t, dir, bin, env, "plugin")
-	managerScreen(c, "Installed (1)", "Enabled")
-	if screen := c.screen(); strings.Contains(screen, "release-blue") || strings.Contains(screen, "local-pinned") {
-		t.Fatal(screen)
-	}
-	c.send(" ")
-	managerScreen(c, "a disabled.", "Disabled")
-	before := adminTree(t, home)
-	hubRun(t, bin, env, dir, "plugin", "disable", "a")
-	if !reflect.DeepEqual(before, adminTree(t, home)) {
-		t.Fatal("hub/direct disable differed")
-	}
-	fixtures.Revise(t, src, "green-hub", nil)
-	c.send("\r")
-	managerScreen(c, "Plugins › a", "Check for updates")
-	c.send("\x1b[B\r")
-	managerScreen(c, "Review update", "green-hub")
-	// Source changes after review must never replace the frozen candidate.
-	fixtures.Revise(t, src, "not-reviewed", nil)
-	c.send("\x1b[B\r")
-	managerScreen(c, "Updated a.", "green-hub")
-	c.send("\x1b[B\r")
-	managerScreen(c, "Review uninstall", "a/clone")
-	c.send("\x1b")
-	managerScreen(c, "Plugins › a", "Uninstall")
-	if got := hubRun(t, bin, env, dir, "plugin", "list"); !strings.Contains(got, "green-hub") {
-		t.Fatal(got)
-	}
-	c.send("\r")
-	managerScreen(c, "Review uninstall", "a/clone")
-	c.send("\x1b[B\x1b[B\r")
-	managerScreen(c, "Authorize the listed", "Review uninstall")
-	c.send("\x1b[A \x1b[B\r")
-	managerScreen(c, "Uninstalled a.", "Installed (0)")
-	managerExit(c)
 }
 
 func TestAdminRepositoryHubRootCorrectionAndClear(t *testing.T) {
@@ -191,10 +147,12 @@ func TestAdminConventionStartExplicitSoleReplacement(t *testing.T) {
 	env, dir, home := ptyEnv(t)
 	repo := filepath.Join(dir, "src", "demo")
 	makeRepo(t, repo)
-	hubRun(t, bin, env, dir, "plugin", "install", "--embedded")
-	hubRun(t, bin, env, dir, "plugin", "install", fixtures.Prepare(t, "admin-suite"), "--as", "a")
+	if err := bootstrap.EnsureSeed(workhome.At(home)); err != nil {
+		t.Fatal(err)
+	}
+	installPluginFixtureIn(t, env, "a", "admin-suite")
 	hubRun(t, bin, env, repo, "convention", "set", "admin-team")
-	hubRun(t, bin, env, dir, "plugin", "disable", "a")
+	hubRun(t, bin, env, dir, "plugin", "disable", "admin-suite@a")
 	writeRepositoryRoots(t, home, filepath.Dir(repo))
 	ws := filepath.Join(dir, "ws")
 	args := []string{"start", repo, "--workspace", ws, "--base", "main", "--slug", "replace", "--prefix", "{slug}", "--yes"}
@@ -223,87 +181,39 @@ func TestAdminConventionStartExplicitSoleReplacement(t *testing.T) {
 	if code := c.wait(); code != 0 {
 		t.Fatal(code, c.screen())
 	}
-	assertConventionShow(t, bin, env, repo, "work: convention freeform")
+	assertConventionShow(t, bin, env, repo, "work: convention work-reference@builtin/freeform")
 	// A selected provider changing after convention acceptance fails before Work
 	// materialization, even when no executable declaration changed.
 	hubRun(t, bin, env, repo, "convention", "set", "freeform")
 	args = []string{"start", repo, "--base", "main", "--slug", "drift", "--prefix", "{slug}"}
 	c = newConsoleIn(t, dir, bin, env, args...)
 	c.expect("Create Work")
-	hubRun(t, bin, env, dir, "plugin", "disable", "work-reference")
+	hubRun(t, bin, env, dir, "plugin", "disable", "work-reference@builtin")
 	c.send("y")
 	if code := c.wait(); code != 53 {
 		t.Fatal(code, c.screen())
 	}
 }
 
-func TestAdminPluginHubInstallCheckAndEnable(t *testing.T) {
-	bin := buildWorkBin(t)
-	env, dir, home := ptyEnv(t)
-	src := fixtures.Prepare(t, "admin-suite")
-	c := newConsoleIn(t, dir, bin, env, "plugin")
-	managerScreen(c, "Installed (0)", "No plugins installed")
-	c.send("i")
-	managerScreen(c, "Source:", "Review installation")
-	c.send(src + "\rbad/alias\r\r\r")
-	managerScreen(c, "Enter a valid plugin alias", "Alias:")
-	c.send("\x15a\r\r\r")
-	managerScreen(c, "Plugins › Review installation", "Plugin   a")
-	c.send("\x1b[B\r")
-	managerScreen(c, "Installed a.", "Installed (1)")
-	if strings.Contains(c.screen(), "bad/alias") {
-		t.Fatal("rejected alias survived", c.screen())
-	}
-	c.send(" ")
-	managerScreen(c, "a disabled.", "Disabled")
-	c.send(" ")
-	managerScreen(c, "a enabled.", "Enabled")
-	before := adminTree(t, home)
-	c.send("\r\x1b[B\r")
-	managerScreen(c, "Update check", "unchanged")
-	c.send("\r")
-	managerScreen(c, "Plugins › a", "Check for updates")
-	c.send("\x1b")
-	managerScreen(c, "Installed (1)", "Esc close")
-	if !reflect.DeepEqual(before, adminTree(t, home)) {
-		t.Fatal("pure check changed state")
-	}
-	c.send("\x1b[C")
-	managerScreen(c, "[Official]", "Available")
-	c.send("\r")
-	managerScreen(c, "Plugins › work-reference", "Install bundled package")
-	c.send("\r")
-	// The action label and "Available offline." already appear on the details
-	// screen; only the review text proves preparation finished, and keys sent
-	// while the manager is still preparing are discarded.
-	managerScreen(c, "Install work-reference offline.", "Repository policy membership is unchanged.")
-	c.send("\x1b[B\r")
-	managerScreen(c, "Installed work-reference.", "Installed (2)")
-	c.send("\x1b")
-	managerScreen(c, "[Official]", "Enabled", "Esc close")
-	managerExit(c)
-}
-
 func TestAdminRepositoryHubPolicyOperations(t *testing.T) {
 	bin := buildWorkBin(t)
 	env, dir, home := ptyEnv(t)
-	src := fixtures.Prepare(t, "admin-suite")
 	for _, alias := range []string{"a", "b"} {
-		hubRun(t, bin, env, dir, "plugin", "install", src, "--as", alias)
+		installPluginFixtureIn(t, env, alias, "admin-suite")
 	}
-	hubRun(t, bin, env, dir, "plugin", "disable", "b")
+	hubRun(t, bin, env, dir, "plugin", "disable", "admin-suite@b")
 	for _, alias := range []string{"a", "b"} {
 		c := newConsoleIn(t, dir, bin, env, "repository")
 		c.expect("Repositories")
 		c.send("/Add policy Locator\r")
 		c.expect("Select policy Locator")
-		c.send("/" + alias + "/clone\r")
+		c.send("/admin-suite@" + alias + "/clone\r")
 		c.expect("Policy position")
 		c.send("\r")
 		c.expect("Review repository change")
 		c.send("y")
 		c.expect("work: policy now")
-		c.expect("1  a/clone")
+		c.expect("1  admin-suite@a/clone")
 		if alias == "b" {
 			c.expect("package-disabled")
 		}
@@ -313,17 +223,17 @@ func TestAdminRepositoryHubPolicyOperations(t *testing.T) {
 	c.expect("Repositories")
 	c.send("/Move policy Locator\x1b[B\r")
 	c.expect("Select policy Locator")
-	c.send("/b/clone\r")
+	c.send("/admin-suite@b/clone\r")
 	c.expect("Policy position")
 	c.send("\r")
 	c.expect("Review repository change")
-	c.expect("--before a/clone")
+	c.expect("--before admin-suite@a/clone")
 	c.send("y")
-	c.expect("work: policy now b/clone, a/clone")
-	c.expect("1  b/clone")
+	c.expect("work: policy now admin-suite@b/clone, admin-suite@a/clone")
+	c.expect("1  admin-suite@b/clone")
 	hubExit(c, "Repositories")
 	before := adminTree(t, home)
-	hubRun(t, bin, env, dir, "repository", "policy", "replace", "b/clone", "a/clone")
+	hubRun(t, bin, env, dir, "repository", "policy", "replace", "admin-suite@b/clone", "admin-suite@a/clone")
 	if !reflect.DeepEqual(before, adminTree(t, home)) {
 		t.Fatal("hub/direct order differed")
 	}
@@ -331,15 +241,15 @@ func TestAdminRepositoryHubPolicyOperations(t *testing.T) {
 	c.expect("Repositories")
 	c.send("/Replace policy order\r")
 	c.expect("Policy order")
-	c.send("/a/clone\r")
-	c.expect("Selected: a/clone")
-	c.send("/b/clone\r")
-	c.expect("Selected: a/clone, b/clone")
+	c.send("/admin-suite@a/clone\r")
+	c.expect("Selected: admin-suite@a/clone")
+	c.send("/admin-suite@b/clone\r")
+	c.expect("Selected: admin-suite@a/clone, admin-suite@b/clone")
 	c.send("/Review selected entries\r")
 	c.expect("Review repository change")
 	c.send("y")
-	c.expect("work: policy now a/clone, b/clone")
-	c.expect("1  a/clone")
+	c.expect("work: policy now admin-suite@a/clone, admin-suite@b/clone")
+	c.expect("1  admin-suite@a/clone")
 	hubExit(c, "Repositories")
 	c = newConsoleIn(t, dir, bin, env, "repository")
 	c.expect("Repositories")
@@ -363,8 +273,6 @@ func TestAdminHubEmptyBackAndIdentitySafety(t *testing.T) {
 	c := newConsoleIn(t, dir, bin, env, "plugin")
 	c.expect("No plugins installed")
 	managerScreen(c, "Installed (0)", "Esc close")
-	c.send("\x1b[C")
-	managerScreen(c, "[Official]", "Available")
 	managerExit(c)
 	c = newConsoleIn(t, repo, bin, env, "convention")
 	c.expect("Repository: https://example.test/project")
@@ -387,15 +295,15 @@ func TestAdminHubReadResultsRemainVisibleUntilBack(t *testing.T) {
 	env, dir, home := ptyEnv(t)
 	repo := filepath.Join(dir, "repo")
 	makeRepo(t, repo)
-	hubRun(t, bin, env, dir, "plugin", "install", fixtures.Prepare(t, "admin-suite"), "--as", "visible")
-	hubRun(t, bin, env, dir, "repository", "policy", "add", "visible/clone")
+	installPluginFixtureIn(t, env, "visible", "admin-suite")
+	hubRun(t, bin, env, dir, "repository", "policy", "add", "admin-suite@visible/clone")
 	hubRun(t, bin, env, repo, "convention", "set", "admin-team")
 	before := adminTree(t, home)
 	for _, tc := range []struct{ hub, action, title, result string }{
-		{"repository", "List policy", "Repository policy", "visible/clone  (available)"},
-		{"repository", "List installed Locators", "Installed Locators", "visible/clone"},
+		{"repository", "List policy", "Repository policy", "admin-suite@visible/clone  (available)"},
+		{"repository", "List installed Locators", "Installed Locators", "admin-suite@visible/clone"},
 		{"repository", "List search roots", "Repository search roots", "no repository search roots"},
-		{"convention", "Inspect remembered convention", "Remembered convention", "work: convention admin-team"},
+		{"convention", "Inspect remembered convention", "Remembered convention", "work: convention admin-suite@visible/admin-team"},
 	} {
 		t.Run(tc.hub+"/"+tc.action, func(t *testing.T) {
 			c := newConsoleIn(t, repo, bin, env, tc.hub)
@@ -415,28 +323,6 @@ func TestAdminHubReadResultsRemainVisibleUntilBack(t *testing.T) {
 	}
 }
 
-func TestAdminHubInstallBackKeepsOneTerminalSession(t *testing.T) {
-	bin := buildWorkBin(t)
-	env, dir, home := ptyEnv(t)
-	before := adminTree(t, home)
-	c := newConsoleIn(t, dir, bin, env, "plugin")
-	managerScreen(c, "Installed (0)", "Esc close")
-	c.send("i")
-	managerScreen(c, "Source:", "Review installation")
-	c.send("/unused-source\rremembered-alias\r")
-	managerFormBack(c)
-	managerScreen(c, "Installed (0)", "Esc close")
-	c.send("i")
-	managerScreen(c, "Alias: remembered-alias", "Review installation")
-	managerFormBack(c)
-	managerScreen(c, "Installed (0)", "Esc close")
-	managerExit(c)
-	if !reflect.DeepEqual(before, adminTree(t, home)) {
-		t.Fatal("Back changed state")
-	}
-}
-
-// Assert reconstructed screens, not old text still present in the byte stream.
 func managerScreen(c *console, texts ...string) {
 	c.t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -480,99 +366,6 @@ func managerClose(c *console, key string) {
 	}
 }
 
-func TestAdminPluginManagerErrorRecoveryAndViewport(t *testing.T) {
-	bin := buildWorkBin(t)
-	for _, term := range []string{"xterm-256color", "dumb"} {
-		t.Run(term, func(t *testing.T) {
-			env, dir, home := ptyEnv(t)
-			env = append(env, "TERM="+term, "NO_COLOR=1")
-			before := adminTree(t, home)
-			c := newConsoleIn(t, dir, bin, env, "plugin")
-			managerScreen(c, "Installed (0)", "Esc close")
-			_ = pty.Setsize(c.f, &pty.Winsize{Rows: 16, Cols: 64})
-			c.rows, c.cols = 16, 64
-			c.send("i")
-			managerScreen(c, "Source:", "Esc tabs")
-			c.send("/missing-plugin\r\r\r\r")
-			managerScreen(c, "plugin content", "Review installation")
-			managerFormBack(c)
-			managerScreen(c, "Installed (0)", "Esc close")
-			_ = pty.Setsize(c.f, &pty.Winsize{Rows: 50, Cols: 120})
-			c.rows, c.cols = 50, 120
-			c.send("\x1b[C")
-			managerScreen(c, "[Official]", "Available")
-			c.send("\r\r")
-			managerScreen(c, "Install bundled package", "offline")
-			c.send("\x1b")
-			managerScreen(c, "Plugins › work-reference", "Install bundled package")
-			c.send("\x1b")
-			managerScreen(c, "[Official]", "Esc close")
-			managerExit(c)
-			if !reflect.DeepEqual(before, adminTree(t, home)) {
-				t.Fatal("error or declined review changed state")
-			}
-		})
-	}
-}
-
-func TestAdminPluginManagerRemoteInstallAndSearch(t *testing.T) {
-	bin := buildWorkBin(t)
-	env, dir, _ := ptyEnv(t)
-	src := fixtures.Prepare(t, "admin-suite")
-	adminCommitSource(t, src)
-	source := (&url.URL{Scheme: "file", Path: filepath.ToSlash(src)}).String()
-	c := newConsoleIn(t, dir, bin, env, "plugin")
-	managerScreen(c, "Installed (0)", "Esc close")
-	c.send("i")
-	managerScreen(c, "Source:", "Esc tabs")
-	c.send(source + "\rremote-plugin\r\r\r")
-	managerScreen(c, "Review installation", "remote-pinned")
-	c.send("\x1b[B\r")
-	managerScreen(c, "Installed remote-plugin.", "Installed (1)")
-	c.send("/REMOTE\r")
-	managerScreen(c, "remote-plugin", "Enabled")
-	c.send("\r")
-	managerScreen(c, "Plugins › remote-plugin", "Origin   remote-pinned")
-	c.send("\x1b")
-	managerScreen(c, "/ REMOTE", "Esc close")
-	c.send("\x1b")
-	managerScreen(c, "/ Search plugins", "Esc close")
-	managerExit(c)
-}
-
-func TestAdminPluginManagerLongInventoryAndRepeatedBack(t *testing.T) {
-	bin := buildWorkBin(t)
-	env, dir, home := ptyEnv(t)
-	src := fixtures.Prepare(t, "admin-suite")
-	for i := 0; i < 28; i++ {
-		hubRun(t, bin, env, dir, "plugin", "install", src, "--as", fmt.Sprintf("plugin-%02d-with-a-long-but-distinct-name", i))
-	}
-	before := adminTree(t, home)
-	c := newConsoleIn(t, dir, bin, env, "plugin")
-	managerScreen(c, "Installed (28)", "Esc close")
-	_ = pty.Setsize(c.f, &pty.Winsize{Rows: 24, Cols: 80})
-	c.rows, c.cols = 24, 80
-	c.send("\x1b[F")
-	managerScreen(c, "plugin-27-with-a-long-but-distinct-name", "28 of 28")
-	for range 3 {
-		c.send("\r")
-		managerScreen(c, "Plugins › plugin-27", "Check for updates")
-		c.send("\x1b")
-		managerScreen(c, "plugin-27-with-a-long-but-distinct-name", "Esc close")
-	}
-	c.send("/plugin-04\r")
-	managerScreen(c, "/ plugin-04", "plugin-04-with-a-long-but-distinct-name")
-	if strings.Contains(c.screen(), "plugin-27-with-a-long-but-distinct-name") {
-		t.Fatal("search retained unrelated row", c.screen())
-	}
-	c.send("\x1b")
-	managerScreen(c, "/ Search plugins", "Esc close")
-	managerExit(c)
-	if !reflect.DeepEqual(before, adminTree(t, home)) {
-		t.Fatal("navigation changed state")
-	}
-}
-
 func TestAdminPluginManagerNormalQuit(t *testing.T) {
 	bin := buildWorkBin(t)
 	for name, key := range map[string]string{"Esc": "\x1b", "q": "q", "CtrlC": "\x03"} {
@@ -589,77 +382,32 @@ func TestAdminPluginManagerNormalQuit(t *testing.T) {
 	}
 }
 
-func TestAdminPluginManagerVisibleSource(t *testing.T) {
-	bin := buildWorkBin(t)
-	for name, source := range map[string]string{
-		"local":   "/tmp/local plugin source",
-		"https":   "https://github.com/example/work-plugin.git",
-		"ssh":     "git@github.com:example/work-plugin.git",
-		"ssh-url": "ssh://git@github.com/example/work-plugin.git",
-	} {
-		t.Run(name, func(t *testing.T) {
-			env, dir, home := ptyEnv(t)
-			before := adminTree(t, home)
-			c := newConsoleIn(t, dir, bin, env, "plugin")
-			managerScreen(c, "Installed (0)", "Esc close")
-			c.send("i")
-			managerScreen(c, "Source:", "Local path or git URL")
-			c.send(source)
-			managerScreen(c, "Source: "+source, "Esc tabs")
-			if strings.Contains(c.screen(), "••••") {
-				t.Fatal("source was masked", c.screen())
-			}
-			managerFormBack(c)
-			managerScreen(c, "Installed (0)", "Esc close")
-			managerExit(c)
-			if !reflect.DeepEqual(before, adminTree(t, home)) {
-				t.Fatal("source editing/Back changed state")
-			}
-		})
-	}
-}
-
-func managerFormBack(c *console) {
-	c.t.Helper()
-	c.send("\x1b")
-	managerScreen(c, "Enter/Tab edit form", "Esc back")
-	c.send("\x1b")
-}
-
-func TestAdminPluginManagerTabNavigationThroughInstall(t *testing.T) {
+// The manager lists installed plugins by their composed identity, toggles one
+// without leaving the session, and reviews removal with its policy dependency.
+func TestAdminPluginManagerToggleAndRemoval(t *testing.T) {
 	bin := buildWorkBin(t)
 	env, dir, home := ptyEnv(t)
-	before := adminTree(t, home)
+	installPluginFixtureIn(t, env, "a", "admin-suite")
+	hubRun(t, bin, env, dir, "repository", "policy", "add", "admin-suite@a/clone")
 	c := newConsoleIn(t, dir, bin, env, "plugin")
-	managerScreen(c, "[Installed (0)]", "Esc close")
-	for _, step := range []struct{ key, screen, hint string }{
-		{"\x1b[C", "[Official]", "Esc close"},
-		{"\x1b[C", "[Install plugin]", "Enter/Tab edit form"},
-		{"\x1b[C", "[Installed (0)]", "Esc close"},
-		{"\x1b[D", "[Install plugin]", "Enter/Tab edit form"},
-		{"\x1b[D", "[Official]", "Esc close"},
-		{"\x1b[D", "[Installed (0)]", "Esc close"},
-		{"\x1b[D", "[Install plugin]", "Enter/Tab edit form"},
-	} {
-		c.send(step.key)
-		managerScreen(c, step.screen, step.hint)
+	managerScreen(c, "Installed (1)", "admin-suite@a", "Enabled")
+	if screen := c.screen(); strings.Contains(screen, "local-pinned") || strings.Contains(screen, "Install plugin") || strings.Contains(screen, "Official") {
+		t.Fatal("the manager still advertises retired destinations:\n" + screen)
 	}
 	c.send("\r")
-	managerScreen(c, "Source: █", "Esc tabs")
-	c.send("draft-path")
-	managerScreen(c, "Source: draft-path█", "Esc tabs")
-	c.send("\x1b")
-	managerScreen(c, "Source: draft-path", "Enter/Tab edit form")
-	c.send("\x1b[C")
-	managerScreen(c, "[Installed (0)]", "Esc close")
-	c.send("\x1b[D")
-	managerScreen(c, "Source: draft-path", "Enter/Tab edit form")
-	c.send("\t")
-	managerScreen(c, "Source: draft-path█", "Esc tabs")
-	managerFormBack(c)
-	managerScreen(c, "[Installed (0)]", "Esc close")
-	managerExit(c)
+	managerScreen(c, "Plugins › Installed › admin-suite@a", "Disable")
+	c.send("\r")
+	managerScreen(c, "Disabled 1 plugin(s).", "Enable")
+	before := adminTree(t, home)
+	hubRun(t, bin, env, dir, "plugin", "disable", "admin-suite@a")
 	if !reflect.DeepEqual(before, adminTree(t, home)) {
-		t.Fatal("tab navigation or draft editing changed state")
+		t.Fatal("hub/direct disable differed")
 	}
+	c.send("\x1b[B\x1b[B\x1b[B\r")
+	managerScreen(c, "Review removal", "admin-suite@a/clone")
+	c.send("\x1b[B\x1b[B\r")
+	managerScreen(c, "Authorize the listed", "Review removal")
+	c.send("\x1b[A \x1b[B\r")
+	managerScreen(c, "Removed 1 plugin(s).", "Installed (0)")
+	managerExit(c)
 }

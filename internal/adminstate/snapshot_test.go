@@ -88,57 +88,73 @@ func TestAdminEpochDriftAndLoadError(t *testing.T) {
 	}
 }
 
-func TestAdminLegacyProjectionAndLinkedUnknown(t *testing.T) {
+func TestAdminReadRejectsPresentButInvalidState(t *testing.T) {
+	cases := map[string]struct {
+		file func(workhome.Home) string
+		data string
+	}{
+		"unversioned config":    {func(h workhome.Home) string { return h.ConfigFile() }, `{"workspace":"x"}`},
+		"unknown config field":  {func(h workhome.Home) string { return h.ConfigFile() }, `{"schema":1,"nope":1}`},
+		"alias-shaped registry": {func(h workhome.Home) string { return h.RegistryFile() }, `{"components":[],"conventions":[],"packages":[{"alias":"p","origin":"local-linked"}]}`},
+		"future registry":       {func(h workhome.Home) string { return h.RegistryFile() }, `{"schema":2}`},
+		"bare-string memory":    {func(h workhome.Home) string { return h.BranchConventionsFile() }, `{"entries":[{"identity":"r","convention":"x"}]}`},
+		"old lifecycle shape":   {func(h workhome.Home) string { return h.LifecycleFile() }, `{"schema":1,"initialized":true,"policy_seeded":true,"removed":false}`},
+		"removed uninitialized": {func(h workhome.Home) string { return h.LifecycleFile() }, `{"schema":1,"initialized":false,"policy_handled":false,"removed":true}`},
+		"future catalogs":       {func(h workhome.Home) string { return h.CatalogsFile() }, `{"schema":2,"catalogs":[]}`},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			h := workhome.At(t.TempDir())
+			path := c.file(h)
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(c.data), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Read(context.Background(), h); err == nil || diag.ExitCode(err) == 0 {
+				t.Fatalf("invalid state was accepted: %v", err)
+			}
+			got, _ := os.ReadFile(path)
+			if string(got) != c.data {
+				t.Fatal("a read rewrote or repaired the file")
+			}
+			// A mutation preflight must not convert or delete it either.
+			_ = WithWrite(context.Background(), h, "work plugin enable a@m", func(s *Session) error { return nil })
+			if got, _ = os.ReadFile(path); string(got) != c.data {
+				t.Fatal("a mutation converted or deleted unsupported state")
+			}
+		})
+	}
+}
+
+func TestAdminReadReportsInstalledContentStatus(t *testing.T) {
 	h := workhome.At(t.TempDir())
-	if err := h.EnsureLayout(); err != nil {
-		t.Fatal(err)
-	}
-	reg := &registry.Registry{}
-	for _, origin := range []string{registry.OriginLocalPinned, registry.OriginLocalLinked} {
-		alias := origin
-		root := filepath.Join(h.PluginsDir(), alias, "source")
-		if err := os.MkdirAll(root, 0700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(root, "plugin.json"), []byte(`{"name":"fixture","version":"installed","components":[],"conventions":[]}`), 0600); err != nil {
-			t.Fatal(err)
-		}
-		reg.UpsertPackage(registry.Package{Alias: alias, Origin: origin})
-	}
+	p := prov("a", "m")
+	reg := registry.New()
+	reg.UpsertPackage(testPackage(p))
+	reg.UpsertComponent(registry.Component{Provider: p, Name: "run", Role: "linker", Entrypoint: "bin/run", Runtime: "sh"})
 	if err := registry.Save(h.RegistryFile(), reg); err != nil {
 		t.Fatal(err)
 	}
-	before, _ := os.ReadFile(h.RegistryFile())
 	s, err := Read(context.Background(), h)
-	if err != nil {
+	if err != nil || s.Inspection[p.String()] != "content-unavailable" {
+		t.Fatalf("missing content = %v, %v", s.Inspection, err)
+	}
+	src, _ := h.PackageSource(p)
+	if err := os.MkdirAll(filepath.Join(src, "bin"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	pinned, _ := s.Registry.PackageByAlias(registry.OriginLocalPinned)
-	linked, _ := s.Registry.PackageByAlias(registry.OriginLocalLinked)
-	if pinned.Version != "installed" || linked.Version != "" {
-		t.Fatal("wrong legacy baseline")
+	for _, f := range []string{"plugin.json", "bin/run"} {
+		if err := os.WriteFile(filepath.Join(src, f), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
-	after, _ := os.ReadFile(h.RegistryFile())
-	if string(before) != string(after) {
-		t.Fatal("read migrated registry")
+	if s, _ = Read(context.Background(), h); s.Inspection[p.String()] != "ready" {
+		t.Fatalf("present content = %v", s.Inspection)
 	}
-}
-func TestAdminLegacySeedCompleteRegistration(t *testing.T) {
-	h := workhome.At(t.TempDir())
-	r := &registry.Registry{Components: []registry.Component{{Alias: ReferenceAlias, Name: "local-path-starter", Role: registry.RoleStarter, StarterLayer: registry.LayerFallback}, {Alias: ReferenceAlias, Name: "filesystem-repository-locator", Role: registry.RoleRepositoryLocator}}, Conventions: []registry.Convention{{Name: "freeform"}}}
-	if err := registry.Save(h.RegistryFile(), r); err != nil {
-		t.Fatal(err)
-	}
-	s, err := Read(context.Background(), h)
-	if err != nil {
-		t.Fatal(err)
-	}
-	p, ok := s.Registry.PackageByAlias(ReferenceAlias)
-	if !ok || p.Origin != registry.OriginEmbedded || !s.Lifecycle.Initialized {
-		t.Fatal("missing virtual seed ownership")
-	}
-	raw, _ := registry.Load(h.RegistryFile())
-	if len(raw.Packages) != 0 {
-		t.Fatal("pure read adopted seed")
+	// Reads never repair: the registry record is untouched and no state appeared.
+	if _, err := os.Stat(h.LifecycleFile()); !os.IsNotExist(err) {
+		t.Error("a read created lifecycle state")
 	}
 }

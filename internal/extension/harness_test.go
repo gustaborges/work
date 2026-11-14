@@ -9,11 +9,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/gustaborges/work/internal/plugininstall"
 	"github.com/gustaborges/work/internal/projection"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/work"
 	"github.com/gustaborges/work/internal/workhome"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 	fixtures "github.com/gustaborges/work/tests/fixtures/plugins"
 )
 
@@ -112,9 +112,10 @@ func newHarness(t *testing.T, mode string) *harness {
 	if err := home.EnsureLayout(); err != nil {
 		t.Fatal(err)
 	}
-	reg := &registry.Registry{}
-	if _, err := plugininstall.Install(home.PluginsDir(), reg, contextSuiteDir(t), plugininstall.Options{}); err != nil {
-		t.Fatalf("install context-suite: %v", err)
+	installfx.InstallAs(t, home, "suite", contextSuiteDir(t), true)
+	reg, err := registry.Load(home.RegistryFile())
+	if err != nil {
+		t.Fatal(err)
 	}
 	starter, ok := findComponent(reg, "starter")
 	if !ok {

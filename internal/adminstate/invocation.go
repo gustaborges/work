@@ -14,7 +14,7 @@ import (
 func annotateRevisions(reg *registry.Registry) {
 	for i := range reg.Components {
 		c := &reg.Components[i]
-		p, owned := reg.PackageByAlias(c.Alias)
+		p, owned := reg.PackageByProvider(c.Provider)
 		b, _ := json.Marshal(struct {
 			Package registry.Package
 			Owned   bool
@@ -27,7 +27,7 @@ func annotateRevisions(reg *registry.Registry) {
 // a Work lock and prevents administration/Work lock inversion during publish.
 func CheckComponent(reg *registry.Registry, selected registry.Component) error {
 	for _, current := range reg.Components {
-		if current.QualifiedName() == selected.QualifiedName() && reg.PackageEnabled(current.Alias) && reflect.DeepEqual(current, selected) {
+		if current.QualifiedName() == selected.QualifiedName() && reg.PackageEnabled(current.Provider) && reflect.DeepEqual(current, selected) {
 			return nil
 		}
 	}

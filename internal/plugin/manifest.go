@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/gustaborges/work/internal/pluginid"
 	"github.com/gustaborges/work/internal/semconv"
 )
 
@@ -40,8 +41,8 @@ type Component struct {
 
 // Subscription subscribes a component to a core event. Starters, when
 // present, restricts it to Works produced by the named Starters: each entry is
-// a bare component name (any installed Starter with that name) or
-// "<alias>/<name>" (exactly that component). A Starter that is not installed
+// a bare component name or "<plugin>@<marketplace>/<name>" (exactly that
+// component). A Starter that is not installed
 // is not an error.
 type Subscription struct {
 	Event    string   `json:"event"`
@@ -153,21 +154,6 @@ var roleRules = map[string]roleRule{
 	},
 }
 
-// aliasGrammar is a single path segment: an alias names a directory under
-// plugin storage, so it must not be able to leave it (separators, "." and
-// "..") or be mistaken for a leftover dot-prefixed staging directory.
-var aliasGrammar = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
-
-// ValidateAlias reports why alias cannot name an installed package. A ".old"
-// suffix is refused because that is the backup name of a package being
-// replaced, so alias "x.old" would collide with a replacement of "x".
-func ValidateAlias(alias string) error {
-	if !aliasGrammar.MatchString(alias) || strings.HasSuffix(alias, ".old") {
-		return fmt.Errorf("%q is not a valid plugin alias: use letters, digits, '.', '_' and '-', starting with a letter or digit, and not ending in \".old\"", alias)
-	}
-	return nil
-}
-
 var inputsGrammar = regexp.MustCompile(`^(work|meta|link):([^:]+)(:optional)?$`)
 
 // ParseInput parses one inputs entry and checks the key against the source:
@@ -212,7 +198,7 @@ func Parse(data []byte) (*Manifest, error) {
 	if err := json.Unmarshal(top["name"], &m.Name); err != nil || strings.TrimSpace(m.Name) == "" {
 		return nil, fmt.Errorf("plugin.json: %q must be a non-empty string", "name")
 	}
-	if err := ValidateAlias(m.Name); err != nil {
+	if err := pluginid.ValidateName(m.Name); err != nil {
 		return nil, fmt.Errorf("plugin.json: name: %w", err)
 	}
 	if err := json.Unmarshal(top["version"], &m.Version); err != nil || strings.TrimSpace(m.Version) == "" {
@@ -291,6 +277,9 @@ func parseComponent(raw map[string]json.RawMessage, pluginName string) (Componen
 	if strings.TrimSpace(c.Name) == "" {
 		return c, fmt.Errorf("name must be non-empty")
 	}
+	if err := pluginid.ValidateName(c.Name); err != nil {
+		return c, fmt.Errorf("component %w", err)
+	}
 	if strings.TrimSpace(c.Entrypoint) == "" {
 		return c, fmt.Errorf("entrypoint must be non-empty")
 	}
@@ -331,14 +320,14 @@ func validateActivation(c Component, pluginName string) error {
 	if c.Manual != nil && strings.TrimSpace(c.Manual.DisplayName) == "" {
 		return fmt.Errorf("manual.display_name must be a non-empty string")
 	}
-	if err := validateInputs(c.Inputs); err != nil {
+	if err := validateInputs(pluginName, c.Inputs); err != nil {
 		return err
 	}
 	if d := c.Discover; d != nil {
 		if err := validateSubscriptions("discover.on", d.On, d.On != nil); err != nil {
 			return err
 		}
-		if err := validateInputs(d.Inputs); err != nil {
+		if err := validateInputs(pluginName, d.Inputs); err != nil {
 			return fmt.Errorf("discover: %w", err)
 		}
 	}
@@ -358,7 +347,7 @@ func validateSubscriptions(field string, subs []Subscription, present bool) erro
 		}
 		for _, st := range sub.Starters {
 			if !validStarterRef(st) {
-				return fmt.Errorf("%s[%d]: starters entry %q must be <name> or <alias>/<name>", field, i, st)
+				return fmt.Errorf("%s[%d]: starters entry %q must be <name> or <plugin>@<marketplace>/<name>", field, i, st)
 			}
 		}
 	}
@@ -369,21 +358,28 @@ func validStarterRef(s string) bool {
 	if strings.TrimSpace(s) == "" {
 		return false
 	}
-	alias, name, qualified := strings.Cut(s, "/")
-	if !qualified {
+	if !strings.ContainsAny(s, "/@") {
 		return true
 	}
-	return alias != "" && name != "" && !strings.Contains(name, "/")
+	_, err := pluginid.ParseRef(s)
+	return err == nil
 }
 
 // validateInputs parses every entry and rejects a key repeated in any
-// namespace: the delivered document is keyed by the bare key.
-func validateInputs(inputs []string) error {
+// namespace: the delivered document is keyed by the bare key. A relative
+// private key must name the declaring plugin; reading another provider's data
+// takes the explicit qualified spelling.
+func validateInputs(declarer string, inputs []string) error {
 	seen := map[string]string{}
 	for _, raw := range inputs {
 		in, err := ParseInput(raw)
 		if err != nil {
 			return err
+		}
+		if in.Source != SourceWork {
+			if err := semconv.ValidateOwnInput(declarer, in.Key); err != nil {
+				return fmt.Errorf("inputs entry %q: %w", raw, err)
+			}
 		}
 		if prev, dup := seen[in.Key]; dup {
 			return fmt.Errorf("inputs entries %q and %q name the same key %q", prev, raw, in.Key)
@@ -402,6 +398,9 @@ func parseConvention(raw map[string]json.RawMessage) (Convention, error) {
 	}
 	if err := json.Unmarshal(raw["name"], &cv.Name); err != nil || strings.TrimSpace(cv.Name) == "" {
 		return cv, fmt.Errorf("name must be a non-empty string")
+	}
+	if err := pluginid.ValidateName(cv.Name); err != nil {
+		return cv, fmt.Errorf("convention %w", err)
 	}
 	if _, ok := raw["prefixes"]; !ok {
 		return cv, fmt.Errorf("missing prefixes")

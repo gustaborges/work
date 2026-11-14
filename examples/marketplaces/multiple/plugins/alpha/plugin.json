@@ -1,0 +1,23 @@
+{
+  "name": "alpha",
+  "version": "1.0.0",
+  "components": [
+    {
+      "name": "run-alpha",
+      "role": "linker",
+      "key": "fixture.alpha",
+      "entrypoint": "bin/tool",
+      "manual": {
+        "display_name": "alpha"
+      }
+    }
+  ],
+  "conventions": [
+    {
+      "name": "freeform",
+      "prefixes": [
+        "{slug}"
+      ]
+    }
+  ]
+}

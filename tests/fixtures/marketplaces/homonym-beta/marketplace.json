@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "name": "beta-market",
+  "plugins": [
+    {
+      "name": "sample",
+      "path": "plugins/sample",
+      "description": "sample from beta-market"
+    }
+  ]
+}

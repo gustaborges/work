@@ -1,100 +1,71 @@
 package adminstate
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
-	"path/filepath"
 
-	"github.com/gustaborges/work/internal/plugin"
-	"github.com/gustaborges/work/internal/registry"
+	"github.com/gustaborges/work/internal/jsonx"
+	"github.com/gustaborges/work/internal/pluginid"
 	"github.com/gustaborges/work/internal/workhome"
 )
 
-const ReferenceAlias = "work-reference"
+// ReferencePlugin is the name of the included reference package.
+const ReferencePlugin = "work-reference"
 
-// loadLifecycle projects proven legacy ownership without persisting it.
-func loadLifecycle(h workhome.Home, reg *registry.Registry) (*Lifecycle, error) {
-	b, err := os.ReadFile(h.ReferencePackageFile())
-	if err == nil {
-		var l Lifecycle
-		if json.Unmarshal(b, &l) != nil || l.Schema != 1 || (!l.Initialized && (l.Removed || l.PolicySeeded)) {
-			return nil, recoveryError(errors.New("invalid reference package history"))
-		}
-		return &l, nil
-	}
-	if !errors.Is(err, os.ErrNotExist) {
-		return nil, recoveryError(err)
-	}
-	root := filepath.Join(h.PluginsDir(), ReferenceAlias)
-	meta, metaErr := os.ReadFile(filepath.Join(root, ".install-meta.json"))
-	var old struct {
-		Origin        string `json:"origin"`
-		ContentDigest string `json:"content_digest"`
-		PolicySeeded  bool   `json:"policy_seeded"`
-	}
-	proven := false
-	if metaErr == nil {
-		if json.Unmarshal(meta, &old) != nil || old.Origin != registry.OriginEmbedded {
-			return nil, recoveryError(errors.New("ambiguous reference installation history"))
-		}
-		proven = true
-	}
-	if p, ok := reg.PackageByAlias(ReferenceAlias); ok {
-		if p.Origin != registry.OriginEmbedded {
-			return nil, recoveryError(errors.New("reserved package ownership conflict"))
-		}
-		proven = true
-	}
-	// Complete historical seed declarations are independent initialization
-	// evidence even when the old install-meta file is missing.
-	starter, locator := false, false
-	for _, c := range reg.Components {
-		if c.Alias != ReferenceAlias {
-			continue
-		}
-		starter = starter || (c.Name == "local-path-starter" && c.Role == registry.RoleStarter && c.StarterLayer == registry.LayerFallback)
-		locator = locator || (c.Name == "filesystem-repository-locator" && c.Role == registry.RoleRepositoryLocator)
-	}
-	_, hasConvention := reg.ConventionByName("freeform")
-	if starter && locator && hasConvention {
-		proven = true
-		old.PolicySeeded = true
-	}
-	if !proven {
-		if _, err := os.Lstat(root); err == nil {
-			return nil, recoveryError(errors.New("ambiguous reference installation history"))
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return nil, recoveryError(err)
-		}
-		return &Lifecycle{Schema: 1}, nil
-	}
-	if _, ok := reg.PackageByAlias(ReferenceAlias); !ok {
-		p := registry.Package{Alias: ReferenceAlias, PluginName: ReferenceAlias, Origin: registry.OriginEmbedded, Reference: "embedded", ContentDigest: old.ContentDigest}
-		if _, ok := reg.ConventionByName("freeform"); ok {
-			p.Conventions = []string{"freeform"}
-		}
-		b, err := os.ReadFile(filepath.Join(root, "plugin.json"))
-		if err == nil {
-			m, err := plugin.Parse(b)
-			if err != nil || m.Name != ReferenceAlias {
-				return nil, recoveryError(errors.New("ambiguous legacy reference manifest"))
-			}
-			p.Version = m.Version
-			p.Conventions = []string{}
-			for _, cv := range m.Conventions {
-				p.Conventions = append(p.Conventions, cv.Name)
-			}
-		}
-		reg.UpsertPackage(p)
-	}
+// ReferenceProvider is the included reference package's identity.
+var ReferenceProvider = pluginid.Provider{Marketplace: pluginid.Builtin, Plugin: ReferencePlugin}
 
-	return &Lifecycle{Schema: 1, Initialized: true, PolicySeeded: old.PolicySeeded}, nil
+// LifecycleSchema is the only supported lifecycle schema.
+const LifecycleSchema = 1
+
+// Lifecycle is the durable default-package history, kept outside any removable
+// package directory. Fresh homes have every flag false.
+//
+// PolicyHandled records that the repository-resolution policy has been
+// deliberately decided: either first setup seeded it or the user made an
+// explicit choice (including choosing an empty policy). Registering a source
+// never changes it. Removed records a deliberate removal of the default
+// package so it is never silently resurrected.
+type Lifecycle struct {
+	Schema        int  `json:"schema"`
+	Initialized   bool `json:"initialized"`
+	PolicyHandled bool `json:"policy_handled"`
+	Removed       bool `json:"removed"`
 }
 
-// MarkRemoved retains proven initialization/policy history outside the package
-// root. Enablement stays solely in registry records.
+// loadLifecycle reads the lifecycle file. A missing file is the fresh default;
+// a present file must match the current strict shape exactly.
+func loadLifecycle(h workhome.Home) (*Lifecycle, error) {
+	b, err := os.ReadFile(h.LifecycleFile())
+	if errors.Is(err, os.ErrNotExist) {
+		return &Lifecycle{Schema: LifecycleSchema}, nil
+	}
+	if err != nil {
+		return nil, recoveryError(err)
+	}
+	return decodeLifecycle(b)
+}
+
+func decodeLifecycle(b []byte) (*Lifecycle, error) {
+	var l Lifecycle
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&l); err != nil || jsonx.TrailingData(dec) || l.Schema != LifecycleSchema || (l.Removed && !l.Initialized) {
+		return nil, recoveryError(errors.New("invalid lifecycle state"))
+	}
+	return &l, nil
+}
+
+// MarkRemoved records a deliberate removal of the default package.
 func (l *Lifecycle) MarkRemoved() {
 	l.Initialized = true
 	l.Removed = true
 }
+
+// MarkPolicyHandled records an explicit repository-policy choice. The caller
+// persists the lifecycle image in the same transaction as the choice, so an
+// explicit empty policy is meaningful even when the Locator list was already
+// empty and first-use setup can never overwrite it with the default.
+func (l *Lifecycle) MarkPolicyHandled() { l.PolicyHandled = true }

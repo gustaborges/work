@@ -1,9 +1,12 @@
 // Package registry reads and writes registry.json, the generated component
 // index built from installed plugin manifests. It is never hand-edited. Writes
-// are atomic and entry upserts are idempotent.
+// are atomic, entry upserts are idempotent, and the one supported shape is
+// strictly validated on load: every package, component and convention belongs
+// to a composed (marketplace, plugin) provider.
 package registry
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,25 +19,36 @@ import (
 
 	"github.com/gustaborges/work/internal/atomicfile"
 	"github.com/gustaborges/work/internal/ipc"
+	"github.com/gustaborges/work/internal/jsonx"
 	"github.com/gustaborges/work/internal/plugin"
+	"github.com/gustaborges/work/internal/pluginid"
 )
 
-// Component is one registered component. Identity is (Alias, Name). The
+// Schema is the only supported registry.json schema.
+const Schema = 1
+
+// InstallModeCopy is the only installation mode: every package executes from an
+// independent managed copy of one selected marketplace entry.
+const InstallModeCopy = "copy"
+
+// DigestPackageV1 names the package digest algorithm recorded with a package.
+const DigestPackageV1 = "work-package-v1"
+
+// Component is one registered component. Identity is (Provider, Name). The
 // activation fields (On, Manual, Inputs, Key, Discover) are recorded for
-// Importers and Linkers; a component registered before they existed has none
-// and is never eligible until it is reinstalled.
+// Importers and Linkers.
 type Component struct {
-	Revision     string   `json:"-"` // transient package baseline captured by adminstate.Read
-	Alias        string   `json:"alias"`
-	Name         string   `json:"name"`
-	Role         string   `json:"role"`
-	Entrypoint   string   `json:"entrypoint"`
-	Runtime      string   `json:"runtime,omitempty"`
-	Pattern      string   `json:"pattern,omitempty"`
-	StarterLayer string   `json:"starter_layer,omitempty"`
-	Accepts      []string `json:"accepts,omitempty"`
-	DisplayName  string   `json:"display_name,omitempty"`
-	Description  string   `json:"description,omitempty"`
+	Revision     string            `json:"-"` // transient package baseline captured by adminstate.Read
+	Provider     pluginid.Provider `json:"provider"`
+	Name         string            `json:"name"`
+	Role         string            `json:"role"`
+	Entrypoint   string            `json:"entrypoint"`
+	Runtime      string            `json:"runtime,omitempty"`
+	Pattern      string            `json:"pattern,omitempty"`
+	StarterLayer string            `json:"starter_layer,omitempty"`
+	Accepts      []string          `json:"accepts,omitempty"`
+	DisplayName  string            `json:"display_name,omitempty"`
+	Description  string            `json:"description,omitempty"`
 
 	On       []plugin.Subscription `json:"on,omitempty"`
 	Manual   *plugin.Manual        `json:"manual,omitempty"`
@@ -43,12 +57,15 @@ type Component struct {
 	Discover *plugin.Discover      `json:"discover,omitempty"`
 }
 
+// Ref is the component's fully qualified contribution identity.
+func (c Component) Ref() pluginid.Ref { return pluginid.Ref{Provider: c.Provider, Name: c.Name} }
+
 // EntrypointPath resolves the component's entrypoint inside a plugins
-// directory: <pluginsDir>/<alias>/source/<entrypoint>. On Windows a native
-// executable gets a ".exe" suffix; a script run by a declared runtime keeps
-// its name, since it is not itself executable.
+// directory: <pluginsDir>/<marketplace>/<plugin>/source/<entrypoint>. On
+// Windows a native executable gets a ".exe" suffix; a script run by a declared
+// runtime keeps its name, since it is not itself executable.
 func (c Component) EntrypointPath(pluginsDir string) string {
-	p := filepath.Join(pluginsDir, c.Alias, "source", c.Entrypoint)
+	p := filepath.Join(pluginsDir, c.Provider.Marketplace, c.Provider.Plugin, "source", c.Entrypoint)
 	if runtime.GOOS == "windows" && c.Runtime == "" {
 		p += ".exe"
 	}
@@ -61,44 +78,61 @@ func (c Component) Target(pluginsDir string) ipc.Target {
 	return ipc.Target{Runtime: c.Runtime, Path: c.EntrypointPath(pluginsDir)}
 }
 
-// QualifiedName is "<alias>/<name>", the component's unambiguous identity in
-// ordering, provenance and warnings.
-func (c Component) QualifiedName() string {
-	return c.Alias + "/" + c.Name
-}
+// QualifiedName is "<plugin>@<marketplace>/<name>", the component's
+// unambiguous identity in ordering, provenance and warnings.
+func (c Component) QualifiedName() string { return c.Ref().String() }
 
-// Convention is one registered branch convention. Identity is Name.
+// Convention is one registered branch convention. Identity is (Provider, Name):
+// equal names from different providers are independent records.
 type Convention struct {
-	Name     string   `json:"name"`
-	Prefixes []string `json:"prefixes"`
+	Provider pluginid.Provider `json:"provider"`
+	Name     string            `json:"name"`
+	Prefixes []string          `json:"prefixes"`
 }
 
-// Package is one installed plugin package's record (F4). Identity is Alias.
-// Every Component registered from this package carries the same Alias —
-// Package is a new parent record, not a new identity scheme. Conventions
-// names the convention names this package's manifest declared, for `work
-// plugin list`: registry.Convention itself carries no Alias (its identity
-// stays a bare Name, unchanged — two packages declaring the same convention
-// name are independent catalog data, never disambiguated the way component
-// names are), so Package is where a package's own declared convention names
-// are recorded.
-type Package struct {
-	Version       string   `json:"version,omitempty"`
-	Source        string   `json:"source,omitempty"`
-	ContentDigest string   `json:"content_digest,omitempty"`
-	Enabled       *bool    `json:"enabled,omitempty"` // retained core state; nil means enabled
-	Alias         string   `json:"alias"`
-	Origin        string   `json:"origin"`                // one of the Origin* constants
-	Reference     string   `json:"reference"`             // absolute source path (local kinds), or "<source>@<sha>" (remote)
-	Conventions   []string `json:"conventions,omitempty"` // convention names this package's manifest declared
-	PluginName    string   `json:"plugin_name,omitempty"` // manifest name; the alias stands in when empty
+// Ref is the convention's fully qualified identity.
+func (c Convention) Ref() pluginid.Ref { return pluginid.Ref{Provider: c.Provider, Name: c.Name} }
+
+// Provenance is the actual fixed source fact an installed copy came from. Kind
+// says where the offer was published (git, local or builtin), never how the
+// copy was installed.
+type Provenance struct {
+	RegistrationID  string `json:"registration_id"`
+	Kind            string `json:"kind"`
+	Source          string `json:"source"`
+	Branch          string `json:"branch,omitempty"`
+	MarketplaceName string `json:"marketplace_name"`
+	PluginName      string `json:"plugin_name"`
+	Path            string `json:"path"`
+	Revision        string `json:"revision"`
+	CatalogDigest   string `json:"catalog_digest"`
 }
+
+// Package is one installed plugin package's record. Identity is Provider.
+type Package struct {
+	Provider        pluginid.Provider `json:"provider"`
+	InstallMode     string            `json:"install_mode"`
+	Enabled         bool              `json:"enabled"`
+	Version         string            `json:"version"` // opaque; compared only for equality
+	ContentDigest   string            `json:"content_digest"`
+	DigestAlgorithm string            `json:"digest_algorithm"`
+	Provenance      Provenance        `json:"provenance"`
+}
+
+// ID is the public plugin@marketplace identity.
+func (p Package) ID() string { return p.Provider.String() }
 
 // Registry is the whole registry.json document.
 type Registry struct {
+	Schema      int          `json:"schema"`
+	Packages    []Package    `json:"packages"`
 	Components  []Component  `json:"components"`
 	Conventions []Convention `json:"conventions"`
-	Packages    []Package    `json:"packages,omitempty"`
+}
+
+// New returns an empty current-schema registry.
+func New() *Registry {
+	return &Registry{Schema: Schema, Packages: []Package{}, Components: []Component{}, Conventions: []Convention{}}
 }
 
 // Roles / layers used by queries.
@@ -108,32 +142,144 @@ const (
 	LayerFallback         = "fallback"
 )
 
-// Package origin kinds (F4, ADR-0002).
-const (
-	OriginEmbedded     = "embedded-seed"
-	OriginLocalLinked  = "local-linked"
-	OriginLocalPinned  = "local-pinned"
-	OriginRemotePinned = "remote-pinned"
-)
+// Validate applies the strict current-schema rules, including referential
+// integrity between packages, components and conventions.
+func (r *Registry) Validate() error {
+	if r.Schema != Schema {
+		return fmt.Errorf("unsupported registry schema %d", r.Schema)
+	}
+	pkgs := map[pluginid.Provider]bool{}
+	for _, p := range r.Packages {
+		if err := p.Provider.Validate(); err != nil {
+			return fmt.Errorf("package %s: %w", p.Provider, err)
+		}
+		if pkgs[p.Provider] {
+			return fmt.Errorf("package %s is recorded twice", p.ID())
+		}
+		pkgs[p.Provider] = true
+		if err := p.validate(); err != nil {
+			return fmt.Errorf("package %s: %w", p.ID(), err)
+		}
+	}
+	comps := map[pluginid.Ref]bool{}
+	for _, c := range r.Components {
+		if !pkgs[c.Provider] {
+			return fmt.Errorf("component %s has no installed package", c.QualifiedName())
+		}
+		if _, err := pluginid.NewRef(c.Provider, c.Name); err != nil {
+			return fmt.Errorf("component %s: %w", c.QualifiedName(), err)
+		}
+		if comps[c.Ref()] {
+			return fmt.Errorf("component %s is recorded twice", c.QualifiedName())
+		}
+		comps[c.Ref()] = true
+		if c.Role == "" || c.Entrypoint == "" {
+			return fmt.Errorf("component %s lacks role or entrypoint", c.QualifiedName())
+		}
+	}
+	convs := map[pluginid.Ref]bool{}
+	for _, c := range r.Conventions {
+		if !pkgs[c.Provider] {
+			return fmt.Errorf("convention %s has no installed package", c.Ref())
+		}
+		if _, err := pluginid.NewRef(c.Provider, c.Name); err != nil {
+			return fmt.Errorf("convention %s: %w", c.Ref(), err)
+		}
+		if convs[c.Ref()] {
+			return fmt.Errorf("convention %s is recorded twice", c.Ref())
+		}
+		convs[c.Ref()] = true
+	}
+	return nil
+}
 
-// Load reads registry.json. A missing file yields an empty Registry.
+func (p Package) validate() error {
+	if p.InstallMode != InstallModeCopy {
+		return fmt.Errorf("unsupported install mode %q", p.InstallMode)
+	}
+	if p.Version == "" || p.ContentDigest == "" || p.DigestAlgorithm != DigestPackageV1 {
+		return errors.New("version, content digest and digest algorithm are required")
+	}
+	pv := p.Provenance
+	if err := pluginid.ValidateRegistrationID(pv.RegistrationID); err != nil {
+		return err
+	}
+	switch pv.Kind {
+	case pluginid.KindGit:
+		if pv.Branch == "" {
+			return errors.New("git provenance records its branch")
+		}
+	case pluginid.KindLocal:
+		if pv.Branch != "" {
+			return errors.New("local provenance has no branch")
+		}
+	case pluginid.KindBuiltin:
+		if pv.RegistrationID != pluginid.BuiltinRegistrationID || p.Provider.Marketplace != pluginid.Builtin {
+			return errors.New("builtin provenance belongs to the builtin provider")
+		}
+	default:
+		return fmt.Errorf("unsupported provenance kind %q", pv.Kind)
+	}
+	if (pv.Kind == pluginid.KindBuiltin) != (pv.RegistrationID == pluginid.BuiltinRegistrationID) {
+		return errors.New("registration id does not match provenance kind")
+	}
+	if pv.MarketplaceName != p.Provider.Marketplace || pv.PluginName != p.Provider.Plugin {
+		return errors.New("provenance names do not match the provider")
+	}
+	if pv.Source == "" || pv.Path == "" || pv.Revision == "" || pv.CatalogDigest == "" {
+		return errors.New("incomplete provenance")
+	}
+	return nil
+}
+
+// Load reads registry.json. A missing file yields an empty Registry; anything
+// that is not the current strict shape is an error.
 func Load(path string) (*Registry, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return &Registry{}, nil
+		return New(), nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("registry: reading %s: %w", path, err)
 	}
+	r, err := Decode(data)
+	if err != nil {
+		return nil, fmt.Errorf("registry: %s is invalid: %w", path, err)
+	}
+	return r, nil
+}
+
+// Decode parses and validates registry.json bytes.
+func Decode(data []byte) (*Registry, error) {
 	var r Registry
-	if err := json.Unmarshal(data, &r); err != nil {
-		return nil, fmt.Errorf("registry: %s is not valid JSON: %w", path, err)
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&r); err != nil {
+		return nil, err
+	}
+	if jsonx.TrailingData(dec) {
+		return nil, errors.New("trailing data")
+	}
+	if r.Packages == nil {
+		r.Packages = []Package{}
+	}
+	if r.Components == nil {
+		r.Components = []Component{}
+	}
+	if r.Conventions == nil {
+		r.Conventions = []Convention{}
+	}
+	if err := r.Validate(); err != nil {
+		return nil, err
 	}
 	return &r, nil
 }
 
 // Save writes r to path atomically.
 func Save(path string, r *Registry) error {
+	if err := r.Validate(); err != nil {
+		return fmt.Errorf("registry: %w", err)
+	}
 	data, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {
 		return fmt.Errorf("registry: marshaling: %w", err)
@@ -148,10 +294,10 @@ func Save(path string, r *Registry) error {
 	return nil
 }
 
-// UpsertComponent inserts or replaces the entry keyed by (Alias, Name).
+// UpsertComponent inserts or replaces the entry keyed by (Provider, Name).
 func (r *Registry) UpsertComponent(c Component) {
 	for i := range r.Components {
-		if r.Components[i].Alias == c.Alias && r.Components[i].Name == c.Name {
+		if r.Components[i].Provider == c.Provider && r.Components[i].Name == c.Name {
 			r.Components[i] = c
 			return
 		}
@@ -159,10 +305,11 @@ func (r *Registry) UpsertComponent(c Component) {
 	r.Components = append(r.Components, c)
 }
 
-// UpsertConvention inserts or replaces the entry keyed by Name.
+// UpsertConvention inserts or replaces the entry keyed by (Provider, Name).
+// Equal names from different providers stay distinct records.
 func (r *Registry) UpsertConvention(c Convention) {
 	for i := range r.Conventions {
-		if r.Conventions[i].Name == c.Name {
+		if r.Conventions[i].Provider == c.Provider && r.Conventions[i].Name == c.Name {
 			r.Conventions[i] = c
 			return
 		}
@@ -170,35 +317,20 @@ func (r *Registry) UpsertConvention(c Convention) {
 	r.Conventions = append(r.Conventions, c)
 }
 
-// RemoveAlias retracts everything alias registered: its components, its
-// Package record, and each convention that Package declared unless another
-// Package still declares it. Called before a reinstall registers the new
-// manifest, so nothing the previous version declared outlives it.
-func (r *Registry) RemoveAlias(alias string) {
-	r.Components = slices.DeleteFunc(r.Components, func(c Component) bool { return c.Alias == alias })
-
-	var declared []string
-	r.Packages = slices.DeleteFunc(r.Packages, func(p Package) bool {
-		if p.Alias != alias {
-			return false
-		}
-		declared = p.Conventions
-		return true
-	})
-	for _, name := range declared {
-		stillDeclared := slices.ContainsFunc(r.Packages, func(p Package) bool {
-			return slices.Contains(p.Conventions, name)
-		})
-		if !stillDeclared {
-			r.Conventions = slices.DeleteFunc(r.Conventions, func(c Convention) bool { return c.Name == name })
-		}
-	}
+// RemoveProvider retracts everything the provider registered: its components,
+// its conventions and its Package record. Called before a replacement
+// registers the new manifest, so nothing the previous version declared
+// outlives it.
+func (r *Registry) RemoveProvider(p pluginid.Provider) {
+	r.Components = slices.DeleteFunc(r.Components, func(c Component) bool { return c.Provider == p })
+	r.Conventions = slices.DeleteFunc(r.Conventions, func(c Convention) bool { return c.Provider == p })
+	r.Packages = slices.DeleteFunc(r.Packages, func(pk Package) bool { return pk.Provider == p })
 }
 
-// UpsertPackage inserts or replaces the entry keyed by Alias.
+// UpsertPackage inserts or replaces the entry keyed by Provider.
 func (r *Registry) UpsertPackage(p Package) {
 	for i := range r.Packages {
-		if r.Packages[i].Alias == p.Alias {
+		if r.Packages[i].Provider == p.Provider {
 			r.Packages[i] = p
 			return
 		}
@@ -206,31 +338,50 @@ func (r *Registry) UpsertPackage(p Package) {
 	r.Packages = append(r.Packages, p)
 }
 
-// PackageByAlias returns the package registered under alias.
-func (r *Registry) PackageByAlias(alias string) (Package, bool) {
-	for _, p := range r.Packages {
-		if p.Alias == alias {
-			return p, true
+// PackageByProvider returns the package registered for p.
+func (r *Registry) PackageByProvider(p pluginid.Provider) (Package, bool) {
+	for _, pk := range r.Packages {
+		if pk.Provider == p {
+			return pk, true
 		}
 	}
 	return Package{}, false
 }
 
-// PluginNameOf returns the manifest name of the plugin installed under alias.
-// It differs from the alias when the user installed with --as, and private
-// Semantic Conventions keys are owned by the manifest name. A package recorded
-// before the name was stored falls back to the alias.
-func (r *Registry) PluginNameOf(alias string) string {
-	if p, ok := r.PackageByAlias(alias); ok && p.PluginName != "" {
-		return p.PluginName
-	}
-	return alias
-}
-
-// ListPackages returns a copy of the registered packages, sorted by alias.
+// ListPackages returns a copy of the registered packages, sorted by
+// marketplace then plugin.
 func (r *Registry) ListPackages() []Package {
 	out := slices.Clone(r.Packages)
-	slices.SortFunc(out, func(a, b Package) int { return strings.Compare(a.Alias, b.Alias) })
+	slices.SortFunc(out, func(a, b Package) int { return compareProviders(a.Provider, b.Provider) })
+	return out
+}
+
+func compareProviders(a, b pluginid.Provider) int {
+	if c := strings.Compare(a.Marketplace, b.Marketplace); c != 0 {
+		return c
+	}
+	return strings.Compare(a.Plugin, b.Plugin)
+}
+
+// ProviderComponents returns the provider's components in registration order.
+func (r *Registry) ProviderComponents(p pluginid.Provider) []Component {
+	var out []Component
+	for _, c := range r.Components {
+		if c.Provider == p {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// ProviderConventions returns the provider's conventions in registration order.
+func (r *Registry) ProviderConventions(p pluginid.Provider) []Convention {
+	var out []Convention
+	for _, c := range r.Conventions {
+		if c.Provider == p {
+			out = append(out, c)
+		}
+	}
 	return out
 }
 
@@ -259,10 +410,23 @@ func (r *Registry) ListConventions() []Convention {
 	return slices.Clone(r.Conventions)
 }
 
-// ConventionByName returns the named convention.
-func (r *Registry) ConventionByName(name string) (Convention, bool) {
+// ConventionsNamed returns every provider's convention with the given bare
+// name, in registration order. More than one result means the bare name is
+// ambiguous.
+func (r *Registry) ConventionsNamed(name string) []Convention {
+	var out []Convention
 	for _, c := range r.Conventions {
 		if c.Name == name {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// ConventionByRef returns the convention with the exact owner and name.
+func (r *Registry) ConventionByRef(ref pluginid.Ref) (Convention, bool) {
+	for _, c := range r.Conventions {
+		if c.Provider == ref.Provider && c.Name == ref.Name {
 			return c, true
 		}
 	}
@@ -280,46 +444,39 @@ func (r *Registry) StarterFallback() (Component, bool) {
 	return Component{}, false
 }
 
-// HasComponent reports whether an entry keyed by (alias, name) exists.
-func (r *Registry) HasComponent(alias, name string) bool {
+// HasComponent reports whether the exact contribution is registered.
+func (r *Registry) HasComponent(ref pluginid.Ref) bool {
 	for _, c := range r.Components {
-		if c.Alias == alias && c.Name == name {
+		if c.Provider == ref.Provider && c.Name == ref.Name {
 			return true
 		}
 	}
 	return false
 }
 
-// PackageEnabled interprets retained state. Legacy ownerless entries and
-// omitted/null fields remain enabled. Raw queries never apply this predicate.
-func (r *Registry) PackageEnabled(alias string) bool {
-	p, ok := r.PackageByAlias(alias)
-	return !ok || p.Enabled == nil || *p.Enabled
+// PackageEnabled reports the provider's retained enablement. An unknown
+// provider is not enabled.
+func (r *Registry) PackageEnabled(p pluginid.Provider) bool {
+	pk, ok := r.PackageByProvider(p)
+	return ok && pk.Enabled
 }
 
-// Effective returns a separate catalog for activation and availability.
-// Convention names retain their shared ownership: any enabled owner suffices.
+// Effective returns a separate catalog for activation and availability that
+// contains only enabled providers' records.
 func (r *Registry) Effective() *Registry {
-	out := &Registry{}
+	out := New()
 	for _, p := range r.Packages {
-		if r.PackageEnabled(p.Alias) {
+		if p.Enabled {
 			out.Packages = append(out.Packages, p)
 		}
 	}
 	for _, c := range r.Components {
-		if r.PackageEnabled(c.Alias) {
+		if r.PackageEnabled(c.Provider) {
 			out.Components = append(out.Components, c)
 		}
 	}
 	for _, c := range r.Conventions {
-		owned, enabled := false, false
-		for _, p := range r.Packages {
-			if slices.Contains(p.Conventions, c.Name) {
-				owned = true
-				enabled = enabled || r.PackageEnabled(p.Alias)
-			}
-		}
-		if !owned || enabled {
+		if r.PackageEnabled(c.Provider) {
 			out.Conventions = append(out.Conventions, c)
 		}
 	}

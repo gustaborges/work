@@ -25,10 +25,12 @@ import (
 	"github.com/gustaborges/work/internal/gitx"
 	"github.com/gustaborges/work/internal/locator"
 	"github.com/gustaborges/work/internal/pluginadmin"
+	"github.com/gustaborges/work/internal/pluginid"
 	"github.com/gustaborges/work/internal/present"
 	"github.com/gustaborges/work/internal/projection"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/repoconfig"
+	"github.com/gustaborges/work/internal/repoconv"
 	"github.com/gustaborges/work/internal/repoidentity"
 	"github.com/gustaborges/work/internal/reporef"
 	"github.com/gustaborges/work/internal/shellintegration"
@@ -285,9 +287,10 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			}
 			return present.Fatal(err)
 		}
-		if verr := starter.ValidateResponse(ref, reg.PluginNameOf(comp.Alias)); verr != nil {
+		if verr := starter.ValidateResponse(ref, comp.Provider.Plugin); verr != nil {
 			return present.Fatal(verr)
 		}
+		ref = starter.Bind(ref, comp, reg)
 		starterBaseBranch = ref.BaseBranch
 		starterStartModes = ref.StartModes
 		starterMeta = ref.Meta
@@ -466,8 +469,8 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		}
 		repoIdentityKey = id
 		if v, ok := convStore.Get(id); ok {
-			if _, available := reg.Effective().ConventionByName(v); available {
-				conventionValue = v
+			if repoconv.Available(v, reg) {
+				conventionValue = v.String()
 				return nil
 			}
 			if !interactive {
@@ -480,7 +483,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		}
 		names := conventionNames(reg)
 		if len(names) == 0 {
-			return diag.New(diag.ConventionUnknown, "no branch convention is available; run `work plugin install --embedded` or install and enable a convention provider, then use `work convention set <name>`")
+			return diag.New(diag.ConventionUnknown, "no branch convention is available; add a plugin that offers a convention, or enable one, then use `work convention set <name>`")
 		}
 		if len(names) != 1 {
 			return nil
@@ -658,7 +661,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			}
 			description := ""
 			if remembered, ok := convStore.Get(repoIdentityKey); ok {
-				description = "Remembered convention " + pluginadmin.SafeText(remembered) + " is unavailable. Choose an explicit replacement."
+				description = "Remembered convention " + pluginadmin.SafeText(remembered.String()) + " is unavailable. Choose an explicit replacement."
 			}
 			return present.SelectSpec[string]{
 				Title: "Convention", Description: description, Options: stringOptions(conventionNames(reg)),
@@ -851,9 +854,10 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	}
 	if conventionValue != "" {
 		current, has := latest.Memory.Get(repoIdentityKey)
-		before, bok := snapshot.Registry.Effective().ConventionByName(conventionValue)
-		after, aok := latest.Registry.Effective().ConventionByName(conventionValue)
-		if !has || current != conventionValue || !bok || !aok || !reflect.DeepEqual(before, after) || !reflect.DeepEqual(conventionProviders(snapshot.Registry, conventionValue), conventionProviders(latest.Registry, conventionValue)) {
+		convRef, perr := pluginid.ParseRef(conventionValue)
+		bc, bp, bok := conventionFacts(snapshot.Registry, convRef)
+		ac, ap, aok := conventionFacts(latest.Registry, convRef)
+		if perr != nil || !has || current.String() != conventionValue || !bok || !aok || !reflect.DeepEqual(bc, ac) || !reflect.DeepEqual(bp, ap) || current.RegistrationID != ap.Provenance.RegistrationID {
 			return diag.New(diag.AdministrationConflict, "selected convention choice or provider changed; retry the command")
 		}
 	}
@@ -1088,19 +1092,18 @@ func starterLogicalName(reg *registry.Registry, c registry.Component) string {
 		}
 	}
 	if count > 1 {
-		return c.Alias + "/" + c.Name
+		return c.QualifiedName()
 	}
 	return c.Name
 }
 
-// conventionNames returns the enabled branch-convention catalog's names, in
-// registration order (the reference package's "freeform" first, then every
-// plugin-declared convention in install order).
+// conventionNames returns the enabled branch-convention catalog's qualified
+// references, in registration order.
 func conventionNames(reg *registry.Registry) []string {
 	convs := reg.Effective().ListConventions()
 	names := make([]string, len(convs))
 	for i, c := range convs {
-		names[i] = c.Name
+		names[i] = c.Ref().String()
 	}
 	return names
 }
@@ -1144,12 +1147,12 @@ func candidateSelectSpec(candidates []locator.Candidate) present.SelectSpec[loca
 func starterSelectSpec(candidates []registry.Component) present.SelectSpec[registry.Component] {
 	opts := make([]present.Option[registry.Component], len(candidates))
 	for i, c := range candidates {
-		opts[i] = present.Option[registry.Component]{Value: c, Primary: c.Alias + "/" + c.Name}
+		opts[i] = present.Option[registry.Component]{Value: c, Primary: c.QualifiedName()}
 	}
 	return present.SelectSpec[registry.Component]{
 		Title:   "Starter",
 		Options: opts,
-		Receipt: func(o present.Option[registry.Component]) string { return o.Value.Alias + "/" + o.Value.Name },
+		Receipt: func(o present.Option[registry.Component]) string { return o.Value.QualifiedName() },
 	}
 }
 

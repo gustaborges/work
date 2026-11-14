@@ -2,9 +2,8 @@
 // (specific-starter, colliding-starter, invalid-manifest, fallback-starter-a,
 // fallback-starter-b, context-suite, restricted-suite, runtime-sh and the
 // manifest-only invalid-* packages) into installable directories, so
-// tests/plugininstall, tests/contract, and tests/integration can exercise
-// `work plugin install`, internal/starter.Match and the automatic-context
-// extensions without a real third-party plugin.
+// tests/contract and tests/integration can exercise internal/starter.Match
+// and the automatic-context extensions without a real third-party plugin.
 package plugins
 
 import (
@@ -16,14 +15,15 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/gustaborges/work/internal/registry"
+	"github.com/gustaborges/work/internal/pluginid"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 )
 
 // Prepare builds the fixture package at tests/fixtures/plugins/<fixture> and
 // returns a fresh directory containing its plugin.json plus one compiled
 // entrypoint binary per component the manifest declares (named exactly as
 // the manifest's "entrypoint" field, ".exe"-suffixed on Windows) — ready to
-// hand to `work plugin install <dir>` (or as --link's SOURCE). It mirrors
+// hand to installfx.Install or a marketplace catalog as a package. It mirrors
 // tests/fixtures/locators/locators.go's Build pattern but stages a whole
 // installable directory rather than registering a component directly.
 //
@@ -89,18 +89,11 @@ func Prepare(t *testing.T, fixture string) string {
 }
 
 // SetPackageEnabled persists retained state without an administration command.
-func SetPackageEnabled(path, alias string, enabled bool) error {
-	r, err := registry.Load(path)
-	if err != nil {
-		return err
+func SetPackageEnabled(path string, provider pluginid.Provider, enabled bool) error {
+	if err := installfx.SetEnabled(path, provider, enabled); err != nil {
+		return fmt.Errorf("package %q is not installed: %w", provider, err)
 	}
-	for i := range r.Packages {
-		if r.Packages[i].Alias == alias {
-			r.Packages[i].Enabled = &enabled
-			return registry.Save(path, r)
-		}
-	}
-	return fmt.Errorf("package %q is not installed", alias)
+	return nil
 }
 
 // StageInventory lists isolated import stages without modifying them.

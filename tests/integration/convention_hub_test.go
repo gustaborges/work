@@ -43,22 +43,22 @@ func TestConventionHubShowsCurrentChangesAndReceiptsTheEquivalentCommand(t *test
 	c.send("/Set available\r")
 	c.expect("Available conventions")
 	c.send("/gitflow\r")
-	c.expect("work: convention set to gitflow")
-	c.expect("work: (equivalent: work convention set gitflow)")
-	c.expect("Current: gitflow")
+	c.expect("work: convention set to specific-starter@suite/gitflow")
+	c.expect("work: (equivalent: work convention set specific-starter@suite/gitflow)")
+	c.expect("Current: specific-starter@suite/gitflow")
 	c.send("/Leave unchanged\r")
 	if code := c.wait(); code != 0 {
 		t.Fatalf("hub exited %d, want 0\n%s", code, c.screen())
 	}
 
-	assertConventionShow(t, bin, env, repo, "work: convention gitflow")
+	assertConventionShow(t, bin, env, repo, "work: convention specific-starter@suite/gitflow")
 
 	// Second run: the current choice is shown and pre-marked; leaving it
 	// unchanged (accepting the default "(leave unchanged)" option) persists
 	// nothing and prints no receipt.
 	c = newConsoleIn(t, repo, bin, env, "convention")
 	c.expect("Convention")
-	c.expect("Current: gitflow")
+	c.expect("Current: specific-starter@suite/gitflow")
 	c.send("/Leave unchanged\r")
 	if code := c.wait(); code != 0 {
 		t.Fatalf("hub exited %d, want 0\n%s", code, c.screen())
@@ -67,7 +67,7 @@ func TestConventionHubShowsCurrentChangesAndReceiptsTheEquivalentCommand(t *test
 	if strings.Contains(screen, "work: convention set to") {
 		t.Errorf("leaving the choice unchanged must print no receipt:\n%s", screen)
 	}
-	assertConventionShow(t, bin, env, repo, "work: convention gitflow")
+	assertConventionShow(t, bin, env, repo, "work: convention specific-starter@suite/gitflow")
 
 	// Third run: change to "freeform" (the second named option).
 	c = newConsoleIn(t, repo, bin, env, "convention")
@@ -75,14 +75,14 @@ func TestConventionHubShowsCurrentChangesAndReceiptsTheEquivalentCommand(t *test
 	c.send("/Set available\r")
 	c.expect("Available conventions")
 	c.send("/freeform\r")
-	c.expect("work: convention set to freeform")
-	c.expect("work: (equivalent: work convention set freeform)")
-	c.expect("Current: freeform")
+	c.expect("work: convention set to work-reference@builtin/freeform")
+	c.expect("work: (equivalent: work convention set work-reference@builtin/freeform)")
+	c.expect("Current: work-reference@builtin/freeform")
 	c.send("/Leave unchanged\r")
 	if code := c.wait(); code != 0 {
 		t.Fatalf("hub exited %d, want 0\n%s", code, c.screen())
 	}
-	assertConventionShow(t, bin, env, repo, "work: convention freeform")
+	assertConventionShow(t, bin, env, repo, "work: convention work-reference@builtin/freeform")
 }
 
 // TestConventionHubNonInteractiveFailsUsageWithNoSelector (T062): a

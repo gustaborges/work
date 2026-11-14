@@ -25,12 +25,14 @@ import (
 	"github.com/gustaborges/work/internal/bootstrap"
 	"github.com/gustaborges/work/internal/cli"
 	"github.com/gustaborges/work/internal/config"
+	"github.com/gustaborges/work/internal/pluginid"
 	"github.com/gustaborges/work/internal/projection"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/work"
 	"github.com/gustaborges/work/internal/work/verify"
 	"github.com/gustaborges/work/internal/workhome"
 	"github.com/gustaborges/work/seed"
+	"github.com/gustaborges/work/tests/fixtures/installfx"
 	fixtureplugins "github.com/gustaborges/work/tests/fixtures/plugins"
 	"slices"
 )
@@ -78,15 +80,30 @@ func TestScripts(t *testing.T) {
 			},
 			"package-enabled": func(ts *testscript.TestScript, neg bool, args []string) {
 				if neg || len(args) != 2 {
-					ts.Fatalf("usage: package-enabled <alias> <bool>")
+					ts.Fatalf("usage: package-enabled <plugin@marketplace> <bool>")
 				}
 				enabled, err := strconv.ParseBool(args[1])
 				if err != nil {
 					ts.Fatalf("%v", err)
 				}
-				if err := fixtureplugins.SetPackageEnabled(filepath.Join(ts.Getenv("WORK_HOME"), "state", "registry.json"), args[0], enabled); err != nil {
+				provider, err := pluginid.ParseProvider(args[0])
+				if err != nil {
 					ts.Fatalf("%v", err)
 				}
+				if err := fixtureplugins.SetPackageEnabled(filepath.Join(ts.Getenv("WORK_HOME"), "state", "registry.json"), provider, enabled); err != nil {
+					ts.Fatalf("%v", err)
+				}
+			},
+			// installplugin <marketplace> <dir> [disabled] publishes a prepared
+			// plugin directory as <manifest-name>@<marketplace> through the same
+			// administrative journal production uses, standing in for "installed
+			// from some earlier marketplace add" so scripts about unrelated
+			// behavior need not drive a marketplace.
+			"installplugin": func(ts *testscript.TestScript, neg bool, args []string) {
+				if neg || len(args) < 2 || len(args) > 3 {
+					ts.Fatalf("usage: installplugin <marketplace> <dir> [disabled]")
+				}
+				installfx.InstallAs(scriptT{ts}, workhome.At(ts.Getenv("WORK_HOME")), args[0], ts.MkAbs(args[1]), len(args) == 2)
 			},
 			// provenance <section> <key> <component> <operation> asserts that the
 			// index holds that provenance row for some Work; negated, that it
@@ -184,8 +201,9 @@ func TestScripts(t *testing.T) {
 				if err != nil {
 					ts.Fatalf("registry.Load: %v", err)
 				}
+				installfx.EnsurePackage(reg, installfx.P(args[0]))
 				reg.UpsertComponent(registry.Component{
-					Alias: args[0], Name: args[1], Role: registry.RoleRepositoryLocator,
+					Provider: installfx.P(args[0]), Name: args[1], Role: registry.RoleRepositoryLocator,
 					Entrypoint: args[1], Accepts: args[2:], DisplayName: args[1],
 				})
 				if err := registry.Save(regPath, reg); err != nil {
@@ -260,7 +278,7 @@ func TestScripts(t *testing.T) {
 					ts.Fatalf("build locator fixture %s: %v\n%s", fixture, err, out)
 				}
 
-				src := filepath.Join(home, "plugins", alias, "source")
+				src := filepath.Join(home, "plugins", "m", alias, "source")
 				if err := os.MkdirAll(src, 0o755); err != nil {
 					ts.Fatalf("%v", err)
 				}
@@ -281,8 +299,9 @@ func TestScripts(t *testing.T) {
 				if err != nil {
 					ts.Fatalf("registry.Load: %v", err)
 				}
+				installfx.EnsurePackage(reg, installfx.P(alias))
 				reg.UpsertComponent(registry.Component{
-					Alias: alias, Name: name, Role: registry.RoleRepositoryLocator,
+					Provider: installfx.P(alias), Name: name, Role: registry.RoleRepositoryLocator,
 					Entrypoint: fixture, Accepts: accepts, DisplayName: name,
 				})
 				if err := registry.Save(regPath, reg); err != nil {
@@ -793,3 +812,9 @@ func allProvenance(ts *testscript.TestScript) []projection.Provenance {
 	}
 	return out
 }
+
+// scriptT adapts a testscript command to installfx.T.
+type scriptT struct{ ts *testscript.TestScript }
+
+func (scriptT) Helper()                             {}
+func (s scriptT) Fatalf(format string, args ...any) { s.ts.Fatalf(format, args...) }

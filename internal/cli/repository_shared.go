@@ -59,6 +59,12 @@ func applyRepositoryEdit(ctx context.Context, h workhome.Home, edit repositoryEd
 		default:
 			return diag.New(diag.Usage, "unknown repository operation")
 		}
+		if err == nil && strings.HasPrefix(edit.Kind, "policy-") {
+			// Settling the policy changes the lifecycle value itself, so the
+			// transaction carries it without forcing a rewrite; once settled, a
+			// repeated identical choice stays a byte-preserving no-op.
+			s.Lifecycle.MarkPolicyHandled()
+		}
 		result = s.Config
 		return err
 	})

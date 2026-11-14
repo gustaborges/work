@@ -3,7 +3,6 @@
 package integration
 
 import (
-	fixtures "github.com/gustaborges/work/tests/fixtures/plugins"
 	"os/exec"
 	"reflect"
 	"strings"
@@ -13,8 +12,8 @@ import (
 func TestAdminUninstallInteractiveDependencyReview(t *testing.T) {
 	bin := buildWorkBin(t)
 	env, dir, home := ptyEnv(t)
-	src := fixtures.Prepare(t, "admin-suite")
-	for _, args := range [][]string{{"plugin", "install", src, "--as", "a"}, {"repository", "policy", "add", "a/clone"}} {
+	installPluginFixtureIn(t, env, "a", "admin-suite")
+	for _, args := range [][]string{{"repository", "policy", "add", "admin-suite@a/clone"}} {
 		cmd := exec.Command(bin, args...)
 		cmd.Env = env
 		if out, err := cmd.CombinedOutput(); err != nil {
@@ -22,9 +21,9 @@ func TestAdminUninstallInteractiveDependencyReview(t *testing.T) {
 		}
 	}
 	before := adminTree(t, home)
-	c := newConsoleIn(t, dir, bin, env, "plugin", "uninstall", "a", "--yes")
+	c := newConsoleIn(t, dir, bin, env, "plugin", "remove", "admin-suite@a", "--yes")
 	c.expect("Remove policy references")
-	c.expect("a/clone")
+	c.expect("admin-suite@a/clone")
 	c.send("n")
 	if code := c.wait(); code != 20 {
 		t.Fatal(code, c.screen())
@@ -32,25 +31,25 @@ func TestAdminUninstallInteractiveDependencyReview(t *testing.T) {
 	if !reflect.DeepEqual(before, adminTree(t, home)) {
 		t.Fatal("dependency refusal changed home")
 	}
-	c = newConsoleIn(t, dir, bin, env, "plugin", "uninstall", "a")
+	c = newConsoleIn(t, dir, bin, env, "plugin", "remove", "admin-suite@a")
 	c.expect("Remove policy references")
-	c.expect("a/clone")
+	c.expect("admin-suite@a/clone")
 	c.send("y")
-	c.expect("Uninstall plugins")
+	c.expect("Remove plugins")
 	c.expect("admin-team")
 	c.send("n")
 	if code := c.wait(); code != 20 {
 		t.Fatal(code, c.screen())
 	}
-	if strings.Contains(c.screen(), "work: uninstalled") || !reflect.DeepEqual(before, adminTree(t, home)) {
+	if strings.Contains(c.screen(), "work: removed") || !reflect.DeepEqual(before, adminTree(t, home)) {
 		t.Fatal("uninstall refusal changed home")
 	}
-	c = newConsoleIn(t, dir, bin, env, "plugin", "uninstall", "a")
+	c = newConsoleIn(t, dir, bin, env, "plugin", "remove", "admin-suite@a")
 	c.expect("Remove policy references")
 	c.send("y")
-	c.expect("Uninstall plugins")
+	c.expect("Remove plugins")
 	c.send("y")
-	c.expect("work: uninstalled a")
+	c.expect("work: removed admin-suite@a")
 	if code := c.wait(); code != 0 {
 		t.Fatal(code, c.screen())
 	}

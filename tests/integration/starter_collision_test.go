@@ -9,7 +9,6 @@
 package integration
 
 import (
-	fixtures "github.com/gustaborges/work/tests/fixtures/plugins"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -131,11 +130,7 @@ func TestStarterCollisionUnlocatedReferenceStaysInField(t *testing.T) {
 	bin := buildWorkBin(t)
 	env, homeDir, workHome := ptyEnv(t)
 	installPluginFixture(t, bin, env, "colliding-starter")
-	second := exec.Command(bin, "plugin", "install", fixtures.Prepare(t, "colliding-starter"), "--as", "colliding-two")
-	second.Env = env
-	if out, err := second.CombinedOutput(); err != nil {
-		t.Fatalf("second colliding install: %v\n%s", err, out)
-	}
+	installPluginFixtureIn(t, env, "second", "colliding-starter")
 
 	root := filepath.Join(homeDir, "src")
 	makeRepo(t, filepath.Join(root, "unrelated"))

@@ -1,12 +1,14 @@
 # ADD-0001: Work System Architecture
 
-**Status:** Draft
+**Status:** Draft — target architecture for feature 009; implementation pending
 
-**Date:** 2026-08-31
+**Date:** 2026-11-07
 
-**Decisions governing this document:** ADR-0000 (plugin execution), ADR-0002 (installation and registration), ADR-0003 (bootstrap), ADR-0004 (Starter collision), ADR-0005 (updates), ADR-0006 (runtime), ADR-0008 (signing), ADR-0009 (stack), ADR-0011 (convention resolution), ADR-0012 (component model and manifest), ADR-0013 (namespaces and persisted state), ADR-0014 (source vs. location separation), ADR-0015 (resolution policy), ADR-0016 (Repository Reference and Git endpoints), ADR-0019 (CLI surface), ADR-0020 (presentation boundary), and ADR-0021 (full-screen lifecycle).
+**Marketplace decisions:** ADR-0022–ADR-0030 govern the target distribution model and supersede the older decisions only in their declared scopes.
 
-**Requirements satisfied:** `docs/prd.md` — RF-1 through RF-49, RNF-1 through RNF-9. This document implements the requirements and decisions listed here; incompatibilities must be resolved in the PRD or in an ADR, never by silent design drift.
+**Decisions governing unchanged behavior:** ADR-0000 (plugin execution), ADR-0002 (installation and registration), ADR-0003 (bootstrap), ADR-0004 (Starter collision), ADR-0005 (updates), ADR-0006 (runtime), ADR-0008 (signing), ADR-0009 (stack), ADR-0011 (convention resolution), ADR-0012 (component model and manifest), ADR-0013 (namespaces and persisted state), ADR-0014 (source vs. location separation), ADR-0015 (resolution policy), ADR-0016 (Repository Reference and Git endpoints), ADR-0019 (CLI surface), ADR-0020 (presentation boundary), and ADR-0021 (full-screen lifecycle).
+
+**Requirements satisfied:** `docs/prd.md` — FR-1 through FR-83, NFR-1 through NFR-11. This document implements the requirements and decisions listed here; incompatibilities must be resolved in the PRD or in an ADR, never by silent design drift.
 
 ***
 
@@ -147,7 +149,7 @@ Each link key has a single current value, and every publication is an upsert: th
 }
 ```
 
-The package is the atomic unit for installation, update, enablement, and removal. The component and convention identity is the logical `name`; the package name is a proposed local alias. Ambiguous component names across enabled packages are qualified as `<package-alias>/<name>`.
+The package remains the atomic unit for installation, update, enablement, and removal (ADR-0012). Under ADR-0024, package identity is the structured pair `(marketplace, plugin)` rendered as `plugin@marketplace`; component and convention identity adds the contribution name, rendered `plugin@marketplace/contribution`. Contributions with equal names remain distinct records. Optional marketplace display names never participate in identity. Source registration instances distinguish retained memory/private scope across namespace removal and reuse; public selectors stay unchanged. Bare contribution selection is allowed only when unambiguous; plugin selection always specifies its marketplace.
 
 ### 4.1 Validation by role
 
@@ -166,90 +168,76 @@ The package is the atomic unit for installation, update, enablement, and removal
 
 `inputs[]` uses the grammar `<source>:<key>[:optional]`, where `source` is `work`, `meta`, or `link`. `work:<key>` accesses only the state surface exposed by the core; `meta:<key>` accesses extensible metadata; and `link:<key>` accesses a first-class external relation. The namespace is used for resolution and eligibility, but is not repeated in the projected payload.
 
-Public `meta` and `link` keys follow Work Semantic Conventions: they define namespace, key, meaning, and value representation without forming a closed binary whitelist. Data without shared semantics uses the private namespace `plugin.<plugin-name>.<key>`. The key identifies the meaning of the data, not its producer: multiple Linkers may declare the same `key` without creating a namespace collision.
+Public `meta` and `link` keys follow Work Semantic Conventions: they define namespace, key, meaning, and value representation without forming a closed binary whitelist. Data without shared semantics uses a private namespace bound to the composed provider by ADR-0024. Manifest and subprocess self-relative private keys are expanded to the canonical provider scope for persistence and lookup, then projected using the declared input keys. The exact escaped grammar and ownership rules are in feature 009 contracts; neither homonymous providers nor distinct registration instances share private ownership. Public keys remain provider-independent. The key identifies the meaning of the data, not its producer: multiple Linkers may declare the same `key` without creating a namespace collision.
 
 ***
 
-## 5. Installation and registration
+## 5. Marketplace distribution, installation, and registration
+
+**Governing decisions:** ADR-0022 (catalog), ADR-0023 (snapshots/copies), ADR-0024 (identity), ADR-0025 (surface), ADR-0026 (removal), ADR-0027 (administration). Satisfies PRD FR-16–FR-21, FR-35, FR-40–FR-48, FR-65–FR-77, FR-81–FR-82.
 
 ```text
 ~/.work/
-  plugins/<alias>/
-    plugin.json
-    source/
+  plugins/<encoded-marketplace>/<encoded-plugin>/
+    source/plugin.json
+    source/<package-files>
     .install-meta.json
-  config/
-    work.json
-  state/
-    work.db
-    registry.json
-    branch_conventions.json
-    reference-package.json
-    administration.json
-    administration/<transaction-id>/journal.json
+  config/work.json                    # source registrations and ordered policy
+  state/registry.json                 # structured providers and owned declarations
+  state/branch_conventions.json       # actual provider/registration-bound choices
+  state/marketplace-catalogs.json      # fixed discovery metadata and capture references
+  state/marketplace-snapshots/<hex>/   # local distribution bytes; never execution roots
+  state/reference-package.json        # durable initialization/removal history
+  state/administration.json           # current schema, stable/pending epoch
+  state/administration/<id>/journal.json
+  state/work.db                       # Work projection, not administrative storage
 ```
 
-`work plugin install <source>` accepts a remote source or a local path and produces a pinned installation; for a local path, `--link` creates a development link instead. `--link` is invalid with a remote source. The registry is generated from the manifest and stores, per component, the package alias, name, role, entrypoint, runtime, pattern, events and filters, inputs, Linker key, discovery, manual presentation, and Locator `accepts`. Installation validates the grammar and namespaces of `inputs[]`, `accepts`, and the syntax of the keys declared in the manifest; data published in outputs is validated when received. Conventions are registered separately with name and prefixes.
+The distribution catalog has a published namespace, optional passive display name, and explicit entry names/relative package directories. Each package is self-contained and includes its static plugin manifest. Package paths cannot escape or overlap. Entire offers are validated without executing plugins; runtimes are checked when a selected package is installed. Catalog schemas, safe names, canonical digests, vectors, and source rules are defined by [feature 009 contracts](../../specs/009-marketplace-distribution/contracts/marketplace-catalog.md).
 
-Conflicting package aliases from different sources fail; `--as <alias>` resolves it. Reinstalling the same source under the same alias is idempotent. Changes to the field model are validated by the same install and update pipeline. Installation registers Locators, but does not automatically alter the Repository Resolution Policy. If uninstalling affects Locators referenced in the policy, interactive mode surfaces the impact and confirms removal of those references in the same change; non-interactive mode requires explicit handling.
+`marketplace` resolves typed Git/local/distribution providers. Git fixes the selected commit and recorded branch; local sources capture distributable content with pre/post content validation; the included provider reads binary resources. `marketplaceadmin` prepares registration, refresh, inspection, and whole-source removal plans. `pluginadmin` consumes resolved entries and owns installation, replacement, toggle, update, and removal policy. `plugininstall` validates/copies already resolved package content; no public service may publish arbitrary standalone sources or link new packages. CLI and manager callbacks share these services; presentation receives safe data and opaque identities, never Git/storage access.
+
+Registering a source and its first fixed catalog is one publication. Repeating identical registration is a no-op, not refresh. Names come from validated catalogs; conflicting provenance and replacement of the included provider fail. Refresh changes discovery only. Local installation uses captured bytes; Git installation obtains the exact browsed commit if needed and fails without falling forward. Installed copies do not depend on source/capture availability for execution.
+
+A package registration contains structured identity, actual source provenance, opaque version, package content digest, enablement, and provider-owned declarations. Components, conventions, private scope, policy, memory, subscription matching, dispatch, and revision baselines carry that identity throughout. Rendering the ID is not an identity parser or filesystem path. Genuine exclusive-contribution conflicts remain domain errors.
 
 ### 5.1 Administrative storage and services
 
-This flow realizes `docs/prd.md` FR-17–FR-21, FR-25, FR-40–FR-41, FR-45 and FR-47–FR-48 through the governing installation, update, bootstrap, convention and policy ADRs.
+Under ADR-0027 and ADR-0030, use one current strict administrative model with catalog state, source configuration, composed registry/memory and typed package addresses. The CLI is unreleased: earlier development formats, plugins and command behavior may break. Replace existing shapes directly; there are no dual readers, conversions, adoption paths, old-journal handlers or old-executable fences.
 
-Under ADR-0002's config/state separation and consistent package registration,
-`adminstate` provides coherent inspection, serialized publication, recovery and
-revision-protected invocation. `pluginadmin` owns inventory, toggle, update and
-whole-set removal operations; `plugininstall` prepares validated pinned content
-or linked registration. CLI adapters compose these services for direct commands
-and hubs. The services have no presentation or Work-database dependency.
+One administration lock protects finite publication. Journal order remains prepared → pending epoch → owned moves and JSON images → committed marker → stable epoch → cleanup. The finite image allowlist includes catalogs; move destinations use separately validated marketplace/plugin segments only. Current prepared recovery restores before-images and committed recovery completes after-images. Ordinary malformed/unsupported current state fails validation without conversion or deletion.
 
-The registry records package origin, source/reference, opaque version, content
-digest and enablement alongside declarations. Missing legacy enablement means
-enabled; metadata inspection projects only provable installed facts without
-writing migration state. Convention memory and bundled lifecycle history remain
-separate from the registry and survive package removal. Work snapshots and the
-SQLite projection remain schema/version 3; they contain no administrative state.
+Publish complete local captures before referencing them. Capture/staging leases protect every in-flight plan from orphan collection; cleanup removes only unreferenced, unleased owned artifacts under administration. Slow capture, Git, runtime preparation, and user interaction happen outside the publication lock. Plans close idempotently after success, error, Back, or cancellation. Explicit update checks use temporary storage outside Work home and do not persist catalogs, leases, timestamps.
 
-One administration lock protects all package, config, convention-memory and
-bootstrap writers. A finite journal holds before/after JSON images with existence
-and digest information plus owned package moves. Publication proceeds through
-prepared journal, pending epoch, package/JSON replacement, committed marker,
-stable epoch, then cleanup. Before-images and package backups remain owned until
-stable publication. Recovery restores prepared transactions and completes
-committed transactions; unreferenced stable journals permit cleanup only. Unsafe
-or incomplete evidence remains available for explicit mutating recovery.
+Pure reads accept matching stable epochs with at most three attempts; they never acquire locks, recover, bootstrap, open the Work database, create state, or perform network access. A valid explicit mutation performs recovery preflight, prepares outside the lock, then revalidates affected facts against current state. Independent changes merge; drift in reviewed source/targets/candidate/dependencies conflicts without expanding authorization.
 
-Pure reads inspect the control epoch before and after loading administrative
-state and accept matching stable epochs, with at most three attempts on drift.
-They never acquire a lock, bootstrap, recover or open the Work database. A valid
-explicit mutation runs a short recovery preflight before semantic lookup, then
-prepares sources/review outside the lock and revalidates affected facts against
-latest state at commitment. Updates publish per package; removals publish the
-reviewed set and approved policy references together. Linked sources are external
-and never traversed as owned removal content.
+Invocation validates composed provider revision/declarations/eligibility under administration and retains protection through subprocess completion. Administration is released before acquiring Work/branch locks; publication after execution revalidates current facts without lock inversion. Package copies, references, and catalog refresh do not alter role/IPC semantics.
 
-Managed invocation checks the selected package revision, declarations and
-eligibility under administration and retains that lock through subprocess
-completion. It releases administration before taking Work/branch locks; subsequent
-publication checks use pure snapshots. This realizes the existing execution and
-integrity contracts from ADR-0000, ADR-0002, ADR-0005 and ADR-0013 without changing
-plugin IPC or adding a component timeout. Detailed finite-state and failure
-contracts are in [spec-008](../../specs/008-sustainable-operation/contracts/administrative-state.md).
+### 5.2 Maintenance and removal
+
+ADR-0023 preserves opaque-version inequality and immutable reviewed candidates. Update resolves one current revision per source/branch group from recorded actual provenance; all targets in that group use the same revision. Discovery freshness or absence does not redirect maintenance. Equal valid versions are unchanged; invalid content still fails. Explicit add from a fixed offer can reinstall changed bytes at the same version, preserving enablement with exact dependency review. Identical content is a no-op.
+
+ADR-0026 governs removal. Plugin removal publishes the selected installation set and authorized dependencies without removing sources/siblings. Marketplace removal reviews its registration/catalog and every installed package from local inventory, including disabled and withdrawn entries, without contacting the source. Configuration, catalogs, copies, registry, and authorized policy withdrawal commit together. Works and convention memory are preserved. Relevant set/provenance drift conflicts; the namespace is reusable only after commitment, without historical reassociation.
+
+### 5.3 Clean pre-release cutover
+
+ADR-0030 realizes PRD FR-79: support one marketplace-only identity, source and storage contract. Delete standalone/link/embedded-mode publishing APIs, alias variants, compatibility selectors/readers/adapters, adoption/migration flows and compatibility-only fixtures. Update active callers/examples/tests directly to the intended design. Developer validation starts from fresh disposable homes; no reset tool or real-home deletion is authorized by this feature.
+
+Preserving marketplace-created Works and source-bound remembered/private state across ordinary removal remains current product behavior. Source registration IDs distinguish replacement origins even when public names repeat; they are provenance, not a previous-format bridge. No prior development Work schema or identifier representation imposes a storage-preservation requirement.
 
 ***
 
-## 6. Reference package bootstrap
+## 6. Included offer, bootstrap, and official online publications
 
-The official seed contains, at minimum, a fallback Starter for local repository references, a filesystem-based Repository Locator, and the `freeform` convention with the `{slug}` prefix. The default Locator is initially included in the Repository Resolution Policy. On the first command that requires this state — usually `work start` — everything goes through the normal installation pipeline, without network access. There is no public `work init`. Seed components may be uninstalled like any other package.
+**Governing decisions:** ADR-0028 (included provider/default lifecycle), ADR-0029 (online offer), ADR-0022–ADR-0024 (common entry/copy/identity). Satisfies PRD FR-10, FR-24, FR-41, FR-78–FR-80.
 
-The ADR-0003 bootstrap participates in the administrative transaction above.
-`reference-package.json` retains initialization, policy-seeding and deliberate
-removal history outside the removable package. Fresh required setup seeds the
-default policy once; repair and supported legacy adoption preserve edited/empty
-policy and disablement. Deliberate removal prevents later bootstrap resurrection.
-Explicit `work plugin install --embedded` installs offline and records policy
-initialization as handled without inserting a Locator reference.
+The binary provides reserved marketplace `builtin`, initially offering `work-reference` with a fallback Starter, filesystem Locator, and freeform convention. The provider obtains its catalog/packages from embedded distribution resources; an extracted editable catalog or author-supplied field cannot redefine its authority. `builtin` is visible without initializing home and cannot be removed or replaced; individual installed plugins remain removable and toggleable.
+
+Current lifecycle records initialized, policy_handled and removed. Source registration does not handle policy. Explicit policy choice, including empty, sets policy_handled in the same transaction; config-file existence is not intent. Required first setup seeds once only while policy remains unhandled.
+
+The first command requiring genuinely fresh default setup resolves `work-reference@builtin` through the common entry/copy/registry transaction and initializes the qualified default policy once. Durable initialization, policy handling, and deliberate-removal history remain outside removable storage. Explicit add marks setup/policy handled without inserting Locators. Repair, reinstall, reads, catalog refresh, and new binary offers never reseed edited/empty policy or silently replace installed copies. Current disablement/removal is preserved; earlier development installations are outside the supported contract.
+
+`work` is a separate online Git catalog with publication independent of Work releases. It is explicitly registered and follows normal branch/snapshot/refresh/update and whole-source removal. Its owner-confirmed publication origin is a release prerequisite, not an inferred URL or a reserved-name trust signal. No automatic online registration or resurrection occurs. The included provider's lifecycle does not confer protection against same-user file modification; installed copies share the existing trust boundary.
 
 ***
 
@@ -333,7 +321,7 @@ The global configuration keeps the declarative policy and the search roots separ
   "workspace": "/home/user/.workspaces",
   "repository_roots": ["/home/user/src", "/home/user/projects"],
   "repository_resolution": {
-    "locators": ["core/filesystem"]
+    "locators": ["work-reference@builtin/filesystem-repository-locator"]
   }
 }
 ```
@@ -349,7 +337,7 @@ The official filesystem Locator searches only the configured roots, with depth l
 Each enabled package contributes its `conventions[]` to the global catalog. Outside contribution mode, Work computes the repository identity, reuses the available convention stored in `branch_conventions.json`, or asks the user to choose one and persists it. It then presents its prefixes. `work convention` opens the TUI with the current choice and the switch action; `work convention show` only displays it and `work convention set <convention>` replaces it directly. Identity uses, in this order, the `origin` URL, root commits, or the absolute path in a shallow clone without a remote.
 
 Under ADR-0011, remembered choice and effective provider availability are separate
-projections. Shared enabled owners retain availability. Unavailable memory stays
+projections. Provider-qualified choices retain availability only through their actual enabled owner; homonymous conventions from another provider do not substitute. Unavailable memory stays
 stored and visible with its reason until explicitly replaced; noninteractive start
 returns convention-unknown, and interactive start asks for a replacement even when
 only one remains. The shared setter revalidates the reviewed memory and provider
@@ -365,7 +353,7 @@ The core must prefer native Git operations for these checks, including `git chec
 
 Events are lifecycle identifiers defined by the core in the format `<command>:<event>`. Plugins subscribe to them, but do not create events. In v1, `start:finalized` occurs after the Work and its core state have been materialized.
 
-`on[]` for Importers and `discover.on[]` for Linkers accept `event` and an optional `starters` filter; without a filter, the subscription applies to any Starter. The filter determines eligibility and is never passed to the subprocess.
+`on[]` for Importers and `discover.on[]` for Linkers accept `event` and an optional `starters` filter; without a filter, the subscription applies to any Starter. ADR-0024 binds self-package names to their provider and explicit qualified references exactly; an unrelated ambiguous bare filter never matches arbitrary homonyms. Filters determine eligibility and are not passed to subprocesses.
 
 Before starting a subprocess, the core checks: plugin enabled; operation available for the current activation; subscription and filter when activation is event-driven; and existence of all required inputs. Inputs use `work:<key>`, `link:<key>`, or `meta:<key>`, with `:optional` for acceptable absence. Optional inputs do not participate in eligibility and are omitted from input when absent. The core resolves the namespace, but projects only the requested key and its value into the payload.
 
@@ -452,9 +440,11 @@ In controls with confirmation, the sequence is `selection → confirmation → c
 
 For looping administration hubs, the presentation session hosts successive wizards inside the same full-screen program, following ADR-0021's one-program-per-journey lifecycle. The CLI performs service work between prompts; the session retains terminal dimensions, theme, and accepted receipts across screens. Read results use a scrollable view that waits for Back before returning to the menu. Operation output is shown within the session and published to its configured streams after terminal restoration; retained history yields space to the active control.
 
-The plugin manager realizes the same domain-free boundary and single terminal
-lifecycle through a catalog model with Installed, Official and Install plugin
-destinations. CLI callbacks supply inventory/details, prepare frozen candidates
+Under ADR-0025 the plugin manager realizes the same domain-free boundary and single terminal
+lifecycle through Installed and Marketplaces, with nested source/entry collections, source filters,
+installed selection sets, and all-target actions. Display names retain visible namespaces; source details
+show complete local installed/enabled totals. The twelve logical surfaces and every CLI/TUI
+parity row are specified in feature 009 contracts. CLI callbacks supply inventory/details, prepare frozen candidates
 and apply accepted service operations. The model owns cursor/filter/form/review
 state and candidate cleanup across Back and asynchronous results. Dependency
 authorization is separate from acceptance. Current status replaces prior feedback;
@@ -475,21 +465,24 @@ Recoverable validations return a public message to the active control, without p
 
 ### 12.5 Satisfaction and governing decisions
 
-This section satisfies `docs/prd.md` RF-50 through RF-64 and RNF-10 through RNF-11. ADR-0019 governs the surface and discovery; ADR-0020 governs the presentation boundary and lifecycle; ADR-0021 governs the full-screen rendering structure (wizard per journey), replacing ADR-0020's inline-per-step session decision; ADR-0009 continues to govern the stack. The historical F1/F2 contracts continue to record the behavior delivered in those slices, but conflicting presentation is replaced by `specs/003-terminal-ux-revamp/`.
+This section satisfies `docs/prd.md` FR-50 through FR-64, FR-76, FR-81–FR-83, and NFR-10 through NFR-11. ADR-0025 governs the marketplace surface and preserved manager experience. ADR-0019 governs the surface and discovery; ADR-0020 governs the presentation boundary and lifecycle; ADR-0021 governs the full-screen rendering structure (wizard per journey), replacing ADR-0020's inline-per-step session decision; ADR-0009 continues to govern the stack. The historical F1/F2 contracts continue to record the behavior delivered in those slices, but conflicting presentation is replaced by `specs/003-terminal-ux-revamp/`.
 
 The direct administrative API is:
 
 ```text
-work plugin list
-work plugin install <SOURCE> [--link] [--as <ALIAS>]
-work plugin install --embedded
+work plugin list [-m MARKETPLACE] [--available --json] [--json]
+work plugin add PLUGIN@MARKETPLACE [--yes] [--remove-policy-references] [--json]
+work plugin marketplace add SOURCE [--branch BRANCH] [--json]
+work plugin marketplace list [--json]
+work plugin marketplace upgrade [MARKETPLACE] [--json]
+work plugin marketplace remove MARKETPLACE [--yes] [--remove-policy-references] [--json]
 work plugin enable <PLUGIN...>
 work plugin disable <PLUGIN...>
 work plugin update
 work plugin update --check [PLUGIN...]
 work plugin update <PLUGIN...> [--yes] [--remove-policy-references]
 work plugin update --all [--yes] [--remove-policy-references]
-work plugin uninstall <PLUGIN...> [--yes] [--remove-policy-references]
+work plugin remove <PLUGIN...> [--yes] [--remove-policy-references] [--json]
 
 work repository locator list
 work repository policy list
@@ -506,4 +499,4 @@ work convention show
 work convention set <CONVENTION>
 ```
 
-Read commands (`status`, `list`, `show`, and `plugin update --check`) accept `--json` and are pure. `--yes` confirms already determined impacts; it never chooses targets or values. There are no official aliases. The source of every plugin is explicitly chosen by the user and the installed reference is pinned; formal signing is deferred according to ADR-0008. ADR-0019 governs the grammar and cross-cutting semantics of this surface.
+Read commands (`status`, `list`, `show`, and `plugin update --check`) accept `--json` and are pure. `--yes` confirms already determined impacts; it never chooses targets or values. There are no official aliases. The source of every plugin is explicitly chosen by the user and the installed reference is pinned; formal signing is deferred according to ADR-0008. ADR-0025 replaces the plugin grammar; ADR-0019 governs unchanged cross-cutting semantics. Plugin selectors are qualified or use an explicit marketplace flag, with no mixed forms. No compatibility selector or translation alias is part of the API.

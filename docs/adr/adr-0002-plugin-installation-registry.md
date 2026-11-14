@@ -1,6 +1,9 @@
 # ADR-0002: Plugin Installation, Generated Registry, and Config/State Separation
 
-**Status:** Accepted
+**Status:** Superseded in part for feature 009
+**Superseded by:** ADR-0022 (catalog-only publication), ADR-0023 (copies/snapshots), ADR-0024 (composed identity), ADR-0025 (grammar), ADR-0026 (whole-source removal), ADR-0027 (administrative extension), ADR-0028 (included source).
+
+The original decision body below is retained as historical evidence.
 **Date:** 2026-08-23
 **Product Context:** `docs/prd.md` — RF-16, RF-17, RF-20, RF-21, RNF-2, RNF-5
 **Governs:** `docs/add/add-0001-work-system-architecture.md`, Section 5

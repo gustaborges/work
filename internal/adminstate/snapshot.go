@@ -12,30 +12,32 @@ import (
 
 	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/diag"
-	"github.com/gustaborges/work/internal/plugin"
+	"github.com/gustaborges/work/internal/marketplace"
 	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/repoconv"
 	"github.com/gustaborges/work/internal/workhome"
 )
 
+// ControlSchema is the only supported administration control/journal schema.
+const ControlSchema = 1
+
+// Control is the stable/pending epoch record.
 type Control struct {
 	Schema        int     `json:"schema"`
 	Epoch         uint64  `json:"epoch"`
 	Status        string  `json:"status"`
 	TransactionID *string `json:"transaction_id"`
 }
-type Lifecycle struct {
-	Schema       int  `json:"schema"`
-	Initialized  bool `json:"initialized"`
-	PolicySeeded bool `json:"policy_seeded"`
-	Removed      bool `json:"removed"`
-}
+
+// Snapshot is one coherent administrative state. Inspection maps a provider's
+// public ID to its installed-content status.
 type Snapshot struct {
 	Epoch      uint64
 	Config     *config.Config
 	Registry   *registry.Registry
 	Memory     *repoconv.Store
 	Lifecycle  *Lifecycle
+	Catalogs   *marketplace.State
 	Inspection map[string]string
 }
 
@@ -46,7 +48,7 @@ func cancelled(ctx context.Context) error {
 	return diag.Wrap(diag.Cancelled, ctx.Err(), "administration cancelled")
 }
 func loadControl(h workhome.Home) (Control, error) {
-	c := Control{Schema: 1, Status: "stable"}
+	c := Control{Schema: ControlSchema, Status: "stable"}
 	b, err := os.ReadFile(h.AdministrationFile())
 	if errors.Is(err, os.ErrNotExist) {
 		return c, nil
@@ -58,7 +60,7 @@ func loadControl(h workhome.Home) (Control, error) {
 	if err = json.Unmarshal(b, &c); err != nil {
 		return c, recoveryError(err)
 	}
-	if c.Schema != 1 || (c.Status != "stable" && c.Status != "pending") || (c.Status == "stable" && c.TransactionID != nil) || (c.Status == "pending" && c.TransactionID == nil) {
+	if c.Schema != ControlSchema || (c.Status != "stable" && c.Status != "pending") || (c.Status == "stable" && c.TransactionID != nil) || (c.Status == "pending" && c.TransactionID == nil) {
 		return c, recoveryError(errors.New("invalid administration control"))
 	}
 	if c.TransactionID != nil {
@@ -108,6 +110,7 @@ func read(ctx context.Context, h workhome.Home, between func()) (*Snapshot, erro
 	}
 	return nil, diag.New(diag.AdministrationConflict, "administration changed during inspection; retry the command")
 }
+
 func load(h workhome.Home) (*Snapshot, error) {
 	cfg, err := config.Load(h.ConfigFile())
 	if err != nil {
@@ -121,59 +124,31 @@ func load(h workhome.Home) (*Snapshot, error) {
 	if err != nil {
 		return nil, diag.Wrap(diag.BootstrapFailed, err, "cannot read branch convention memory")
 	}
-	life, err := loadLifecycle(h, reg)
+	cats, err := marketplace.LoadState(h.CatalogsFile())
+	if err != nil {
+		return nil, diag.Wrap(diag.BootstrapFailed, err, "cannot read the marketplace catalogs")
+	}
+	life, err := loadLifecycle(h)
 	if err != nil {
 		return nil, err
-	}
-	// Backfill only from installed managed content. Never consult a linked
-	// developer source for a version that was not registered at install time.
-	for i := range reg.Packages {
-		p := &reg.Packages[i]
-		if plugin.ValidateAlias(p.Alias) != nil {
-			return nil, recoveryError(errors.New("unsafe installed alias"))
-		}
-		if p.Version == "" && (p.Origin == registry.OriginLocalPinned || p.Origin == registry.OriginRemotePinned) {
-			root := filepath.Join(h.PluginsDir(), p.Alias, "source")
-			// Refuse linked installation roots and escaping manifest symlinks.
-			manifest := filepath.Join(root, "plugin.json")
-			resolved, e := filepath.EvalSymlinks(manifest)
-			base, e2 := filepath.EvalSymlinks(root)
-			aliasInfo, e3 := os.Lstat(filepath.Dir(root))
-			if e == nil && e2 == nil && e3 == nil && aliasInfo.Mode()&os.ModeSymlink == 0 {
-				rel, e := filepath.Rel(base, resolved)
-				if e == nil && filepath.IsLocal(rel) {
-					if b, e := os.ReadFile(resolved); e == nil {
-						if m, e := plugin.Parse(b); e == nil {
-							p.Version = m.Version
-						}
-					}
-				}
-			}
-		}
 	}
 	inspection := map[string]string{}
 	for _, p := range reg.Packages {
 		status := "ready"
-		if p.Version == "" || p.ContentDigest == "" {
-			status = "metadata-unknown"
+		src, err := h.PackageSource(p.Provider)
+		if err != nil {
+			return nil, recoveryError(err)
 		}
-		root := filepath.Join(h.PluginsDir(), p.Alias, "source")
-		manifest := filepath.Join(root, "plugin.json")
-		if p.Origin == registry.OriginEmbedded {
-			manifest = filepath.Join(h.PluginsDir(), p.Alias, "plugin.json")
-		}
-		if info, e := os.Stat(manifest); e != nil || !info.Mode().IsRegular() {
+		if info, e := os.Stat(filepath.Join(src, "plugin.json")); e != nil || !info.Mode().IsRegular() {
 			status = "content-unavailable"
 		}
-		for _, c := range reg.Components {
-			if c.Alias == p.Alias {
-				if info, e := os.Stat(c.EntrypointPath(h.PluginsDir())); e != nil || !info.Mode().IsRegular() {
-					status = "content-unavailable"
-				}
+		for _, c := range reg.ProviderComponents(p.Provider) {
+			if info, e := os.Stat(c.EntrypointPath(h.PluginsDir())); e != nil || !info.Mode().IsRegular() {
+				status = "content-unavailable"
 			}
 		}
-		inspection[p.Alias] = status
+		inspection[p.ID()] = status
 	}
 	annotateRevisions(reg)
-	return &Snapshot{Config: cfg, Registry: reg, Memory: mem, Lifecycle: life, Inspection: inspection}, nil
+	return &Snapshot{Config: cfg, Registry: reg, Memory: mem, Lifecycle: life, Catalogs: cats, Inspection: inspection}, nil
 }
