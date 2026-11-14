@@ -2,7 +2,7 @@
 
 **Branch**: `feature/link-improvements` | **Date**: 2026-11-14 | **Spec**: [spec.md](spec.md)
 **Input**: Issue #61; PRD FR-84–FR-86; ADR-0031; ADD §§7, 9, 11.
-**Status**: Planned through tasks; implementation not started.
+**Status**: Implemented and locally validated; native CI pending publication.
 
 ## Summary
 

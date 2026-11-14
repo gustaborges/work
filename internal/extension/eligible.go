@@ -38,6 +38,13 @@ func EligibleDiagnosed(reg *registry.Registry, role, event string, s Subject) ([
 	var out []Decision
 	var ambiguous []Ambiguity
 	for _, c := range reg.Effective().Extensions(role) {
+		if role == plugin.RoleLinker && event == "start:finalized" {
+			if key, ok := storedKey(reg, c.Provider, c.Key); ok {
+				if _, present := s.State.Links[key]; present {
+					continue
+				}
+			}
+		}
 		ok, filter := subscribed(reg, c, event, s.Starter)
 		if filter != "" {
 			ambiguous = append(ambiguous, Ambiguity{Component: c, Filter: filter})

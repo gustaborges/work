@@ -30,3 +30,13 @@ go vet ./...
 ```
 
 Run native CI on supported operating systems; cross-compilation alone is not execution evidence. Review changed contracts and test receipts, then deliver both stories together. Marketplace-side removal of PR guessing and branch upstream behavior remain separate work.
+
+## Implementation evidence (2026-11-14)
+
+Implemented the single-response mode overlay and known-link exclusion. Reviewed FR-84–FR-86, ADR-0031, ADD §§7/9/11, and the historical protocol addendum: no contract drift found. Existing manual replacement regressions in `link.txtar` already cover replacing known values without launching a provider.
+
+Validation uses `GOCACHE=/tmp/work-go-cache` because the host cache is read-only in the workspace sandbox. Disposable test commits use `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=commit.gpgsign GIT_CONFIG_VALUE_0=false`; the delivery commit retains configured SSH signing. Built `make seed-all` before testing. Cross-compilation is preparation only, not native OS execution.
+
+Passed: focused IPC/Starter/extension suites; Starter subprocess contract suite (including one arg-only invocation); selected fork/contribution snapshots; new-mode overlay, invalid unselected output and known-link preservation testscript scenarios; existing manual link tests; `go vet ./...`. Full `go test ./...` passed on Linux (integration package: 345.415s); `go vet ./...` passed. Native CI is pending PR publication.
+
+Native macOS and Windows execution is delegated to the repository's existing CI matrix. Those outcomes are not claimed as local validation.

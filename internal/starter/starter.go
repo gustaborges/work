@@ -9,7 +9,10 @@
 package starter
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"github.com/gustaborges/work/internal/adminstate"
 	"github.com/gustaborges/work/internal/workhome"
 	"maps"
@@ -95,6 +98,12 @@ func Match(reg *registry.Registry, arg string) (registry.Component, Outcome, err
 	}
 }
 
+// ModeContext contains the contextual overrides for one creation mode.
+type ModeContext struct {
+	Links map[string]string `json:"links"`
+	Meta  map[string]any    `json:"meta"`
+}
+
 // Reference is the subset of a Starter response the core acts on (ADR-0016).
 // The four repository fields are independent and optional; a reference with
 // none of them set is not rejected here — internal/locator classifies that
@@ -103,6 +112,7 @@ func Match(reg *registry.Registry, arg string) (registry.Component, Outcome, err
 // ValidateResponse before anything is materialized. Nothing else a Starter
 // emits is reachable through this type.
 type Reference struct {
+	Modes        json.RawMessage
 	Path         string
 	GitFetchURLs []string
 	Name         string
@@ -126,6 +136,7 @@ func Invoke(pluginsDir string, c registry.Component, arg string) (Reference, err
 	// emitted is deliberately ignored: nothing a Starter says can influence
 	// core-governed Work state.
 	return Reference{
+		Modes:        resp.Modes,
 		Path:         resp.Repository.Path,
 		GitFetchURLs: resp.Repository.GitFetchURLs,
 		Name:         resp.Repository.Name,
@@ -170,7 +181,20 @@ func ValidateResponse(ref Reference, owner string) error {
 			WithSummary("The Starter's response is structurally invalid.").
 			WithHint("This is a bug in the installed Starter, not something fixable from the command line.")
 	}
-	return validatePublished(ref, owner)
+	if err := validatePublished(ref, owner); err != nil {
+		return err
+	}
+	modes, err := decodeModes(ref.Modes)
+	if err != nil {
+		return err
+	}
+	for _, name := range slices.Sorted(maps.Keys(modes)) {
+		entry := modes[name]
+		if err := validatePublished(Reference{Links: entry.Links, Meta: entry.Meta}, owner); err != nil {
+			return fmt.Errorf("mode %s: %w", name, err)
+		}
+	}
+	return nil
 }
 
 // validatePublished checks the published keys in sorted order so the key a
@@ -234,4 +258,76 @@ func InvokeGuarded(ctx context.Context, h workhome.Home, c registry.Component, a
 	var ref Reference
 	err := adminstate.WithInvocation(ctx, h, c, func() error { var err error; ref, err = Invoke(h.PluginsDir(), c, arg); return err })
 	return ref, err
+}
+
+// decodeModes keeps new wire-shape failures in the Starter diagnostic domain.
+func decodeModes(raw json.RawMessage) (map[string]ModeContext, error) {
+	invalid := func(field string) error {
+		return diag.Newf(diag.StarterResponseInvalid, "the Starter returned invalid %s", field)
+	}
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+		return nil, nil
+	}
+	if raw[0] != '{' {
+		return nil, invalid("modes")
+	}
+	var entries map[string]json.RawMessage
+	if json.Unmarshal(raw, &entries) != nil {
+		return nil, invalid("modes")
+	}
+	out := make(map[string]ModeContext, len(entries))
+	for _, name := range slices.Sorted(maps.Keys(entries)) {
+		if name != "new" && name != "contribution" && name != "fork" {
+			return nil, invalid("mode name " + name)
+		}
+		value := bytes.TrimSpace(entries[name])
+		if len(value) == 0 || value[0] != '{' {
+			return nil, invalid("mode " + name)
+		}
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(value, &fields) != nil {
+			return nil, invalid("mode " + name)
+		}
+		var entry ModeContext
+		if json.Unmarshal(value, &entry) != nil {
+			return nil, invalid("mode " + name + " maps")
+		}
+		// encoding/json accepts null for string values; link values must be strings.
+		if links := fields["links"]; len(links) > 0 && !bytes.Equal(bytes.TrimSpace(links), []byte("null")) {
+			var values map[string]json.RawMessage
+			if json.Unmarshal(links, &values) != nil {
+				return nil, invalid("mode " + name + " links")
+			}
+			for _, key := range slices.Sorted(maps.Keys(values)) {
+				v := bytes.TrimSpace(values[key])
+				if len(v) == 0 || v[0] != '"' {
+					return nil, invalid("mode " + name + " link " + key)
+				}
+			}
+		}
+		out[name] = entry
+	}
+	return out, nil
+}
+
+// MergeMode copies the published maps and shallowly overlays the selected mode.
+// Call ValidateResponse first; invalid responses must never be materialized.
+func MergeMode(ref Reference, mode string) Reference {
+	if mode == "" {
+		mode = work.StartModeNew
+	}
+	modes, _ := decodeModes(ref.Modes)
+	entry := modes[mode]
+	ref.Links = maps.Clone(ref.Links)
+	ref.Meta = maps.Clone(ref.Meta)
+	if len(entry.Links) > 0 && ref.Links == nil {
+		ref.Links = make(map[string]string)
+	}
+	if len(entry.Meta) > 0 && ref.Meta == nil {
+		ref.Meta = make(map[string]any)
+	}
+	maps.Copy(ref.Links, entry.Links)
+	maps.Copy(ref.Meta, entry.Meta)
+	return ref
 }

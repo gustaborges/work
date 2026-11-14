@@ -215,3 +215,23 @@ func TestResolveInputsTypedPresenceAndMissing(t *testing.T) {
 		t.Fatal("malformed declaration accepted")
 	}
 }
+
+func TestKnownLinkPresenceSuppressesOnlyStartLinkers(t *testing.T) {
+	c := linker("l", true, startFinalized)
+	reg := installfx.Reg(nil, c)
+	for _, links := range []map[string]string{nil, {}, {"github.pull_request": ""}, {"github.pull_request": "known"}} {
+		s := subject("new", links, nil)
+		_, present := links[c.Key]
+		if got := Eligible(reg, plugin.RoleLinker, plugin.EventStartFinalized, s); (len(got) == 0) != present {
+			t.Fatal(got, links)
+		}
+		if present && Applicable(reg, plugin.EventStartFinalized, s) {
+			t.Fatal("known linker applicable")
+		}
+	}
+	c.Discover.On = []plugin.Subscription{{Event: "other"}}
+	reg = installfx.Reg(nil, c)
+	if len(Eligible(reg, plugin.RoleLinker, "other", subject("new", map[string]string{c.Key: "known"}, nil))) != 1 {
+		t.Fatal("other event changed")
+	}
+}

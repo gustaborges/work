@@ -1,6 +1,7 @@
 package starter
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -27,7 +28,8 @@ func TestBindStoresPrivateKeysAgainstThePublishingSourceInstance(t *testing.T) {
 	if err := ValidateResponse(ref, "sample"); err != nil {
 		t.Fatal(err)
 	}
-	a := Bind(ref, component(alpha), reg)
+	ref.Modes = json.RawMessage(`{"new":{"links":{"plugin.sample.url":"https://example.test/selected"}}}`)
+	a := Bind(MergeMode(ref, "new"), component(alpha), reg)
 	b := Bind(ref, component(beta), reg)
 
 	idA, idB := installfx.RegistrationID("alpha"), installfx.RegistrationID("beta")
@@ -40,7 +42,7 @@ func TestBindStoresPrivateKeysAgainstThePublishingSourceInstance(t *testing.T) {
 	if a.Meta["github.pull_request.number"] != 7 || a.Links["github.pull_request"] != "https://example.test/pr" {
 		t.Fatalf("public keys are shared semantic keys and must stay unchanged: %v %v", a.Meta, a.Links)
 	}
-	if a.Links[semconv.StorageKey(alpha, idA, "url")] == "" {
+	if a.Links[semconv.StorageKey(alpha, idA, "url")] != "https://example.test/selected" {
 		t.Fatalf("private link not stored per provider: %v", a.Links)
 	}
 	if ref.Meta["plugin.sample.build_id"] != "42" {

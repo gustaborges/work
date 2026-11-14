@@ -95,7 +95,7 @@ func TestSameKeyLinkersLastInOrderWins(t *testing.T) {
 	}
 }
 
-func TestLinkerValueReplacesStarterPublishedLink(t *testing.T) {
+func TestKnownStarterLinkSkipsDiscovery(t *testing.T) {
 	h := newHarness(t, "linker-value")
 	h.ctx.State.Links["github.pull_request"] = "https://example.test/from-starter"
 	st := h.snapshot()
@@ -103,10 +103,18 @@ func TestLinkerValueReplacesStarterPublishedLink(t *testing.T) {
 	if err := workWrite(h, st); err != nil {
 		t.Fatal(err)
 	}
-	Run(context.Background(), h.ctx)
+	rep := Run(context.Background(), h.ctx)
 
-	if got := h.snapshot().Links["github.pull_request"]; got != "https://example.test/pr/212-from-linker" {
+	if got := h.snapshot().Links["github.pull_request"]; got != "https://example.test/from-starter" {
 		t.Errorf("link = %q", got)
+	}
+	for _, launch := range h.launches() {
+		if launch.Role == "linker" || launch.Role == "linker2" {
+			t.Fatal(launch)
+		}
+	}
+	if len(kindsFor(h, OpDiscover)) != 0 || len(rep.Warnings) != 0 || len(h.idx.entries) != 0 {
+		t.Fatal("known discovery left traces")
 	}
 }
 
@@ -210,5 +218,25 @@ func TestAutomaticPublicationKeepsLatestStateAndRefusesArchive(t *testing.T) {
 		} else if saved.Links["github.pull_request"] == "" || len(r.report.Warnings) != 0 {
 			t.Fatal(saved, r.report)
 		}
+	}
+}
+
+func TestLinkerPhaseDoesNotChainNewInputs(t *testing.T) {
+	h := newHarness(t, "linker-value,linker2-value")
+	for i := range h.ctx.Registry.Components {
+		c := &h.ctx.Registry.Components[i]
+		if c.Name == "linker2" {
+			c.Inputs = []string{"link:github.pull_request"}
+			c.Key = "github.issue"
+		}
+	}
+	Run(context.Background(), h.ctx)
+	for _, launch := range h.launches() {
+		if launch.Role == "linker2" {
+			t.Fatal("new link activated a Linker during the phase")
+		}
+	}
+	if h.snapshot().Links["github.pull_request"] == "" {
+		t.Fatal("missing eligible first Linker")
 	}
 }

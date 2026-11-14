@@ -97,6 +97,11 @@ func runStarter(mode string, stdin []byte, stdout io.Writer) error {
 		"repository": map[string]any{"name": in.Arg},
 	}
 	switch mode {
+	case "modes":
+		out["links"] = map[string]any{"github.pull_request": "https://example.test/shared"}
+		out["modes"] = map[string]any{"new": map[string]any{"links": map[string]any{"github.pull_request": "https://example.test/selected"}}}
+	case "bad-mode":
+		out["modes"] = map[string]any{"fork": map[string]any{"links": map[string]any{"github.pull_request": nil}}}
 	case "context":
 		out["meta"] = map[string]any{"github.pull_request.number": 212}
 		out["links"] = map[string]any{"github.pull_request": "https://example.test/pr/212"}

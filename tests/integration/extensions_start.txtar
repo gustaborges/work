@@ -46,8 +46,7 @@ exec git -C $WORK/src/demo-ctx-1 branch --list foreign
 ! stdout .
 provenancecount 2
 
-# S6: a Linker's value becomes the link, replacing the Starter's, with discover
-# provenance. Stdout is only the three stable lines; progress is on the UI channel.
+# S6: a known Starter link suppresses discovery and retains start provenance. Stdout is only the three stable lines; progress is on the UI channel.
 env WORK_FIXTURE_MODE=starter-context,linker-value,importer-empty,importer2-empty
 work start demo-ctx-1 --base main --slug found --prefix {slug} --yes
 stdout 'work: created '
@@ -55,11 +54,11 @@ stdout 'work: branch found '
 stdout 'work: path '
 ! stdout 'running'
 ! stdout 'linked'
-stderr 'work: running context-suite@suite/linker \(discover\)'
-stderr 'work: context-suite@suite/linker: linked github.pull_request'
+! stderr 'work: running .* \(discover\)'
+! stderr 'linked github.pull_request'
 ! stderr 'example.test'
-grep '"github.pull_request": "https://example.test/pr/212-from-linker"' $WS/in-progress/demo-ctx-1_found/work-state.json
-provenance links github.pull_request context-suite@suite/linker discover
+grep '"github.pull_request": "https://example.test/pr/212"' $WS/in-progress/demo-ctx-1_found/work-state.json
+provenance links github.pull_request context-suite@suite/starter start
 
 # S6: a Linker with nothing to report is silent; an empty value is a warning and stores nothing.
 env WORK_FIXTURE_MODE=linker-none,linker2-none,importer-empty,importer2-empty
@@ -174,3 +173,18 @@ stderr 'warning: extension-start-failed: context-suite@suite/linker \(discover\)
 exists $WS/in-progress/demo-ctx-1_gone/worktree
 work plugin list
 stdout 'context-suite@suite  local'
+
+# Mode new overlays base context and still feeds Importers without discovery.
+env WORK_FIXTURE_MODE=starter-modes,linker-value,importer-ok,importer2-empty
+work start demo-ctx-1 --base main --slug modes --prefix {slug} --yes
+grep '"github.pull_request": "https://example.test/selected"' $WS/in-progress/demo-ctx-1_modes/work-state.json
+! stderr 'discover'
+exists $WS/in-progress/demo-ctx-1_modes/notes/context.md
+
+# Invalid unselected mode fails before materialization.
+env WORK_FIXTURE_MODE=starter-bad-mode
+! work start demo-ctx-1 --base main --slug badmode --prefix {slug} --yes
+stderr 'starter-response-invalid'
+! exists $WS/in-progress/demo-ctx-1_badmode
+exec git -C $WORK/src/demo-ctx-1 branch --list badmode
+! stdout .
