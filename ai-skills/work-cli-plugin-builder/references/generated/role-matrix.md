@@ -130,6 +130,10 @@ Generated from validator/protocol descriptors. Do not edit.
           "Type": "map[string]interface {}"
         },
         {
+          "Name": "modes,omitempty",
+          "Type": "json.RawMessage"
+        },
+        {
           "Name": "repository",
           "Type": "ipc.RepositoryReference"
         },

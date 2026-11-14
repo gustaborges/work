@@ -1,6 +1,6 @@
 # Proposed ADR: Explicit plural skills setup command
 
-> Historical S0 draft. Current accepted interface: [ADR-0034](../../../docs/adr/adr-0034-complete-skill-collection.md).
+> Historical S0 draft. Current accepted interface: [ADR-0035](../../../docs/adr/adr-0035-complete-skill-collection.md).
 
 **Status**: Proposed; final numeric ID assigned at S0.
 **Related requirements**: AS-R2, AS-R4 in [PRD amendment](prd-amendment.md).

@@ -2,7 +2,7 @@
 
 **Branch**: `feature/agentic-skills` | **Date**: 2026-11-14 | **Spec**: [spec.md](spec.md)
 **Input**: `../proposal.md`, feature 010 spec, [governance drafts](governance/README.md), local marketplace dependency 009.
-**Status**: Implementation in progress; S0 completed against develop with owner approval. Authorities: PRD FR-65–69, ADR-0031–33 and ADD-0001.
+**Status**: Implementation in progress; S0 completed against develop with owner approval. Authorities: PRD FR-87–91, ADR-0032–34 and ADD-0001.
 
 ## Summary
 
@@ -154,4 +154,4 @@ No adopted constitution exception. The proposed ADR-0019 exception is gated, not
 
 ## Owner-approved CLI revision
 
-[ADR-0034](../../docs/adr/adr-0034-complete-skill-collection.md) supersedes ADR-0032: no skill operands, exactly one explicit vendor, required local/user scope, current-directory local anchor, confirmation in both scopes with --yes for automation. The first skill is work-cli-plugin-builder. The embedded inventory drives all targets and vendor hints, so adding skills requires no command grammar change. Per-target recovery and partial outcomes remain governed by ADR-0033.
+[ADR-0035](../../docs/adr/adr-0035-complete-skill-collection.md) supersedes ADR-0033: no skill operands, exactly one explicit vendor, required local/user scope, current-directory local anchor, confirmation in both scopes with --yes for automation. The first skill is work-cli-plugin-builder. The embedded inventory drives all targets and vendor hints, so adding skills requires no command grammar change. Per-target recovery and partial outcomes remain governed by ADR-0034.

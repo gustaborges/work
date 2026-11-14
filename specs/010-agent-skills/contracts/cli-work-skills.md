@@ -1,6 +1,6 @@
 # CLI Contract: work skills
 
-**Authority**: PRD agent skills FR-66/68 and accepted [ADR-0034](../../../docs/adr/adr-0034-complete-skill-collection.md), superseding ADR-0032. Owner-approved CLI revision, 2026-11-14.
+**Authority**: PRD agent skills FR-88/90 and accepted [ADR-0035](../../../docs/adr/adr-0035-complete-skill-collection.md), superseding ADR-0033. Owner-approved CLI revision, 2026-11-14.
 
 ## Grammar and validation
 
@@ -77,8 +77,8 @@ For status, aggregate by recovery-required, then conflict, then I/O precedence, 
 
 ## Accepted authority reconciliation
 
-S0 approved by the owner on 2026-11-14 against develop revision 161cf233ef1eee8836fcde02cbc5f6433f65d5f4. PRD FR-65–69, ADR-0031–33 and ADD-0001 are authoritative. Plural skills grammar, receipt fields and diagnostic codes 62–66 are frozen. Earlier conditional wording records planning history and no longer represents a pending approval.
+S0 approved by the owner on 2026-11-14 against develop revision 161cf233ef1eee8836fcde02cbc5f6433f65d5f4. PRD FR-87–91, ADR-0032–34 and ADD-0001 are authoritative. Plural skills grammar, receipt fields and diagnostic codes 62–66 are frozen. Earlier conditional wording records planning history and no longer represents a pending approval.
 
 ## CLI experience revision
 
-ADR-0034 supersedes the original S0 grammar freeze: exactly one vendor, local/user scope, complete collection selection and skippable install confirmation now govern. Diagnostic codes and per-target receipt/status schemas remain unchanged. Selection of the complete collection does not alter ADR-0033 per-target commit/recovery semantics.
+ADR-0035 supersedes the original S0 grammar freeze: exactly one vendor, local/user scope, complete collection selection and skippable install confirmation now govern. Diagnostic codes and per-target receipt/status schemas remain unchanged. Selection of the complete collection does not alter ADR-0034 per-target commit/recovery semantics.

@@ -1,7 +1,7 @@
-# ADR-0033: Recoverable filesystem-local skill installation
+# ADR-0034: Recoverable filesystem-local skill installation
 
 **Status**: Accepted, 2026-11-14; approved by the project owner during implementation.
-**Related requirements**: FR-67, FR-68 in [PRD](../prd.md).
+**Related requirements**: FR-89, FR-90 in [PRD](../prd.md).
 **Realized by**: [ADD-0001](../add/add-0001-work-system-architecture.md), installation/inspection flows.
 
 ## Context

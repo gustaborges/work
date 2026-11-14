@@ -147,9 +147,9 @@ A maintainer changes a marketplace, manifest or invocation contract and sees ver
 - One local user and initially one delivered skill; no new plugin role, external service or telemetry.
 - Cooperating installers are coordinated; arbitrary malicious writers and power/media loss are outside the guarantee. Tested process-interruption recovery is required.
 - Read-only marketplace validate, skill removal, vendor overlays and interactive scope selection are deferred. Future removal must honor recovery/coordination.
-- S0 completed during implementation with owner approval against develop; PRD FR-65–69 and ADR-0031–33 govern this feature. See validation.md.
+- S0 completed during implementation with owner approval against develop; PRD FR-87–91 and ADR-0032–34 govern this feature. See validation.md.
 - Fault/integration/contract tests are explicitly required by FR-021. Real-agent dogfood is a delivery check, never inferred from parser success.
 
 ## Owner-approved experience revision (2026-11-14)
 
-PRD agent skills FR-66 and ADR-0034 replace default-both, selectable-skill, global/folder grammar with explicit single-vendor local/user complete-collection installation. Both scopes confirm before writes unless --yes is supplied. The initial skill is named work-cli-plugin-builder. Previous S0 records describe the historical approval; this revision governs current behavior.
+PRD agent skills FR-88 and ADR-0035 replace default-both, selectable-skill, global/folder grammar with explicit single-vendor local/user complete-collection installation. Both scopes confirm before writes unless --yes is supplied. The initial skill is named work-cli-plugin-builder. Previous S0 records describe the historical approval; this revision governs current behavior.

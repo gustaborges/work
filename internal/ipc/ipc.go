@@ -104,6 +104,7 @@ type StarterInput struct {
 // the core; any other keys the subprocess emits are ignored (FR-018 trust
 // boundary).
 type StarterResponse struct {
+	Modes      json.RawMessage     `json:"modes,omitempty"`
 	Repository RepositoryReference `json:"repository"`
 	BaseBranch string              `json:"base_branch,omitempty"`
 	StartModes []string            `json:"start_modes,omitempty"`

@@ -1,7 +1,7 @@
 # ADR-0019: Progressive CLI Surface with Static Home and Grouped Help
 
 **Status:** Superseded in part for features 009 and 010
-**Superseded by:** ADR-0032 (plural `skills` resource exception); ADR-0025 (plugin/marketplace grammar and manager destinations); static home, grouped help, and unrelated commands remain.
+**Superseded by:** ADR-0033 (plural `skills` resource exception); ADR-0025 (plugin/marketplace grammar and manager destinations); static home, grouped help, and unrelated commands remain.
 
 The original decision body below is retained as historical evidence.
 

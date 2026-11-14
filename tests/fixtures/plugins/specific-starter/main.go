@@ -39,5 +39,12 @@ func run(stdin io.Reader, stdout io.Writer) error {
 		"base_branch": "feature/source-branch",
 		"start_modes": []string{"contribution", "fork"},
 	}
+	if os.Getenv("WORK_FIXTURE_MODE") == "starter-modes" {
+		out["links"] = map[string]string{"github.issue": "https://example.test/shared"}
+		out["modes"] = map[string]any{
+			"fork":         map[string]any{"links": map[string]string{"github.pull_request": "https://example.test/fork"}},
+			"contribution": map[string]any{"links": map[string]string{"github.pull_request": "https://example.test/contribution"}},
+		}
+	}
 	return json.NewEncoder(stdout).Encode(out)
 }

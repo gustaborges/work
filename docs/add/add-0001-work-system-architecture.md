@@ -273,6 +273,8 @@ On success, it returns the data it managed to resolve. Core fields are explicit;
 
 `repository` fields are independent and optional: `path` is a local path already resolved; `git_fetch_urls` are known Git endpoints for fetch; `name` is a known logical name, potentially ambiguous; and `query` is opaque text intended for local mechanisms. The response must contain `path` or information that makes at least one configured Locator eligible. The reference is transient: it is not automatically promoted to `work`, `meta`, or `links`.
 
+Under ADR-0031 (PRD FR-84), the response may also contain `modes`, keyed by `new`, `contribution`, or `fork`, with links/meta overrides. The core validates base publication and every entry before materialization, retains the validated response through mode selection, shallowly overlays the selected maps, then binds the effective keys to the Starter provider/source instance and passes them to atomic creation. The modes map does not alter mode offers or persist. Unknown names and invalid mode output fail with `starter-response-invalid` (37), including invalid unselected entries. Detailed wire behavior is in `specs/010-link-improvements/contracts/starter-protocol.md`.
+
 The absence of `start_modes` means a new Work. When present, the core offers exactly the modes returned and persists the chosen mode in `work.start_mode`; when absent, it persists `new`. Branch convention is neither an input nor an output of the Starter. Failure of the chosen Starter subprocess or structurally invalid output fails `work start`; there is no `matched: false` result or equivalent.
 
 ### 7.1 Repository Resolution
@@ -356,6 +358,8 @@ Events are lifecycle identifiers defined by the core in the format `<command>:<e
 `on[]` for Importers and `discover.on[]` for Linkers accept `event` and an optional `starters` filter; without a filter, the subscription applies to any Starter. ADR-0024 binds self-package names to their provider and explicit qualified references exactly; an unrelated ambiguous bare filter never matches arbitrary homonyms. Filters determine eligibility and are not passed to subprocesses.
 
 Before starting a subprocess, the core checks: plugin enabled; operation available for the current activation; subscription and filter when activation is event-driven; and existence of all required inputs. Inputs use `work:<key>`, `link:<key>`, or `meta:<key>`, with `:optional` for acceptable absence. Optional inputs do not participate in eligibility and are omitted from input when absent. The core resolves the namespace, but projects only the requested key and its value into the payload.
+
+Under ADR-0031 (PRD FR-85/FR-86), start eligibility first maps each automatic Linker's output key to its actual stored provider/source-instance key. Presence in the initial Work links silently excludes it before subscription diagnostics or input resolution. Linker decisions and projected inputs are computed once before that phase; subsequent publications cannot change that set. Importers still evaluate after Linkers, and manual association remains an explicit upsert. See `specs/010-link-improvements/contracts/linker-eligibility.md`.
 
 A Linker declares a namespaced `key`. Multiple Linkers may produce the same key without this being a collision: they are alternative providers of the same semantic relation. `discover.automatic` allows discovery requested by Work; `discover.on[]` allows event-driven discovery. Discovery receives only its inputs and optionally returns `{ "value": "..." }`; success without a value does not alter state and is not an error. With a value, the core upserts into `links[key]` and records its provenance in the index. `manual` makes the Linker available in `work link`: after selection, the core collects a non-empty value and performs the same upsert, without starting a subprocess.
 
@@ -503,7 +507,7 @@ Read commands (`status`, `list`, `show`, and `plugin update --check`) accept `--
 
 ## Agent authoring skills
 
-Governing decisions: ADR-0031, ADR-0033, [ADR-0034](../adr/adr-0034-complete-skill-collection.md). Satisfies PRD FR-65–FR-69.
+Governing decisions: ADR-0032, ADR-0034, [ADR-0035](../adr/adr-0035-complete-skill-collection.md). Satisfies PRD FR-87–FR-91.
 
 ### Components and dependencies
 
@@ -513,10 +517,10 @@ Governing decisions: ADR-0031, ADR-0033, [ADR-0034](../adr/adr-0034-complete-ski
 
 ## Data and flows
 
-The command adapter accepts no skill operands and resolves the complete embedded inventory for one explicit vendor and local/user scope. Local resolution captures the initial current directory; user resolution uses the vendor's user root. Before calling the writable installer, both scopes use the existing confirmation control with every skill and resolved destination; non-interactive callers require `--yes`. Force authorization remains separate. The adapter does not inspect vendor executables or require a marketplace catalog. Status bypasses confirmation and writable helpers. ADR-0034 governs this interface.
+The command adapter accepts no skill operands and resolves the complete embedded inventory for one explicit vendor and local/user scope. Local resolution captures the initial current directory; user resolution uses the vendor's user root. Before calling the writable installer, both scopes use the existing confirmation control with every skill and resolved destination; non-interactive callers require `--yes`. Force authorization remains separate. The adapter does not inspect vendor executables or require a marketplace catalog. Status bypasses confirmation and writable helpers. ADR-0035 governs this interface.
 
 See [data model](../../specs/010-agent-skills/data-model.md) for ownership/operation records and exact digest framing. [Installer contract](../../specs/010-agent-skills/contracts/skill-installation.md) defines preflight, ordered locking, stage/backup publication and recovery. [CLI contract](../../specs/010-agent-skills/contracts/cli-work-skills.md) defines scope, output and errors. Pure status observes coordination and tree identity around hashing with at most three attempts and never opens a writable helper.
 
 ## Delivery verification
 
-[Guidance contract](../../specs/010-agent-skills/contracts/skill-content.md) separates parser, full discovery, selected installability and runtime behavior checks. Fault/restart/concurrency fixtures, generated-output/pin checks, three-OS matrix and actual agent dogfood realize FR-67–FR-69. This section adds no new product requirement.
+[Guidance contract](../../specs/010-agent-skills/contracts/skill-content.md) separates parser, full discovery, selected installability and runtime behavior checks. Fault/restart/concurrency fixtures, generated-output/pin checks, three-OS matrix and actual agent dogfood realize FR-89–FR-91. This section adds no new product requirement.

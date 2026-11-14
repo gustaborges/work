@@ -1,7 +1,7 @@
-# ADR-0031: Release-bundled vendor-neutral agent skills
+# ADR-0032: Release-bundled vendor-neutral agent skills
 
 **Status**: Accepted, 2026-11-14; approved by the project owner during implementation.
-**Related requirements**: FR-65, FR-69 in [PRD](../prd.md).
+**Related requirements**: FR-87, FR-91 in [PRD](../prd.md).
 **Realized by**: [ADD-0001](../add/add-0001-work-system-architecture.md), skill package and contract generation.
 
 ## Context

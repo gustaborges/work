@@ -2,7 +2,7 @@
 
 ## S0
 
-2026-11-14: Owner confirmed develop baseline and explicitly approved the drafted governance package. Feature 009 merged via PR #58 at 161cf233ef1eee8836fcde02cbc5f6433f65d5f4, identical to HEAD and develop. PRD FR-65–69, ADR-0031–33 and ADD-0001 promoted in authority order. CLI skills grammar and receipt format accepted; diagnostic slots 62–66 verified available. No application tests yet.
+2026-11-14: Owner confirmed develop baseline and explicitly approved the drafted governance package. Feature 009 merged via PR #58 at 161cf233ef1eee8836fcde02cbc5f6433f65d5f4, identical to HEAD and develop. PRD FR-87–91, ADR-0032–34 and ADD-0001 promoted in authority order. CLI skills grammar and receipt format accepted; diagnostic slots 62–66 verified available. No application tests yet.
 
 ## Implemented and validated locally
 
@@ -28,7 +28,7 @@ Authenticated existing Claude/Codex profiles are available. Clean profile checks
 
 ## Owner-approved CLI experience revision
 
-2026-11-14: Revised agent skills PRD FR-66 and accepted ADR-0034 superseding ADR-0032. Both commands require one vendor and local/user scope, take no skill operands and select the complete release inventory. Both install scopes confirm unless --yes; force remains independent. Renamed the bundled skill to work-cli-plugin-builder; existing copies under the prior name are not automatically migrated or deleted.
+2026-11-14: Revised agent skills PRD FR-88 and accepted ADR-0035 superseding ADR-0033. Both commands require one vendor and local/user scope, take no skill operands and select the complete release inventory. Both install scopes confirm unless --yes; force remains independent. Renamed the bundled skill to work-cli-plugin-builder; existing copies under the prior name are not automatically migrated or deleted.
 
 - CLI tests cover both vendors × both scopes, full inventory/current status, unselected-vendor absence, Work-home purity, invalid/missing/repeated/all vendor selection, obsolete scope flags, forbidden skill operands and install JSON/status mutation flags.
 - Confirmation previews cover multiple skills/destinations and force disclosure; --yes preserves local edits without force and --force --yes replaces them. Non-interactive unconfirmed installs create no target or coordination files.
@@ -36,3 +36,9 @@ Authenticated existing Claude/Codex profiles are available. Clean profile checks
 - Reviewed renamed references and complete scaffold templates. `go generate ./ai-skills/...` and explicit `make skill-lock` completed; all three generated reference files and the represented contract pin remain byte-identical to the prior tree. Only the skill name/frontmatter changed in the delivered content.
 - `make lint` passed with Go/staticcheck caches under /tmp. Fixture Git signing was disabled through process-only environment configuration for the test run; repository signing configuration was not changed.
 - Full host `go test ./...` passed, including interactive accept/decline checks for both local and user scope (integration package 195.943s). Declining leaves target roots and coordination artifacts absent. Final focused installer suite also passed after adding the Claude override anchor case. These results validate this CLI revision; the pre-existing feature-wide delivery gaps above remain separate.
+
+## Develop merge reconciliation
+
+Merged origin/develop at 440644a. Preserved develop’s mode-context ADR-0031 and PRD FR-84–FR-86; renumbered the skill decisions to ADR-0032–0035 and skill requirements to FR-87–FR-91 to remove collisions without changing their substance. Feature pointers remain on agent skills. Reviewed mode overlay/known-link semantics and refreshed bundled guidance, generated references and contract pin.
+
+Merge verification passed: `go generate ./ai-skills/...` (reviewed the new Starter `modes` field), explicit `make skill-lock`, `make seed`, `go test ./...` (including full integration), `make lint`, and host CLI build. PRD/ADR IDs are unique and updated ADR links resolve. Existing mode-context, known-link and scaffold fixtures passed; no runtime contract behavior was changed by the resolution.

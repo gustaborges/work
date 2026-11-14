@@ -1,6 +1,6 @@
 # Proposed PRD amendment: Agent assistance for marketplace authors
 
-> Historical planning record. Current CLI scope, vendor, collection and confirmation behavior is governed by [ADR-0034](../../../docs/adr/adr-0034-complete-skill-collection.md).
+> Historical planning record. Current CLI scope, vendor, collection and confirmation behavior is governed by [ADR-0035](../../../docs/adr/adr-0035-complete-skill-collection.md).
 
 **Status**: Draft requirement amendment; promote after merged 009 reconciliation.
 **Destination**: `docs/prd.md`, plugin authoring journey and functional requirements.

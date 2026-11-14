@@ -1,12 +1,12 @@
 # Research: Agent Skills
 
-> Historical planning record. Current CLI scope, vendor, collection and confirmation behavior is governed by [ADR-0034](../../docs/adr/adr-0034-complete-skill-collection.md).
+> Historical planning record. Current CLI scope, vendor, collection and confirmation behavior is governed by [ADR-0035](../../docs/adr/adr-0035-complete-skill-collection.md).
 
 **Date**: 2026-11-14. Read-only code research and vendor-documentation research were delegated under speckit-plan Phase 0. No application code or tests ran.
 
 ## R1 — Dependency and authorities
 
-**Decision**: Draft feature 010 against local 009, gate implementation on merged development baseline and authority approval. **Evidence**: current HEAD `41c0e2c68ca30caca087f5c98752a86d18845f6c`; `feature/marketplace` `e8cb3193d9ccea5c72a48424bd7e5129ff7aa0d8`; primary `master` `3fa2790fb529096c4dd5defc53db870bf1751c14`. Feature 009 and ADR-0022–0030 exist only in the dependency branch inspected. Diagnostics 57–61 are used there. **Rationale**: current worktree cannot supply the intended command surface. **Alternatives**: merge during planning, reuse 009, or freeze 62/ADR-0031 unconditionally; rejected. [Governance drafts](governance/README.md) prepare S0 without accepting decisions.
+**Decision**: Draft feature 010 against local 009, gate implementation on merged development baseline and authority approval. **Evidence**: current HEAD `41c0e2c68ca30caca087f5c98752a86d18845f6c`; `feature/marketplace` `e8cb3193d9ccea5c72a48424bd7e5129ff7aa0d8`; primary `master` `3fa2790fb529096c4dd5defc53db870bf1751c14`. Feature 009 and ADR-0022–0030 exist only in the dependency branch inspected. Diagnostics 57–61 are used there. **Rationale**: current worktree cannot supply the intended command surface. **Alternatives**: merge during planning, reuse 009, or freeze 62/ADR-0032 unconditionally; rejected. [Governance drafts](governance/README.md) prepare S0 without accepting decisions.
 
 ## R2 — Vendor discovery and reload
 
@@ -52,4 +52,4 @@ No unresolved technical clarification remains for draft planning. S0 authority a
 
 ## S0 reconciliation (2026-11-14)
 
-Owner approved develop baseline and governance package. HEAD and develop are 161cf233ef1eee8836fcde02cbc5f6433f65d5f4 (merged PR #58, feature 009). Actual parsers, plugin identity and semantic ownership match R3–R6. Diagnostics 57–61 remain occupied; reserve 62–66 for skills. Promote requirements as PRD FR-65–69; decisions ADR-0031–33. ADR-0032 explicitly supersedes only ADR-0019’s singular-resource rule for skills. Output examples and recovery contracts remain unchanged.
+Owner approved develop baseline and governance package. HEAD and develop are 161cf233ef1eee8836fcde02cbc5f6433f65d5f4 (merged PR #58, feature 009). Actual parsers, plugin identity and semantic ownership match R3–R6. Diagnostics 57–61 remain occupied; reserve 62–66 for skills. Promote requirements as PRD FR-87–91; decisions ADR-0032–34. ADR-0033 explicitly supersedes only ADR-0019’s singular-resource rule for skills. Output examples and recovery contracts remain unchanged.

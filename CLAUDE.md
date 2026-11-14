@@ -4,7 +4,7 @@ For technologies, project structure, commands and active feature guidance, read
 
 Active feature: **010 — Agent Skills for Work Plugin Authors**. Implementation
 is in progress against develop revision 161cf23. The owner approved S0;
-PRD FR-65–69, ADR-0031–33 and ADD-0001 govern the feature. Remaining task and
+PRD FR-87–91, ADR-0032–34 and ADD-0001 govern the feature. Remaining task and
 validation evidence is recorded under specs/010-agent-skills/.
 Stack remains Go 1.26/Cobra and existing portable filesystem/locking helpers;
 no dependency upgrades or Work state/schema changes.

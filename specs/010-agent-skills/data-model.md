@@ -1,6 +1,6 @@
 # Data Model: Agent Skills
 
-**Status**: Approved under PRD FR-65–69 and ADR-0031–33; see [governance](governance/README.md). No Work snapshot/index/admin schema changes.
+**Status**: Approved under PRD FR-87–91 and ADR-0032–34; see [governance](governance/README.md). No Work snapshot/index/admin schema changes.
 
 ## DeliveredSkill
 

@@ -1,6 +1,6 @@
 # Conditional ADD-0001 amendment: Agent authoring skills
 
-> Historical planning record. Current CLI scope, vendor, collection and confirmation behavior is governed by [ADR-0034](../../../docs/adr/adr-0034-complete-skill-collection.md).
+> Historical planning record. Current CLI scope, vendor, collection and confirmation behavior is governed by [ADR-0035](../../../docs/adr/adr-0035-complete-skill-collection.md).
 
 **Status**: Proposed design; apply only after related PRD/ADRs are accepted at S0.
 **Destination**: `docs/add/add-0001-work-system-architecture.md`, new agent skills section.

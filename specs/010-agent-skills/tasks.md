@@ -152,6 +152,6 @@ Tests for the installer are colocated in internal/skillinstall (including native
 
 - [X] Replace default-both/selectable-skill/global-folder grammar with exactly one vendor, explicit local/user scope and complete embedded inventory selection; reject legacy flags and skill operands.
 - [X] Confirm both installation scopes before writes, support --yes for automation, and keep --force as separate content-replacement permission.
-- [X] Rename the bundled skill to work-cli-plugin-builder and update assets, references, generation/pin tooling, docs and tests. Record the revised requirement and superseding ADR-0034 before updating ADD/CLI contracts.
+- [X] Rename the bundled skill to work-cli-plugin-builder and update assets, references, generation/pin tooling, docs and tests. Record the revised requirement and superseding ADR-0035 before updating ADD/CLI contracts.
 - [X] Verify both vendor/scope combinations, invalid grammar purity, full inventory status, local-edit protection, preview contents and relative Claude user anchors; regenerate/review references, explicitly run make skill-lock, and pass lint.
 - [X] Pass full host go test ./... and interactive terminal accept/decline checks for both scopes without cancellation side effects.
