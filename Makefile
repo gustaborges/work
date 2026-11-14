@@ -102,3 +102,8 @@ lint:
 ## clean: remove build output.
 clean:
 	rm -rf $(BIN_DIR) $(SEED_DIR) $(RELEASE_DIR)
+
+.PHONY: skill-lock
+## skill-lock: update the represented authoring contract pin after guidance review.
+skill-lock:
+	$(GO) run ./ai-skills/internal/skilllock

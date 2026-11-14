@@ -66,6 +66,11 @@ func TestCategoryTable(t *testing.T) {
 		{MarketplaceSourceUnavailable, "marketplace-source-unavailable", 59},
 		{MarketplaceEntryUnavailable, "marketplace-entry-unavailable", 60},
 		{MarketplaceUpgradeFailed, "marketplace-upgrade-failed", 61},
+		{SkillTargetConflict, "skill-target-conflict", 62},
+		{SkillInstallBusy, "skill-install-busy", 63},
+		{SkillRecoveryRequired, "skill-recovery-required", 64},
+		{SkillCleanupPending, "skill-cleanup-pending", 65},
+		{SkillIOFailed, "skill-io-failed", 66},
 	}
 
 	if len(want) != len(All) {

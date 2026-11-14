@@ -312,3 +312,13 @@ The v1 sequencing in vertical slices, with a demo and exit criteria per delivery
 **Out of scope for v1:** integration plugins beyond the minimum reference set; multiple simultaneous conventions per repository; synchronization between machines; a graphical interface; a security sandbox for plugins.
 
 **Future candidates:** optional local telemetry; official forge integrations; an executable component to automatically detect branch convention; new operations and lifecycle events defined by the core.
+
+## Agent-assisted marketplace authoring
+
+- **FR-87**: A marketplace author can obtain offline, release-matched guidance for supported local Claude Code and Codex agents without installing a runtime plugin or requiring an AI service during Work commands. Covers feature FR-001, FR-004–FR-006.
+- **FR-88**: A user explicitly chooses exactly one supported agent and either the current-directory or user scope. Installation includes the complete release-bundled skill collection, with no individual skill selection. Both scopes require confirmation that can be explicitly skipped for automation. Invalid or declined requests have no destination side effects. Covers FR-002–FR-003, FR-015.
+- **FR-89**: Refresh preserves current/local content, protects unsafe/unreadable paths, coordinates concurrent installers and safely resumes interrupted operations with accurate partial outcomes. Covers FR-007–FR-012, FR-017.
+- **FR-90**: Inspection is read-only and offers deterministic human/machine installation states without accessing Work application state. Covers FR-013–FR-016.
+- **FR-91**: Delivered guidance and complete scaffolds stay aligned with supported authoring/invocation contracts through checked references, fixtures and maintainer obligations. Covers FR-018–FR-021.
+
+Related decisions: ADR-0032, ADR-0034 and ADR-0035 (superseding ADR-0033). Acceptance: agent-skills feature SC-001–SC-007.

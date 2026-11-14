@@ -1,0 +1,10 @@
+{
+ "name":"example","version":"1",
+ "components":[
+  {"name":"start","role":"starter","pattern":"^example:","entrypoint":"bin/start.py","runtime":"python3"},
+  {"name":"locate","role":"repository-locator","accepts":["name"],"entrypoint":"bin/locate.py","runtime":"python3"},
+  {"name":"import","role":"importer","manual":{"display_name":"Import example"},"inputs":["work:slug"],"entrypoint":"bin/import.py","runtime":"python3"},
+  {"name":"link","role":"linker","key":"plugin.example.issue","manual":{"display_name":"Link example"},"entrypoint":"bin/link.py","runtime":"python3"}
+ ],
+ "conventions":[{"name":"topic","prefixes":["feature/{slug}"]}]
+}
