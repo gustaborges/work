@@ -309,6 +309,44 @@ func TestApplyConflictsWhenTheNamespaceWasTakenMeanwhile(t *testing.T) {
 	}
 }
 
+func TestUnchangedPlanConflictsWhenTheSourceWasRemovedMeanwhile(t *testing.T) {
+	h := home(t)
+	ctx := context.Background()
+	src := marketplaces.Copy(t, "single")
+	first := mustAdd(t, h, local(src))
+	plan, err := PrepareAdd(ctx, h, local(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer plan.Close()
+	remove, err := PrepareRemove(ctx, h, first.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := remove.Apply(ctx, false); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := plan.Apply(ctx); code(err) != diag.AdministrationConflict.Code {
+		t.Fatalf("apply after the source was removed = %+v, %v", res, err)
+	}
+}
+
+func TestUnchangedPlanIgnoresUnrelatedAdministrativeWrites(t *testing.T) {
+	h := home(t)
+	ctx := context.Background()
+	src := marketplaces.Copy(t, "single")
+	mustAdd(t, h, local(src))
+	plan, err := PrepareAdd(ctx, h, local(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer plan.Close()
+	mustAdd(t, h, local(marketplaces.Copy(t, "multiple"))) // advances the administrative epoch
+	if res, err := plan.Apply(ctx); err != nil || res.Result != "unchanged" {
+		t.Fatalf("apply after an unrelated registration = %+v, %v", res, err)
+	}
+}
+
 func TestCancellationPublishesNothing(t *testing.T) {
 	h := home(t)
 	ctx, cancel := context.WithCancel(context.Background())

@@ -102,14 +102,13 @@ type AddResult struct {
 // sources, a leased private capture. Close releases both and is mandatory on
 // every exit path; it is idempotent.
 type AddPlan struct {
-	home    workhome.Home
-	spec    Spec
-	reused  *config.Marketplace // exact existing registration, when unchanged
-	snap    *marketplace.Snapshot
-	lease   *adminstate.Lease
-	stage   string
-	baseEpo uint64
-	once    sync.Once
+	home   workhome.Home
+	spec   Spec
+	reused *config.Marketplace // exact existing registration, when unchanged
+	snap   *marketplace.Snapshot
+	lease  *adminstate.Lease
+	stage  string
+	once   sync.Once
 }
 
 // Name is the published namespace the plan would register.
@@ -150,10 +149,10 @@ func PrepareAdd(ctx context.Context, h workhome.Home, spec Spec) (_ *AddPlan, er
 	}
 	for i := range state.Config.Marketplaces {
 		if m := state.Config.Marketplaces[i]; sameDescriptor(m, spec) {
-			return &AddPlan{home: h, spec: spec, reused: &m, baseEpo: state.Epoch}, nil
+			return &AddPlan{home: h, spec: spec, reused: &m}, nil
 		}
 	}
-	plan := &AddPlan{home: h, spec: spec, baseEpo: state.Epoch}
+	plan := &AddPlan{home: h, spec: spec}
 	defer func() {
 		if err != nil {
 			plan.Close()
@@ -213,7 +212,7 @@ func checkNamespace(cfg *config.Config, name string) error {
 // instead of expanding what was reviewed.
 func (p *AddPlan) Apply(ctx context.Context) (AddResult, error) {
 	if p.reused != nil {
-		return AddResult{Name: p.reused.Name, Result: "unchanged"}, nil
+		return p.confirmUnchanged(ctx)
 	}
 	if ctx.Err() != nil {
 		return AddResult{}, classify(ctx.Err())
@@ -249,6 +248,23 @@ func (p *AddPlan) Apply(ctx context.Context) (AddResult, error) {
 		return res, classify(err)
 	}
 	return res, nil
+}
+
+// confirmUnchanged reports "unchanged" only while the reviewed registration
+// still exists. It reads without the administration lock and persists nothing:
+// an unrelated administrative write must not turn a no-op into a conflict, but
+// a removal during review must not be reported as "unchanged".
+func (p *AddPlan) confirmUnchanged(ctx context.Context) (AddResult, error) {
+	latest, err := adminstate.Read(ctx, p.home)
+	if err != nil {
+		return AddResult{}, classify(err)
+	}
+	for _, m := range latest.Config.Marketplaces {
+		if sameDescriptor(m, p.spec) {
+			return AddResult{Name: m.Name, Result: "unchanged"}, nil
+		}
+	}
+	return AddResult{}, diag.New(diag.AdministrationConflict, "the source was removed while it was being reviewed; review again")
 }
 
 // Add prepares and applies a registration in one step.
