@@ -73,8 +73,9 @@ type Params struct {
 	// ForceDirty skips the dirty-worktree guard for every Work (--force-dirty).
 	ForceDirty bool
 	// AckDirty, when non-nil, is called for a dirty Work that was not
-	// force-archived; returning true archives it anyway. A nil AckDirty (a
-	// non-interactive run) leaves a dirty Work active.
+	// force-archived; returning true archives it anyway. It may consult a
+	// previously recorded per-Work acknowledgement. A nil AckDirty leaves a
+	// dirty Work active.
 	AckDirty func(projection.Work) (bool, error)
 	// CallerCWD is the caller's resolved working directory, for reposition-out
 	// detection. Empty disables the check.

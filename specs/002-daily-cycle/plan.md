@@ -19,7 +19,9 @@ F1 walking skeleton:
   then for each Work destroys its Git worktree (leaving the branch ref intact), relocates
   its `work-state.json` (and any imported artifacts) into `<workspace>/archived/`, and flips
   the snapshot's `status` to `archived`. Each per-Work move is transactional; a dirty
-  worktree is never destroyed without an extra acknowledgement.
+  worktree is never destroyed without an extra acknowledgement. An accepted interactive
+  acknowledgement authorizes only that Work and is sufficient without `--force-dirty`;
+  the flag is required for dirty Works only in non-interactive mode (FR-013).
 
 It also proves the SQLite projection is genuinely disposable: `work.db` can be **rebuilt**
 from scratch and **reconciled** against the canonical snapshots (active and archived), with

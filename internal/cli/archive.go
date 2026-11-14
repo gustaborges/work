@@ -157,6 +157,7 @@ func runArchive(cmd *cobra.Command, args []string, f archiveFlags) error {
 	}
 
 	var declinedDirty []worklist.WorkRow
+	acknowledgedDirty := make(map[string]bool)
 	requestedCount := len(rows)
 	if interactive {
 		initial := present.Answers{}
@@ -205,6 +206,9 @@ func runArchive(cmd *cobra.Command, args []string, f archiveFlags) error {
 		rows, _ = ans.Value("rows").([]worklist.WorkRow)
 		requestedCount = len(rows)
 		dirtyAnswers, _ := ans.Value("dirty").([]bool)
+		for i, r := range dirtyRows {
+			acknowledgedDirty[r.ID] = i < len(dirtyAnswers) && dirtyAnswers[i]
+		}
 		declinedDirty = declinedDirtyRows(dirtyRows, dirtyAnswers)
 		rows = filterDirtyDeclines(rows, dirtyRows, dirtyAnswers)
 	}
@@ -228,9 +232,11 @@ func runArchive(cmd *cobra.Command, args []string, f archiveFlags) error {
 		WorkspaceRoot: workspaceRoot,
 		Rows:          projectionRows(db, rows),
 		ForceDirty:    f.forceDirty,
-		// A Work that becomes dirty after the preflight is left active. Asking a
-		// fresh question here would open another full-screen session.
-		AckDirty:  nil,
+		// Reuse only this Work's recorded approval. A different Work that becomes
+		// dirty after preflight stays active without another full-screen session.
+		AckDirty: func(row projection.Work) (bool, error) {
+			return acknowledgedDirty[row.ID], nil
+		},
 		CallerCWD: cwd,
 	})
 
