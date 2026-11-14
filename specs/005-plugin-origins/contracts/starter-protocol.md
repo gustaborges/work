@@ -115,3 +115,8 @@ invalid response, failing the same way as a malformed Starter output").
 | unrecognized start_mode | fixture emits `"start_modes":["rebase"]` | `starter-response-invalid` (37) |
 | contribution w/o base_branch | fixture emits `"start_modes":["contribution"]`, no `base_branch` | `starter-response-invalid` (37) |
 | meta/links ignored | fixture emits `meta`/`links` | Work created; `work-state.json` `meta`/`links` remain `{}` |
+
+
+## Current additive extension — feature 010
+
+The F4-only statements above about unused links/meta describe that feature's original delivery boundary. Current Work creation persists Starter context and applies the additive [feature 010 mode-context contract](../../010-link-improvements/contracts/starter-protocol.md), governed by PRD FR-84 and ADR-0031. The optional `modes` response object supplies links/meta overrides for `new`, `contribution`, or `fork`; validate every entry before creation, select and merge once, then Bind. Input remains `{"arg": ...}`; no second invocation is added. Invalid mode entries, including unselected entries, fail with `starter-response-invalid` (37). Responses without modes preserve current context publication behavior. Start-mode offers and repository/base-branch rules above remain unchanged.

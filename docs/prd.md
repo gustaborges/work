@@ -152,7 +152,7 @@ The user registers a marketplace, browses its catalog, and selects one plugin to
 * **FR-29.** An automatic Linker or Importer failure after Work creation must complete `work start` with a warning and diagnostic, without rolling back the Work. A successful discovery with no value is not an error.
 * **FR-30.** Inside a Work, `work import` must offer Importers that declare `manual` and are eligible, and run the selected `import` operation; an explicit Importer must skip selection without skipping eligibility validation.
 * **FR-31.** Inside a Work, `work link` must offer Linkers that declare `manual`, prompt for a non-empty value, and persist that value under the Linker key; an explicit Linker and value must allow the same operation without the TUI.
-* **FR-32.** Work state, metadata, and links must be persisted in semantically distinct sections in the same canonical snapshot. Each link key keeps a single value; Starter publication, discovery, and manual association perform upserts, and the last source wins.
+* **FR-32.** Work state, metadata, and links must be persisted in semantically distinct sections in the same canonical snapshot. Each link key keeps a single value; Starter publication, eligible discovery, and manual association perform upserts, and the last source that actually publishes wins. Automatic start discovery must preserve already-known links under FR-85.
 * **FR-33.** The `work-state.json` snapshot must be updated atomically, versioned by schema, and controlled exclusively by the core; plugins interact with state only through public inputs and outputs.
 * **FR-34.** Work must keep `work.db` as a queryable global projection and be able to rebuild or reconcile it from Work snapshots.
 * **FR-35.** Public metadata and link keys must follow Semantic Conventions; private keys must use an explicit provider namespace that distinguishes plugins from different marketplaces. Public key identity must not include its producer. Removing and re-registering a marketplace must not transfer ownership of its retained private values to a replacement source.
@@ -168,6 +168,12 @@ The user registers a marketplace, browses its catalog, and selects one plugin to
 * **FR-47.** When a plugin is disabled, its Repository Locators must remain referenced in the Repository Resolution Policy, but be unavailable while the plugin is disabled. The interface must make this state visible.
 * **FR-48.** Removing plugins, directly or through marketplace removal, must identify all affected Repository Resolution Policy references and require explicit authorization to remove them in the same consistent change. Operation confirmation alone does not authorize dependency removal.
 * **FR-49.** The default locator strategy must be able to discover Git repositories in configured search roots without relying on external services. When more than one repository matches the provided reference, the user must be able to explicitly select the desired one.
+
+### Mode-specific context and known links
+
+* **FR-84.** A Starter must be able to return optional links and metadata per creation mode in one response. After choosing the mode, Work must overlay that mode's values on shared context before creation and preserve existing publication ownership. All mode entries, including unselected entries, must be validated before materialization; unknown modes or invalid publication must fail without creating a Work. Responses without overrides retain existing behavior. See ADR-0031.
+* **FR-85.** Automatic start discovery must silently skip any Linker whose output link is already present in the initial Work context. Other eligibility checks still govern missing-key Linkers. Manual association remains able to replace known values. See ADR-0031.
+* **FR-86.** All automatic Linker eligibility and inputs must be fixed before that phase executes. A Linker's output must not make another Linker eligible within the same phase; Importers continue to evaluate afterward and may consume Starter-published or discovered context. See ADR-0031.
 
 ### `work resume` and `work archive`
 
