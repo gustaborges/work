@@ -95,3 +95,7 @@ work plugin add wsp@work          # repository locator backed by `wsp find`
 - **Publishing a change:** edit the packages in the origin repository through a
   branch and pull request, and bump the plugin `version` when behavior changes
   (installed copies only see an update when the version differs).
+
+## Agent-assisted authoring
+
+Use the offline bundled [agent skill](agent-skills.md) to scaffold and validate a marketplace with a local authoring agent.

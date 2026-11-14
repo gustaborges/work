@@ -136,7 +136,7 @@ type LinkerInput struct {
 // LinkerResponse is what a Linker discovered. Value is empty when it found
 // nothing; a returned value is never empty (see InvokeLinker).
 type LinkerResponse struct {
-	Value string
+	Value string `json:"value"`
 }
 
 // ImporterInput is the stdin payload for an Importer: its resolved inputs and

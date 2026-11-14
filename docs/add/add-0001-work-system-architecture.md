@@ -500,3 +500,21 @@ work convention set <CONVENTION>
 ```
 
 Read commands (`status`, `list`, `show`, and `plugin update --check`) accept `--json` and are pure. `--yes` confirms already determined impacts; it never chooses targets or values. There are no official aliases. The source of every plugin is explicitly chosen by the user and the installed reference is pinned; formal signing is deferred according to ADR-0008. ADR-0025 replaces the plugin grammar; ADR-0019 governs unchanged cross-cutting semantics. Plugin selectors are qualified or use an explicit marketplace flag, with no mixed forms. No compatibility selector or translation alias is part of the API.
+
+## Agent authoring skills
+
+Governing decisions: ADR-0031, ADR-0032, ADR-0033. Satisfies PRD FR-65–FR-69.
+
+### Components and dependencies
+
+`ai-skills` contains canonical text assets and an embedded inventory; it exposes Names/Tree/Digest. Deterministic catalog/manifest/semantic-convention/invocation descriptors originate in the domain validators/types and drive committed references and a pin. Domain packages never import the skill package, avoiding dependency cycles.
+
+`internal/skillinstall` owns destination resolution, pure inspection, portable digest/marker classification, plan/apply and filesystem-local recovery. It uses portable lock/atomic-file helpers and owns no Work administrative state. `internal/cli/skills.go` validates flags, composes the service and renders results through existing CLI conventions; it never invokes bootstrap, mutation preflight or repository discovery.
+
+## Data and flows
+
+See [data model](../../specs/010-agent-skills/data-model.md) for ownership/operation records and exact digest framing. [Installer contract](../../specs/010-agent-skills/contracts/skill-installation.md) defines preflight, ordered locking, stage/backup publication and recovery. [CLI contract](../../specs/010-agent-skills/contracts/cli-work-skills.md) defines scope, output and errors. Pure status observes coordination and tree identity around hashing with at most three attempts and never opens a writable helper.
+
+## Delivery verification
+
+[Guidance contract](../../specs/010-agent-skills/contracts/skill-content.md) separates parser, full discovery, selected installability and runtime behavior checks. Fault/restart/concurrency fixtures, generated-output/pin checks, three-OS matrix and actual agent dogfood realize FR-67–FR-69. This section adds no new product requirement.

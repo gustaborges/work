@@ -1,0 +1,21 @@
+# ADR-0032: Explicit plural skills setup command
+
+**Status**: Accepted, 2026-11-14; approved by the project owner during implementation.
+**Related requirements**: FR-66, FR-68 in [PRD](../prd.md).
+**Realized by**: [ADD-0001](../add/add-0001-work-system-architecture.md), command adapter.
+
+## Context
+
+Accepted ADR-0019 requires singular resources. The reviewed proposal prefers the conventional agent ecosystem term `skills`. That is an explicit decision conflict, not permission to reinterpret the existing rule.
+
+## Alternatives considered
+
+`work skill` follows the existing convention; `work agent-skills` is longer; implicit current-directory/global selection risks writing to the wrong scope; a prompt adds a second interface.
+
+## Decision
+
+Accept a narrow plural exception for `work skills install/status`, in Setup, requiring exactly one of global/folder scope and defaulting to both vendors. No interactive hub or aliases. Status supports JSON; install explicitly rejects it. All unrelated ADR-0019 discovery, stream and grammar rules continue.
+
+## Rationale and consequences
+
+The noun matches the installed collection and permits multiple skill operands. It is a deliberate exception with a consistency cost. ADR-0019 is superseded only for this plural resource exception; all other rules remain.

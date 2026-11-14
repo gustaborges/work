@@ -38,10 +38,12 @@ jobs:
       # portable F1/F2 unit + testscript integration suites across the 3-OS matrix.
       # Note: unix-only pty tests (tests/integration/*_test.go with //go:build unix)
       # run only on the ubuntu/macos runners.
+      - name: Verify bundled skill references and contract without mutation
+        run: go test ./ai-skills/...
       - run: go test ./...
       - name: Race detection on administrative packages
         if: runner.os == 'Linux'
-        run: go test -race ./internal/adminstate/... ./internal/pluginadmin/... ./internal/marketplaceadmin/... ./internal/present/...
+        run: go test -race ./internal/adminstate/... ./internal/pluginadmin/... ./internal/marketplaceadmin/... ./internal/skillinstall/... ./internal/present/...
       - name: Race detection on concurrency and recovery journeys
         if: runner.os == 'Linux'
         run: go test -race ./tests/integration -run 'Concurrency|Recovery|Concurrent'

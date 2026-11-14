@@ -87,6 +87,11 @@ var (
 	MarketplaceSourceUnavailable = Category{Token: "marketplace-source-unavailable", Code: 59}
 	MarketplaceEntryUnavailable  = Category{Token: "marketplace-entry-unavailable", Code: 60}
 	MarketplaceUpgradeFailed     = Category{Token: "marketplace-upgrade-failed", Code: 61}
+	SkillTargetConflict          = Category{Token: "skill-target-conflict", Code: 62}
+	SkillInstallBusy             = Category{Token: "skill-install-busy", Code: 63}
+	SkillRecoveryRequired        = Category{Token: "skill-recovery-required", Code: 64}
+	SkillCleanupPending          = Category{Token: "skill-cleanup-pending", Code: 65}
+	SkillIOFailed                = Category{Token: "skill-io-failed", Code: 66}
 )
 
 // All lists every category including OK, ordered by exit code. Tests assert the
@@ -102,6 +107,7 @@ var All = []Category{
 	ManualComponentUnavailable, ManualComponentAmbiguous, NoEligibleComponent, RequiredInputMissing, LinkFailed, ExtensionStartFailed, ExtensionFailed, ExtensionResponseInvalid, ExtensionOutputRefused, ExtensionPersistFailed, ExtensionCleanupFailed,
 	PluginUpdateFailed, PluginUninstallFailed, PluginPolicyDependency, AdministrationConflict, AdministrationRecoveryRequired, AdministrationCleanupFailed, AdministrationBusy,
 	MarketplaceInvalid, MarketplaceNameConflict, MarketplaceSourceUnavailable, MarketplaceEntryUnavailable, MarketplaceUpgradeFailed,
+	SkillTargetConflict, SkillInstallBusy, SkillRecoveryRequired, SkillCleanupPending, SkillIOFailed,
 }
 
 // IsManualOperation reports whether c is one of the categories a manual link or

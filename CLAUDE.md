@@ -1,34 +1,14 @@
 <!-- SPECKIT START -->
-For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan:
-`specs/009-marketplace-distribution/plan.md`
+For technologies, project structure, commands and active feature guidance, read
+`specs/010-agent-skills/plan.md`.
 
-Active feature: **Marketplace-only plugin distribution** (`specs/009-marketplace-distribution/`).
-Builds on F1–F7 (`specs/008-sustainable-operation/` still defines the
-administrative lock, journal, epoch and recovery rules). Design artifacts:
-`plan.md`, `research.md`, `data-model.md`, `quickstart.md`, `contracts/`;
-progress is in `tasks.md` and `checklists/implementation.md`.
+Active feature: **010 — Agent Skills for Work Plugin Authors**. Implementation
+is in progress against develop revision 161cf23. The owner approved S0;
+PRD FR-65–69, ADR-0031–33 and ADD-0001 govern the feature. Remaining task and
+validation evidence is recorded under specs/010-agent-skills/.
+Stack remains Go 1.26/Cobra and existing portable filesystem/locking helpers;
+no dependency upgrades or Work state/schema changes.
 
-Plugins are installed only as `plugin@marketplace` copies from registered
-marketplaces (Git or local) or the code-owned `builtin` provider; there are no
-aliases, link mode or embedded install. Registration and `marketplace upgrade`
-change discovery only; `plugin update` applies the exact reviewed candidate from
-each plugin's recorded source. Whole-source removal is one reviewed transaction.
-`--remove-policy-references` is separate from `--yes`. `work plugin` and
-`work plugin marketplace` open one persistent manager (Installed / Marketplaces).
-Stack is unchanged: Go 1.26, Cobra, Bubble Tea/Lip Gloss through
-`internal/present`, system Git, portable locks/atomic files, `modernc.org/sqlite`
-for the Work index, and the embedded offline seed. Work snapshot schema and
-database version remain 3; no dependency upgrade. Administrative error codes are
-50–56 and 57–61 (marketplace).
-
-Protect component invocation through current-revision validation and execution
-under the administrative lock; release before Work/branch locks. Never acquire
-administration under a Work lock; post-run checks use guarded pure snapshots.
-Keep existing F5 automatic warning and F6 manual failure/commit guarantees.
-
-Authorities: roadmap F7/§4; PRD FR-18–FR-20, FR-25, FR-40–FR-41, FR-45,
-FR-47–FR-48, FR-50–FR-64; accepted ADR-0002/0003/0005/0011/0012/0015/0019–0021.
 <!-- SPECKIT END -->
 
 
@@ -43,3 +23,4 @@ effects, lifecycle/thread-safety requirements, and noteworthy constraints. Keep 
 concise and update them with code changes.
 
 Motto: **Code shows what; comments preserve why.**
+@AGENTS.md

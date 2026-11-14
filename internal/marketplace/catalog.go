@@ -66,7 +66,7 @@ func ParseCatalog(data []byte) (*Catalog, error) {
 	if !ok {
 		return nil, invalidf("marketplace.json must be a JSON object")
 	}
-	if err := allowKeys(top, "schema", "name", "display_name", "description", "plugins"); err != nil {
+	if err := allowKeys(top, catalogKeys...); err != nil {
 		return nil, err
 	}
 	if n, ok := top["schema"].(json.Number); !ok || n.String() != "1" {
@@ -103,7 +103,7 @@ func ParseCatalog(data []byte) (*Catalog, error) {
 		if !ok {
 			return nil, invalidf("plugins[%d] must be an object", i)
 		}
-		if err := allowKeys(obj, "name", "path", "description"); err != nil {
+		if err := allowKeys(obj, listingKeys...); err != nil {
 			return nil, invalidf("plugins[%d]: %v", i, err)
 		}
 		var l Listing
