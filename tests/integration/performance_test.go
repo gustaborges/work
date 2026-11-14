@@ -11,10 +11,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gustaborges/work/internal/adminstate"
 	"github.com/gustaborges/work/internal/bootstrap"
 	"github.com/gustaborges/work/internal/config"
 	"github.com/gustaborges/work/internal/create"
+	"github.com/gustaborges/work/internal/locator"
 	"github.com/gustaborges/work/internal/projection"
+	"github.com/gustaborges/work/internal/registry"
 	"github.com/gustaborges/work/internal/work/verify"
 	"github.com/gustaborges/work/internal/workhome"
 	"github.com/gustaborges/work/seed"
@@ -110,10 +113,11 @@ const resolutionBudget = 2 * time.Second
 // TestStartByUniqueNameOver500ReposUnderBudget builds a search root of 500
 // sibling directories that merely *look* like repositories to the Locator's
 // walk (a bare .git entry, no init) plus one real, uniquely-named repository,
-// and asserts non-interactive `work start <unique-name>` resolves and
-// completes within the SC-012 budget. The expensive part (reporef.ValidatePath)
-// scales with matches, not with the size of the search tree — a unique name
-// returns exactly one (research R18).
+// checks non-interactive `work start <unique-name>`, then times name resolution
+// alone against SC-012. First-use installation and Work creation have separate
+// costs and must not count toward the name-lookup budget. The expensive part
+// (reporef.ValidatePath) scales with matches, not with the size of the search
+// tree — a unique name returns exactly one (research R18).
 func TestStartByUniqueNameOver500ReposUnderBudget(t *testing.T) {
 	if testing.Short() {
 		t.Skip("builds a 500-entry search tree; skipped under -short")
@@ -128,6 +132,8 @@ func TestStartByUniqueNameOver500ReposUnderBudget(t *testing.T) {
 	t.Setenv("GIT_COMMITTER_EMAIL", "t@t")
 
 	root := t.TempDir()
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(root, "gitconfig"))
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
 	workBin := filepath.Join(root, "work")
 	if runtime.GOOS == "windows" {
 		workBin += ".exe"
@@ -171,16 +177,46 @@ func TestStartByUniqueNameOver500ReposUnderBudget(t *testing.T) {
 		"GIT_CONFIG_GLOBAL="+filepath.Join(root, "gitconfig"), "GIT_CONFIG_SYSTEM="+os.DevNull,
 		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
 
-	start := time.Now()
 	out, err := cmd.CombinedOutput()
-	elapsed := time.Since(start)
 	if err != nil {
 		t.Fatalf("work start: %v\n%s", err, out)
 	}
 
-	t.Logf("name resolution + create over 500 repos: %s (budget %s)", elapsed.Round(time.Millisecond), resolutionBudget)
+	// The command above installed the real seed and checked the complete CLI
+	// journey. Measure the same guarded resolver the CLI uses, including the
+	// Locator process, tree walk, and Git validation of its matching candidate.
+	h := workhome.At(home)
+	ctx := context.Background()
+	snapshot, err := adminstate.Read(ctx, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deps := locator.Deps{
+		Guard: func(ctx context.Context, c registry.Component, invoke func() error) error {
+			return adminstate.WithInvocation(ctx, h, c, invoke)
+		},
+		PluginsDir: h.PluginsDir(),
+		Policy:     snapshot.Config.RepositoryResolution.Locators,
+		Roots:      snapshot.Config.RepositoryRoots,
+		Registry:   snapshot.Registry,
+	}
+	start := time.Now()
+	resolved, err := locator.Resolve(ctx, deps, locator.Reference{Name: "unique-target-payments"})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("locator.Resolve: %v", err)
+	}
+	want, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Resolved != want || len(resolved.Candidates) != 0 {
+		t.Fatalf("resolution = %+v, want a single match at %q", resolved, want)
+	}
+
+	t.Logf("name resolution over 500 repos: %s (budget %s)", elapsed.Round(time.Millisecond), resolutionBudget)
 	if elapsed > resolutionBudget {
-		t.Errorf("resolution + create %s exceeds the %s budget", elapsed, resolutionBudget)
+		t.Errorf("name resolution %s exceeds the %s budget", elapsed, resolutionBudget)
 	}
 }
 
