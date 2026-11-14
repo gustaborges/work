@@ -9,7 +9,10 @@
 package starter
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"github.com/gustaborges/work/internal/adminstate"
 	"github.com/gustaborges/work/internal/workhome"
 	"maps"
@@ -95,6 +98,12 @@ func Match(reg *registry.Registry, arg string) (registry.Component, Outcome, err
 	}
 }
 
+// ModeContext contains the contextual overrides for one creation mode.
+type ModeContext struct {
+	Links map[string]string `json:"links"`
+	Meta  map[string]any    `json:"meta"`
+}
+
 // Reference is the subset of a Starter response the core acts on (ADR-0016).
 // The four repository fields are independent and optional; a reference with
 // none of them set is not rejected here — internal/locator classifies that
@@ -102,7 +111,13 @@ func Match(reg *registry.Registry, arg string) (registry.Component, Outcome, err
 // context the Starter publishes for the Work; they are checked by
 // ValidateResponse before anything is materialized. Nothing else a Starter
 // emits is reachable through this type.
+//
+// Modes holds the per-creation-mode overrides already decoded by Invoke: names
+// are limited to new, contribution and fork and every entry is well formed.
+// Their keys are not yet checked against the publishing plugin; that is
+// ValidateResponse's job.
 type Reference struct {
+	Modes        map[string]ModeContext
 	Path         string
 	GitFetchURLs []string
 	Name         string
@@ -114,18 +129,25 @@ type Reference struct {
 }
 
 // Invoke runs the Starter entrypoint with arg and returns the repository
-// reference it produced. A non-zero exit or a structurally invalid response is
-// reported as an unusable repository.
+// reference it produced. A non-zero exit or unparseable output is reported as
+// an unusable repository. A malformed "modes" field is reported as
+// starter-response-invalid instead, so a Starter bug is not mistaken for a
+// source the user can correct and retry.
 func Invoke(pluginsDir string, c registry.Component, arg string) (Reference, error) {
 	resp, err := ipc.InvokeStarter(c.Target(pluginsDir), ipc.StarterInput{Arg: arg})
 	if err != nil {
 		return Reference{}, diag.Wrap(diag.UnusableRepo, err,
 			"the Starter could not resolve the given source")
 	}
+	modes, err := decodeModes(resp.Modes)
+	if err != nil {
+		return Reference{}, err
+	}
 	// Only the typed fields are consumed; any extra key the subprocess
 	// emitted is deliberately ignored: nothing a Starter says can influence
 	// core-governed Work state.
 	return Reference{
+		Modes:        modes,
 		Path:         resp.Repository.Path,
 		GitFetchURLs: resp.Repository.GitFetchURLs,
 		Name:         resp.Repository.Name,
@@ -158,29 +180,44 @@ func ValidateResponse(ref Reference, owner string) error {
 		case work.StartModeContribution:
 			hasContribution = true
 		default:
-			return diag.Newf(diag.StarterResponseInvalid,
-				"the Starter returned an unrecognized start mode %q", m).
-				WithSummary("The Starter's response is structurally invalid.").
-				WithHint("This is a bug in the installed Starter, not something fixable from the command line.")
+			return structurallyInvalid("the Starter returned an unrecognized start mode %q", m)
 		}
 	}
 	if hasContribution && ref.BaseBranch == "" {
-		return diag.New(diag.StarterResponseInvalid,
-			"the Starter offered contribution mode with no base branch to check out").
-			WithSummary("The Starter's response is structurally invalid.").
-			WithHint("This is a bug in the installed Starter, not something fixable from the command line.")
+		return structurallyInvalid("the Starter offered contribution mode with no base branch to check out")
 	}
-	return validatePublished(ref, owner)
+	if err := validatePublished(ref, owner, ""); err != nil {
+		return err
+	}
+	for _, name := range slices.Sorted(maps.Keys(ref.Modes)) {
+		entry := ref.Modes[name]
+		if err := validatePublished(Reference{Links: entry.Links, Meta: entry.Meta}, owner, name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// structurallyInvalid is the one place a malformed Starter response gets its
+// code, summary and hint, so every such failure reads the same at the CLI border.
+func structurallyInvalid(format string, args ...any) *diag.Error {
+	return diag.Newf(diag.StarterResponseInvalid, format, args...).
+		WithSummary("The Starter's response is structurally invalid.").
+		WithHint("This is a bug in the installed Starter, not something fixable from the command line.")
 }
 
 // validatePublished checks the published keys in sorted order so the key a
-// failure names does not depend on map iteration.
-func validatePublished(ref Reference, owner string) error {
+// failure names does not depend on map iteration. mode is the creation mode
+// whose override is being checked, or "" for the base maps; it goes into the
+// message itself because the CLI border shows only the diagnostic's own text,
+// not the text of any error wrapped around it.
+func validatePublished(ref Reference, owner, mode string) error {
+	where := ""
+	if mode != "" {
+		where = fmt.Sprintf(" in mode %q", mode)
+	}
 	invalidKey := func(section, key string) error {
-		return diag.Newf(diag.StarterResponseInvalid,
-			"the Starter returned a %s key that is not valid: %q", section, key).
-			WithSummary("The Starter's response is structurally invalid.").
-			WithHint("This is a bug in the installed Starter, not something fixable from the command line.")
+		return structurallyInvalid("the Starter returned a %s key that is not valid%s: %q", section, where, key)
 	}
 	for _, key := range slices.Sorted(maps.Keys(ref.Meta)) {
 		if semconv.ValidatePublished(owner, key) != nil {
@@ -192,10 +229,7 @@ func validatePublished(ref Reference, owner string) error {
 			return invalidKey("link", key)
 		}
 		if semconv.ValidLinkValue(ref.Links[key]) != nil {
-			return diag.Newf(diag.StarterResponseInvalid,
-				"the Starter returned an empty value for the link %q", key).
-				WithSummary("The Starter's response is structurally invalid.").
-				WithHint("This is a bug in the installed Starter, not something fixable from the command line.")
+			return structurallyInvalid("the Starter returned an empty value for the link %q%s", key, where)
 		}
 	}
 	return nil
@@ -234,4 +268,75 @@ func InvokeGuarded(ctx context.Context, h workhome.Home, c registry.Component, a
 	var ref Reference
 	err := adminstate.WithInvocation(ctx, h, c, func() error { var err error; ref, err = Invoke(h.PluginsDir(), c, arg); return err })
 	return ref, err
+}
+
+// decodeModes turns the wire "modes" payload into typed mode context. Shape
+// failures stay in the Starter diagnostic domain (code 37) rather than the
+// UnusableRepo class Invoke gives IPC errors. Names and keys come from the
+// Starter, so they are always quoted.
+func decodeModes(raw json.RawMessage) (map[string]ModeContext, error) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+		return nil, nil
+	}
+	if raw[0] != '{' {
+		return nil, structurallyInvalid("the Starter returned invalid modes")
+	}
+	var entries map[string]json.RawMessage
+	if json.Unmarshal(raw, &entries) != nil {
+		return nil, structurallyInvalid("the Starter returned invalid modes")
+	}
+	out := make(map[string]ModeContext, len(entries))
+	for _, name := range slices.Sorted(maps.Keys(entries)) {
+		if name != "new" && name != "contribution" && name != "fork" {
+			return nil, structurallyInvalid("the Starter returned invalid mode name %q", name)
+		}
+		value := bytes.TrimSpace(entries[name])
+		if len(value) == 0 || value[0] != '{' {
+			return nil, structurallyInvalid("the Starter returned invalid mode %q", name)
+		}
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(value, &fields) != nil {
+			return nil, structurallyInvalid("the Starter returned invalid mode %q", name)
+		}
+		var entry ModeContext
+		if json.Unmarshal(value, &entry) != nil {
+			return nil, structurallyInvalid("the Starter returned invalid maps in mode %q", name)
+		}
+		// encoding/json accepts null for string values; link values must be strings.
+		if links := fields["links"]; len(links) > 0 && !bytes.Equal(bytes.TrimSpace(links), []byte("null")) {
+			var values map[string]json.RawMessage
+			if json.Unmarshal(links, &values) != nil {
+				return nil, structurallyInvalid("the Starter returned invalid links in mode %q", name)
+			}
+			for _, key := range slices.Sorted(maps.Keys(values)) {
+				v := bytes.TrimSpace(values[key])
+				if len(v) == 0 || v[0] != '"' {
+					return nil, structurallyInvalid("the Starter returned an invalid value for the link %q in mode %q", key, name)
+				}
+			}
+		}
+		out[name] = entry
+	}
+	return out, nil
+}
+
+// MergeMode copies the published maps and shallowly overlays the selected mode.
+// Call ValidateResponse first; invalid responses must never be materialized.
+func MergeMode(ref Reference, mode string) Reference {
+	if mode == "" {
+		mode = work.StartModeNew
+	}
+	entry := ref.Modes[mode]
+	ref.Links = maps.Clone(ref.Links)
+	ref.Meta = maps.Clone(ref.Meta)
+	if len(entry.Links) > 0 && ref.Links == nil {
+		ref.Links = make(map[string]string)
+	}
+	if len(entry.Meta) > 0 && ref.Meta == nil {
+		ref.Meta = make(map[string]any)
+	}
+	maps.Copy(ref.Links, entry.Links)
+	maps.Copy(ref.Meta, entry.Meta)
+	return ref
 }

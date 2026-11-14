@@ -1,6 +1,8 @@
 package contract
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -14,7 +16,9 @@ import (
 
 // TestStarterPublishedContextContract runs the context-suite Starter through
 // the same Invoke + ValidateResponse pair `work start` uses, for each shape of
-// the Starter response the contract distinguishes.
+// the Starter response the contract distinguishes. Either call may report the
+// starter-response-invalid failure: Invoke for a malformed modes shape,
+// ValidateResponse for a key or value the publishing plugin may not use.
 func TestStarterPublishedContextContract(t *testing.T) {
 	dir := fixtures.Prepare(t, "context-suite")
 	comp := registry.Component{
@@ -32,6 +36,8 @@ func TestStarterPublishedContextContract(t *testing.T) {
 		wantMeta  int
 	}{
 		{mode: "", wantLinks: 0, wantMeta: 0},
+		{mode: "starter-modes", wantLinks: 1},
+		{mode: "starter-bad-mode", wantErr: diag.StarterResponseInvalid.Token},
 		{mode: "starter-context", wantLinks: 1, wantMeta: 1},
 		{mode: "starter-bad-key", wantErr: diag.StarterResponseInvalid.Token},
 		{mode: "starter-foreign-private", wantErr: diag.StarterResponseInvalid.Token},
@@ -39,11 +45,28 @@ func TestStarterPublishedContextContract(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.mode, func(t *testing.T) {
 			t.Setenv("WORK_FIXTURE_MODE", tc.mode)
+			log := filepath.Join(t.TempDir(), "launches")
+			t.Setenv("WORK_FIXTURE_LOG", log)
 			ref, err := starter.Invoke(pluginsDir, comp, "demo-ctx-1")
-			if err != nil {
+			if err != nil && tc.wantErr == "" {
 				t.Fatalf("Invoke: %v", err)
 			}
-			err = starter.ValidateResponse(ref, "context-suite")
+			data, readErr := os.ReadFile(log)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			var launch struct {
+				Role  string
+				Stdin map[string]any
+			}
+			if err := json.Unmarshal(bytes.TrimSpace(data), &launch); err != nil || launch.Role != "starter" || len(launch.Stdin) != 1 || launch.Stdin["arg"] != "demo-ctx-1" {
+				t.Fatalf("launch: %s (%v)", data, err)
+			}
+			// A malformed modes shape is already rejected by Invoke; key and
+			// value failures are rejected by ValidateResponse.
+			if err == nil {
+				err = starter.ValidateResponse(ref, "context-suite")
+			}
 			if tc.wantErr != "" {
 				if diag.Token(err) != tc.wantErr {
 					t.Fatalf("err = %v, want %s", err, tc.wantErr)

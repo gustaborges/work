@@ -188,10 +188,9 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		// resolveBase/resolveContribution and the interactive Mode step below.
 		starterBaseBranch string
 		starterStartModes []string
-		// starterMeta and starterLinks are the validated context the chosen
+		// starterResponse retains the validated unbound context the chosen
 		// Starter published; they seed the Work's first snapshot.
-		starterMeta  map[string]any
-		starterLinks map[string]string
+		starterResponse starter.Reference
 		// startMode is the resolved work.start_mode: left empty (create.Run
 		// defaults it to "new") when the Starter offered no start_modes, or
 		// set to the Mode step's answer otherwise (FR-021/FR-022).
@@ -239,6 +238,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 	// unmemoized present.Select interactively, or fails starter-ambiguous (36)
 	// non-interactively (ADR-0004, US4).
 	validatePath := func(ctx context.Context, s string) error {
+		starterResponse = starter.Reference{}
 		s = strings.TrimSpace(s)
 		if s == "" {
 			return errors.New("a path or name is required")
@@ -290,11 +290,9 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		if verr := starter.ValidateResponse(ref, comp.Provider.Plugin); verr != nil {
 			return present.Fatal(verr)
 		}
-		ref = starter.Bind(ref, comp, reg)
 		starterBaseBranch = ref.BaseBranch
 		starterStartModes = ref.StartModes
-		starterMeta = ref.Meta
-		starterLinks = ref.Links
+		starterResponse = ref
 
 		if ref.Path != "" {
 			normalized, verr := reporef.ValidatePath(ref.Path)
@@ -873,6 +871,7 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 			return err
 		}
 	}
+	effectiveContext := starter.Bind(starter.MergeMode(starterResponse, startMode), chosenStarter, reg)
 	res, err := create.Run(ctx, create.Params{
 		Home:            home,
 		SourceRepo:      repoPath,
@@ -886,8 +885,8 @@ func runStart(cmd *cobra.Command, source string, f startFlags) error {
 		Starter:         starterLogicalName(reg, chosenStarter),
 		StartMode:       startMode,
 
-		Meta:             starterMeta,
-		Links:            starterLinks,
+		Meta:             effectiveContext.Meta,
+		Links:            effectiveContext.Links,
 		StarterComponent: chosenStarter.QualifiedName(),
 	})
 	if err != nil {

@@ -2,6 +2,7 @@ package ipc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -366,5 +367,25 @@ func TestResponseBufferDrainsLargeAndSubsequentWrites(t *testing.T) {
 	}
 	if !b.overflow || len(b.buf) != StdoutLimitBytes || string(b.buf) != strings.Repeat("x", StdoutLimitBytes) {
 		t.Fatal("capture did not keep the bounded prefix")
+	}
+}
+
+func TestStarterModesRawTransport(t *testing.T) {
+	for _, raw := range []string{`null`, `{}`, `[]`, `42`, `{"new":{"links":null}}`} {
+		var response StarterResponse
+		if err := json.Unmarshal([]byte(`{"repository":{"path":"/repo"},"modes":`+raw+`}`), &response); err != nil {
+			t.Fatal(err)
+		}
+		if string(response.Modes) != raw || response.Repository.Path != "/repo" {
+			t.Fatal(response)
+		}
+		encoded, err := json.Marshal(response)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var round StarterResponse
+		if err = json.Unmarshal(encoded, &round); err != nil || string(round.Modes) != raw {
+			t.Fatal(string(encoded), err)
+		}
 	}
 }

@@ -70,7 +70,7 @@ func TestF5RoadmapJourney(t *testing.T) {
 	ws := contextSuiteWorkspace(t, bin, env, homeDir, workHome)
 
 	// Steps 1-4 in one start: the Starter publishes metadata and a link, the
-	// Linker discovers a value the core upserts, the first Importer consumes it
+	// known link suppresses discovery, the first Importer consumes it
 	// through staging, the second collides and contributes nothing.
 	a := runContextStart(t, bin, env, ws, "journey",
 		"starter-context,linker-value,linker2-none,importer-ok,importer2-collide")
@@ -79,14 +79,14 @@ func TestF5RoadmapJourney(t *testing.T) {
 	if snap.Meta["github.pull_request.number"] != float64(212) {
 		t.Errorf("step 1: Starter metadata missing from the first snapshot: %v", snap.Meta)
 	}
-	if got := snap.Links["github.pull_request"]; got != "https://example.test/pr/212-from-linker" {
-		t.Errorf("step 2: the Linker's value was not upserted over the Starter's: %q", got)
+	if got := snap.Links["github.pull_request"]; got != "https://example.test/pr/212" {
+		t.Errorf("step 2: the Starter link was not preserved: %q", got)
 	}
 	prov := provenanceOf(t, workHome, a.workID)
 	if p := prov["meta/github.pull_request.number"]; p.SourceComponent != "context-suite@suite/starter" || p.SourceOperation != "start" {
 		t.Errorf("step 1: metadata provenance = %+v", p)
 	}
-	if p := prov["links/github.pull_request"]; p.SourceComponent != "context-suite@suite/linker" || p.SourceOperation != "discover" {
+	if p := prov["links/github.pull_request"]; p.SourceComponent != "context-suite@suite/starter" || p.SourceOperation != "start" {
 		t.Errorf("step 2: link provenance = %+v", p)
 	}
 

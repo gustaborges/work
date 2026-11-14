@@ -231,3 +231,32 @@ func TestLinkInputsAreBoundLikeMetaInputs(t *testing.T) {
 		t.Fatalf("beta read %v", got)
 	}
 }
+
+func TestKnownPrivateLinkUsesCurrentProviderInstance(t *testing.T) {
+	alpha, beta := prov("sample", "alpha"), prov("sample", "beta")
+	c := linker("l", true, startFinalized)
+	c.Provider = alpha
+	c.Key = "plugin.sample.url"
+	reg := regOf(c)
+	reg.UpsertPackage(registered(alpha, idAlpha))
+	reg.UpsertPackage(registered(beta, idBeta))
+	for _, tc := range []struct {
+		key  string
+		want int
+	}{{semconv.StorageKey(alpha, idAlpha, "url"), 0}, {semconv.StorageKey(alpha, idNew, "url"), 1}, {semconv.StorageKey(beta, idBeta, "url"), 1}} {
+		if got := Eligible(reg, plugin.RoleLinker, plugin.EventStartFinalized, subject("new", map[string]string{tc.key: "known"}, nil)); len(got) != tc.want {
+			t.Fatal(tc, got)
+		}
+	}
+	sa, sb := starterOf(alpha, "pr"), starterOf(beta, "pr")
+	c.Provider = prov("watcher", "team")
+	c.Key = "github.pull_request"
+	c.Discover.On = []plugin.Subscription{{Event: plugin.EventStartFinalized, Starters: []string{"pr"}}}
+	reg = regOf(c, sa, sb)
+	s := subjectFrom(sa)
+	s.State.Links[c.Key] = "known"
+	ds, amb := EligibleDiagnosed(reg, plugin.RoleLinker, plugin.EventStartFinalized, s)
+	if len(ds) != 0 || len(amb) != 0 {
+		t.Fatal(ds, amb)
+	}
+}

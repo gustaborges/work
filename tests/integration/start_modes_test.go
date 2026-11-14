@@ -28,6 +28,7 @@ func startModesFixture(t *testing.T) (bin string, env []string, repo, ws string)
 	bin = buildWorkBin(t)
 	var homeDir, workHome string
 	env, homeDir, workHome = ptyEnv(t)
+	env = append(env, "WORK_FIXTURE_MODE=starter-modes")
 
 	installPluginFixture(t, bin, env, "specific-starter")
 
@@ -74,6 +75,9 @@ func TestStartModeForkRunsFullJourney(t *testing.T) {
 	// default focus accepted — glob for it rather than assuming one.
 	dir := globOneInProgress(t, ws, "demo-pr-1_*forked")
 	st := readSnapshot(t, filepath.Join(dir, "work-state.json"))
+	if st.Links["github.pull_request"] != "https://example.test/fork" || st.Links["github.issue"] != "https://example.test/shared" {
+		t.Fatal(st.Links)
+	}
 	if st.Schema != 3 {
 		t.Errorf("schema = %d, want 3", st.Schema)
 	}
@@ -116,6 +120,9 @@ func TestStartModeContributionSkipsSlugConventionPrefix(t *testing.T) {
 
 	dir := filepath.Join(ws, "in-progress", "demo-pr-1_feature-source-branch")
 	st := readSnapshot(t, filepath.Join(dir, "work-state.json"))
+	if st.Links["github.pull_request"] != "https://example.test/contribution" || st.Links["github.issue"] != "https://example.test/shared" {
+		t.Fatal(st.Links)
+	}
 	if st.Work.StartMode != "contribution" {
 		t.Errorf("start_mode = %q, want %q", st.Work.StartMode, "contribution")
 	}
